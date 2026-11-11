@@ -38,9 +38,17 @@ Button.displayName = "Button";
 
 /* ---------- Inputs ---------- */
 
+/*
+ * Height comes from --field-h. A Field sets it to 2.5rem, so form fields are comfortable to read and click, while
+ * search boxes and filters outside a Field stay at 2.25rem and line up with the buttons next to them.
+ * A disabled field is shown as read-only: muted fill, quiet border, text still at full reading contrast.
+ */
 const inputBase =
-  "h-9 w-full rounded-lg border border-input bg-card px-2.5 text-sm text-foreground placeholder:text-muted-foreground " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-55";
+  "h-[var(--field-h,2.25rem)] w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs dark:bg-background dark:[color-scheme:dark] " +
+  "placeholder:text-muted-foreground/80 " +
+  "focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
+  "aria-[invalid=true]:border-destructive " +
+  "disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-foreground/85 disabled:opacity-100 disabled:shadow-none dark:disabled:bg-muted";
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => <input ref={ref} className={cn(inputBase, className)} {...props} />,
@@ -71,24 +79,44 @@ export function Field({
   label,
   hint,
   hl7,
+  required,
   className,
   children,
 }: {
   label: string;
   hint?: string;
   hl7?: string;
+  /** Marks the label with an asterisk, and says "required" to screen readers. */
+  required?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className={cn("flex min-w-0 flex-col gap-1.5", className)}>
-      <span className="flex items-center gap-2 text-[0.8125rem] font-medium text-foreground/85">
-        {label}
+    <label className={cn("flex min-w-0 flex-col gap-1.5 [--field-h:2.5rem]", className)}>
+      <span className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium leading-5 text-foreground">
+        <span>
+          {label}
+          {required && (
+            <>
+              <span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span>
+              <span className="sr-only"> (required)</span>
+            </>
+          )}
+        </span>
         {hl7 && <Hl7Tag>{hl7}</Hl7Tag>}
       </span>
       {children}
       {hint && <span className="text-xs leading-snug text-muted-foreground">{hint}</span>}
     </label>
+  );
+}
+
+/** One line that explains the asterisk. Put it at the top of a form that has required fields. */
+export function RequiredNote({ className }: { className?: string }) {
+  return (
+    <p className={cn("text-xs text-muted-foreground", className)}>
+      Fields marked <span className="font-semibold text-destructive">*</span> are required.
+    </p>
   );
 }
 
@@ -204,7 +232,7 @@ export function Table({ children, className }: { children: React.ReactNode; clas
 
 export function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={cn("border-b border-border bg-muted/50 px-3 py-2.5 text-left text-xs font-semibold text-foreground/80", className)}>
+    <th className={cn("border-b border-border bg-muted px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap text-foreground", className)}>
       {children}
     </th>
   );
@@ -212,7 +240,7 @@ export function Th({ children, className }: { children?: React.ReactNode; classN
 
 export function Td({ children, className, colSpan }: { children?: React.ReactNode; className?: string; colSpan?: number }) {
   return (
-    <td colSpan={colSpan} className={cn("border-b border-border/70 px-3 py-[var(--row-py,0.6rem)] align-middle", className)}>
+    <td colSpan={colSpan} className={cn("border-b border-border/70 px-3 py-[var(--row-py,0.6rem)] align-middle text-foreground", className)}>
       {children}
     </td>
   );

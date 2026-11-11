@@ -8,7 +8,7 @@ import { FRAMEWORKS } from "./compliance-data";
 
 const ROUTES = new Set([
   "/patients", "/confidential", "/registration", "/opd", "/ipd", "/er", "/beds", "/lab", "/radiology", "/pharmacy/dispense",
-  "/audit", "/compliance", "/ai-governance", "/nphies-clinical", "/nphies-financial", "/access", "/runner", "/log", "/encounters", "/spec",
+  "/audit", "/compliance", "/ai-governance", "/nphies-clinical", "/nphies-financial", "/agents", "/access", "/runner", "/log", "/encounters", "/spec",
 ]);
 
 describe("menu", () => {

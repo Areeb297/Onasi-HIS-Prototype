@@ -1,6 +1,6 @@
 import * as React from "react";
 import { CreditCard, IdCard, Search } from "lucide-react";
-import { Badge, Button, Card, Field, Input, Select, cn } from "@/components/ui/primitives";
+import { Badge, Button, Card, Field, Input, RequiredNote, Select, cn } from "@/components/ui/primitives";
 import { quickCreate } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
@@ -22,18 +22,31 @@ const ISSUERS = ["Ministry of Interior", "Passports Directorate", "Other"];
 const ADDRESS_TYPES = ["Home", "Work", "Temporary"];
 const FILE_STATUS = ["Regular File", "VIP File", "Temporary File"];
 
-/** Section with a ribbon title, like the legacy screen. */
+/** Section card: a heading row at the start of the card, a divider, then the fields. */
 function Sec({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Card className="relative mt-5 px-4 pb-4 pt-6">
-      <span className="absolute -top-3 end-4 rounded-md bg-gradient-to-r from-admit to-move px-4 py-1 text-xs font-semibold text-white shadow-sm">{title}</span>
-      {children}
+    <Card className="mt-6 shadow-xs">
+      <header className="flex items-center gap-2.5 border-b border-border px-5 py-3">
+        <span aria-hidden="true" className="h-4 w-1 shrink-0 rounded-full bg-primary" />
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+      </header>
+      <div className="px-5 py-5">{children}</div>
     </Card>
   );
 }
 
+/** A named group of fields inside a section, such as the English name and the Arabic name. */
+function Group({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div role="group" aria-label={title} className={cn("min-w-0", className)}>
+      <div aria-hidden="true" className="mb-3 text-sm font-semibold text-foreground">{title}</div>
+      {children}
+    </div>
+  );
+}
+
 const Grid = ({ children, cols = 4 }: { children: React.ReactNode; cols?: 2 | 3 | 4 }) => (
-  <div className={cn("grid gap-3", cols === 4 && "sm:grid-cols-2 lg:grid-cols-4", cols === 3 && "sm:grid-cols-3", cols === 2 && "sm:grid-cols-2")}>{children}</div>
+  <div className={cn("grid gap-x-4 gap-y-5", cols === 4 && "sm:grid-cols-2 lg:grid-cols-4", cols === 3 && "sm:grid-cols-3", cols === 2 && "sm:grid-cols-2")}>{children}</div>
 );
 
 export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
@@ -187,48 +200,47 @@ export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
       {/* Language switch and ID lookup */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-2">
-          <Field label={t("ID (Iqama) Number", "رقم الهوية")} hl7={tag("PID-3 via registry")}>
+          <Field required label={t("ID (Iqama) Number", "رقم الهوية")} hl7={tag("PID-3 via registry")}>
             <Input className="w-56 font-mono" value={idNumber} onChange={(e) => onIdChange(e.target.value)} placeholder="10 digits" inputMode="numeric" aria-label="ID number" />
           </Field>
-          <Button onClick={() => lookup()} disabled={idNumber.length !== 10}><Search className="size-4" />{t("Look Up Patient", "بحث عن المريض")}</Button>
+          <Button className="h-10" onClick={() => lookup()} disabled={idNumber.length !== 10}><Search className="size-4" />{t("Look Up Patient", "بحث عن المريض")}</Button>
           {found === "found" && <Badge tone="ok">{t("Found in the national registry (simulated)", "تم العثور عليه في السجل الوطني (محاكاة)")}</Badge>}
           {found === "none" && <Badge tone="warn">{t("Not found. Enter the details by hand.", "غير موجود. أدخل البيانات يدويا")}</Badge>}
         </div>
-        <div role="group" aria-label="Language" className="flex rounded-md border border-border bg-muted p-0.5">
+        <div role="group" aria-label="Language" className="flex rounded-lg border border-border bg-muted p-0.5">
           {(["en", "ar"] as const).map((l) => (
-            <button key={l} onClick={() => setLang(l)} aria-pressed={lang === l} className={cn("rounded px-3 py-1 text-xs font-medium", lang === l ? "bg-card shadow-sm" : "text-muted-foreground")}>
+            <button key={l} onClick={() => setLang(l)} aria-pressed={lang === l} className={cn("rounded-md px-3 py-1.5 text-sm font-medium", lang === l ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
               {l === "en" ? "English" : "العربية"}
             </button>
           ))}
         </div>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-2 text-xs text-muted-foreground">
         {t("Try these test IDs: ", "جرب هذه الأرقام: ")}
         {REGISTRY.map((r) => (
           <button key={r.idNumber} onClick={() => onIdChange(r.idNumber)} className="me-2 font-mono text-move underline">{r.idNumber}</button>
         ))}
       </p>
+      <RequiredNote className="mt-3" />
 
       <Sec title={t("Patient Name", "إسم المريض")}>
-        <div className="mb-3">
-          <div className="mb-1 text-xs font-medium text-muted-foreground">{t("Name (English)", "الإسم بالإنجليزية")}</div>
+        <Group title={t("Name (English)", "الإسم بالإنجليزية")}>
           <Grid>
-            <Field label={t("First", "First")} hl7={tag("PID-5.2")}><Input value={first} onChange={(e) => setFirst(e.target.value)} dir="ltr" /></Field>
+            <Field required label={t("First", "First")} hl7={tag("PID-5.2")}><Input value={first} onChange={(e) => setFirst(e.target.value)} dir="ltr" /></Field>
             <Field label={t("Second", "Second")} hl7={tag("PID-5.3")}><Input value={second} onChange={(e) => setSecond(e.target.value)} dir="ltr" /></Field>
             <Field label={t("Third", "Third")} hl7={tag("PID-5.3")}><Input value={third} onChange={(e) => setThird(e.target.value)} dir="ltr" /></Field>
-            <Field label={t("Family", "Family")} hl7={tag("PID-5.1")}><Input value={family} onChange={(e) => setFamily(e.target.value)} dir="ltr" /></Field>
+            <Field required label={t("Family", "Family")} hl7={tag("PID-5.1")}><Input value={family} onChange={(e) => setFamily(e.target.value)} dir="ltr" /></Field>
           </Grid>
-        </div>
-        <div>
-          <div className="mb-1 text-xs font-medium text-muted-foreground">{t("Name (Arabic)", "الإسم بالعربي")}</div>
+        </Group>
+        <Group title={t("Name (Arabic)", "الإسم بالعربي")} className="mt-5 border-t border-border pt-5">
           <Grid>
             <Field label={t("First", "الأول")} hl7={hisOnly}><Input value={firstAr} onChange={(e) => setFirstAr(e.target.value)} dir="rtl" /></Field>
             <Field label={t("Second", "الثاني")} hl7={hisOnly}><Input value={secondAr} onChange={(e) => setSecondAr(e.target.value)} dir="rtl" /></Field>
             <Field label={t("Third", "الثالث")} hl7={hisOnly}><Input value={thirdAr} onChange={(e) => setThirdAr(e.target.value)} dir="rtl" /></Field>
             <Field label={t("Family", "لقب العائلة")} hl7={hisOnly}><Input value={familyAr} onChange={(e) => setFamilyAr(e.target.value)} dir="rtl" /></Field>
           </Grid>
-          {dev && <p className="mt-1 text-xs text-muted-foreground">Assumption: the NPHIES ADT pages do not say how to send an Arabic name, so it stays in the HIS and PID-5 carries the English name.</p>}
-        </div>
+          {dev && <p className="mt-3 text-xs text-muted-foreground">Assumption: the NPHIES ADT pages do not say how to send an Arabic name, so it stays in the HIS and PID-5 carries the English name.</p>}
+        </Group>
       </Sec>
 
       <Sec title={t("File Information", "بيانات ملف")}>
@@ -258,7 +270,7 @@ export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
           <Field label={t("Marital Status", "الحالة الإجتماعية")} hl7={tag("PID-16")}>
             <Select value={marital} onChange={(e) => setMarital(e.target.value)}>{MARITAL.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</Select>
           </Field>
-          <Field label={t("Date of Birth", "ت الميلاد")} hl7={tag("PID-7")}><Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} /></Field>
+          <Field required label={t("Date of Birth", "ت الميلاد")} hl7={tag("PID-7")}><Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} /></Field>
           <Field label={t("Religion", "الديانة")} hl7={tag("PID-17 ignored by nphies")}>
             <Select value={religion} onChange={(e) => setReligion(e.target.value)}>{RELIGIONS.map((x) => <option key={x}>{x}</option>)}</Select>
           </Field>
@@ -279,7 +291,7 @@ export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
           <Field label={t("Treatment Start Date", "تاريخ بداية العلاج")} hl7={tag("Financial")}><Input value={ins?.startDate ?? ""} disabled /></Field>
           <Field label={t("Treatment End Date", "تاريخ إنتهاء العلاج")} hl7={tag("Financial")}><Input value={ins?.expiryDate ?? ""} disabled /></Field>
           <Field label={t("Insurance Expiry Date", "تاريخ إنتهاء البطاقة")} hl7={tag("Financial")}>
-            <Input value={ins?.expiryDate ?? ""} disabled className={ins && ins.status === "Expired" ? "border-destructive text-destructive" : "bg-merge/10"} />
+            <Input value={ins?.expiryDate ?? ""} disabled className={ins && ins.status === "Expired" ? "disabled:border-destructive disabled:text-destructive" : ""} />
           </Field>
         </Grid>
       </Sec>
@@ -301,7 +313,7 @@ export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
 
       <Sec title={t("Contact Information", "بيانات للإتصال")}>
         <Grid>
-          <Field label={t("Mobile No.", "الجوال")} hl7={hisOnly}><Input value={mobile} onChange={(e) => setMobile(e.target.value)} dir="ltr" className="bg-merge/10" /></Field>
+          <Field label={t("Mobile No.", "الجوال")} hl7={hisOnly}><Input value={mobile} onChange={(e) => setMobile(e.target.value)} dir="ltr" /></Field>
           <Field label={t("Country Code", "رمز الدولة")} hl7={hisOnly}><Input value={countryCode} onChange={(e) => setCountryCode(e.target.value)} dir="ltr" /></Field>
           <Field label={t("Area Code", "رمز المنطقة")} hl7={hisOnly}><Input value={areaCode} onChange={(e) => setAreaCode(e.target.value)} dir="ltr" /></Field>
           <Field label={t("Home Phone", "هاتف المنزل")} hl7={hisOnly}><Input value={homePhone} onChange={(e) => setHomePhone(e.target.value)} dir="ltr" /></Field>
@@ -356,8 +368,8 @@ export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
 
       <Sec title={t("National Health Record", "السجل الصحي الوطني")}>
         <Grid cols={2}>
-          <Field label={t("Health ID", "رقم الهوية الصحية")} hl7={tag("PID-3")} hint={t("Required. Issued by the NHIC Patient Registry. Test value.", "مطلوب. يصدر من السجل الوطني")}>
-            <div className="flex gap-2"><Input className="font-mono" value={healthId} onChange={(e) => setHealthId(e.target.value)} dir="ltr" /><Button onClick={() => setHealthId(nextHealthId())}>{t("New Test ID", "رقم تجريبي")}</Button></div>
+          <Field required label={t("Health ID", "رقم الهوية الصحية")} hl7={tag("PID-3")} hint={t("Required. Issued by the NHIC Patient Registry. Test value.", "مطلوب. يصدر من السجل الوطني")}>
+            <div className="flex gap-2"><Input className="font-mono" value={healthId} onChange={(e) => setHealthId(e.target.value)} dir="ltr" /><Button className="h-10" onClick={() => setHealthId(nextHealthId())}>{t("New Test ID", "رقم تجريبي")}</Button></div>
           </Field>
         </Grid>
       </Sec>
@@ -374,19 +386,19 @@ export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
             </Field>
           )}
         </Grid>
-        <div className="mt-2 flex flex-wrap gap-1.5">{COMPLAINT_SAMPLES.map((c) => <button key={c.code} type="button" onClick={() => setReason(c.text)} className="rounded-md bg-muted px-2 py-1 text-xs hover:bg-accent">{c.text}</button>)}</div>
+        <div className="mt-4 flex flex-wrap gap-2">{COMPLAINT_SAMPLES.map((c) => <button key={c.code} type="button" onClick={() => setReason(c.text)} className="rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent">{c.text}</button>)}</div>
       </Sec>
 
-      <label className="mt-5 flex items-start gap-2 text-sm">
+      <label className="mt-6 flex items-start gap-2.5 text-sm">
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 size-4 accent-[var(--primary)]" />
         <span>{t("The patient has been told how their health information is used and shared with the national exchange (NPHIES), and agrees.", "تم إبلاغ المريض بكيفية استخدام معلوماته الصحية ومشاركتها مع المنصة الوطنية (نفيس) ووافق على ذلك.")}</span>
       </label>
 
       {warnings.map((w) => <p key={w} className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm">{w}</p>)}
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-5 flex flex-wrap items-center gap-3">
         <Button variant="primary" disabled={problems.length > 0} onClick={submit}>{t("Register Patient And Visit", "تسجيل المريض والزيارة")}</Button>
         <Button onClick={() => navigate(cls === "E" ? "/er" : "/opd")}>{t("Cancel", "إلغاء")}</Button>
-        {problems.length > 0 && <span className="text-xs text-muted-foreground">{problems[0]}</span>}
+        {problems.length > 0 && <span className="text-sm text-muted-foreground">{problems[0]}</span>}
       </div>
     </div>
   );

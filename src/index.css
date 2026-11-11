@@ -24,8 +24,9 @@
   --accent-foreground: #03503c;
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
-  --border: #d0ddd7;
-  --input: #bccbc4;
+  --border: #c5d4cd;
+  /* Field outline. 3:1 on white, so a field reads as a field. */
+  --input: #7d958b;
   --ring: #2563eb;
   --chart-1: #00805a;
   --chart-2: #2776ec;
@@ -76,8 +77,8 @@
   --accent-foreground: #b4f3dc;
   --destructive: #ff7b7b;
   --destructive-foreground: #1a0505;
-  --border: #1e3d34;
-  --input: #2d5246;
+  --border: #254a3f;
+  --input: #4a7868;
   --ring: #7db5ff;
   --brand-blue: #7db5ff;
   --admit: #34e0b0;
@@ -154,8 +155,16 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
-* {
-  border-color: var(--border);
+/*
+ * Default border color. It sits in the base layer so that color utilities such as border-input and
+ * border-destructive can override it. Outside a layer it would beat every utility, and fields would lose their outline.
+ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
 }
 
 html {

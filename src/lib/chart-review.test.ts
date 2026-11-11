@@ -78,3 +78,16 @@ describe("SBAR handoff", () => {
     expect(s.background).toContain("none recorded");
   });
 });
+
+describe("AI patient brief", () => {
+  it("tells the story, what to watch and what to do next", async () => {
+    const { buildBrief } = await import("../components/ai/AiChartBrief");
+    const { enc, patient } = ctx("P001");
+    const b = buildBrief({ ...enc, dx: [], vitals: undefined }, patient);
+    expect(b.story).toContain(patient.given);
+    expect(b.story).toContain("No diagnosis is recorded yet.");
+    expect(b.next.map((n) => n.section)).toEqual(expect.arrayContaining(["vitals", "diagnosis", "soap"]));
+    expect(b.watch.every((w) => w.level === "high" || w.level === "medium")).toBe(true);
+    expect(b.watch.length).toBeLessThanOrEqual(4);
+  });
+});

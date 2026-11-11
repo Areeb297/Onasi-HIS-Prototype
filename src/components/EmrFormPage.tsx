@@ -2,7 +2,7 @@ import * as React from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge, Button, Card, CardHeader, Empty, Field, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { can } from "@/lib/session";
 import { useDevMode } from "@/lib/devmode";
 import type { Encounter } from "@/lib/model";
@@ -44,16 +44,27 @@ function display(f: FieldDef, v: Values): string {
 
 /* ---------- field input ---------- */
 
+/** Same look as Input: clear outline, white fill, 2px blue focus ring. */
+const textareaClass =
+  "min-h-20 rounded-lg border-input bg-card px-3 text-sm text-foreground shadow-xs placeholder:text-muted-foreground/80 " +
+  "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring md:text-sm dark:bg-background";
+/** Choice chips for radio and multi-select fields. The chosen one is bold and outlined, not only tinted. */
+const chip = (on: boolean) =>
+  cn(
+    "min-h-9 rounded-lg border px-3 py-1.5 text-sm transition-colors",
+    on ? "border-admit bg-admit/14 font-semibold text-admit ring-1 ring-admit" : "border-input bg-card text-foreground hover:bg-muted dark:bg-background",
+  );
+
 function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val: Values[string]) => void }) {
   const val = v[f.key];
   switch (f.type) {
     case "textarea":
-      return <Textarea value={(val as string) ?? ""} onChange={(e) => onChange(e.target.value)} rows={3} placeholder={f.placeholder} aria-label={f.label} />;
+      return <Textarea value={(val as string) ?? ""} onChange={(e) => onChange(e.target.value)} rows={3} placeholder={f.placeholder} aria-label={f.label} className={textareaClass} />;
     case "number":
       return (
         <div className="flex items-center gap-2">
           <Input type="number" min={f.min} max={f.max} value={(val as number | string) ?? ""} onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))} aria-label={f.label} />
-          {f.unit && <span className="text-xs text-muted-foreground">{f.unit}</span>}
+          {f.unit && <span className="shrink-0 text-sm text-muted-foreground">{f.unit}</span>}
         </div>
       );
     case "date":
@@ -73,8 +84,7 @@ function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val
           {f.options?.map((o) => {
             const on = val === optValue(o);
             return (
-              <button key={optValue(o)} type="button" role="radio" aria-checked={on} onClick={() => onChange(optValue(o))}
-                className={cn("rounded-lg border px-3 py-1.5 text-sm transition-colors", on ? "border-admit bg-admit/12 text-admit" : "border-border hover:bg-muted")}>
+              <button key={optValue(o)} type="button" role="radio" aria-checked={on} onClick={() => onChange(optValue(o))} className={chip(on)}>
                 {optLabel(o)}
               </button>
             );
@@ -88,8 +98,7 @@ function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val
             const arr = Array.isArray(val) ? val : [];
             const on = arr.includes(optValue(o));
             return (
-              <button key={optValue(o)} type="button" aria-pressed={on} onClick={() => onChange(on ? arr.filter((x) => x !== optValue(o)) : [...arr, optValue(o)])}
-                className={cn("rounded-lg border px-3 py-1.5 text-sm transition-colors", on ? "border-admit bg-admit/12 text-admit" : "border-border hover:bg-muted")}>
+              <button key={optValue(o)} type="button" aria-pressed={on} onClick={() => onChange(on ? arr.filter((x) => x !== optValue(o)) : [...arr, optValue(o)])} className={chip(on)}>
                 {optLabel(o)}
               </button>
             );
@@ -98,7 +107,7 @@ function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val
       );
     case "checkbox":
       return (
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex min-h-10 items-center gap-2.5 text-sm">
           <input type="checkbox" checked={!!val} onChange={(e) => onChange(e.target.checked)} className="size-4 accent-[var(--primary)]" />
           {f.placeholder ?? "Yes"}
         </label>
@@ -112,7 +121,7 @@ function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val
             const tone = i / max >= 0.7 ? "border-cancel bg-cancel/15 text-cancel" : i / max >= 0.4 ? "border-merge bg-merge/15 text-merge" : "border-admit bg-admit/15 text-admit";
             return (
               <button key={i} type="button" role="radio" aria-checked={on} onClick={() => onChange(i)}
-                className={cn("size-9 rounded-md border text-sm font-medium transition-colors", on ? tone : "border-border hover:bg-muted")}>
+                className={cn("size-9 rounded-md border text-sm font-medium transition-colors", on ? cn(tone, "font-semibold ring-1 ring-current") : "border-input bg-card text-foreground hover:bg-muted dark:bg-background")}>
                 {i}
               </button>
             );
@@ -151,13 +160,14 @@ function FormSheet({
           <SheetTitle>{form.title}</SheetTitle>
           <SheetDescription>{form.description ?? "Fill in the form and save it to the chart."}{dev && form.nphies ? ` NPHIES: ${form.nphies}` : ""}</SheetDescription>
         </SheetHeader>
-        <div className="flex-1 space-y-5 overflow-y-auto p-4">
+        <div className="flex-1 space-y-7 overflow-y-auto px-5 py-5">
+          {form.fields.some((f) => f.required) && <RequiredNote />}
           {sections.map((s, i) => (
             <section key={i}>
-              {s.name && <h3 className="mb-2 text-xs font-semibold text-muted-foreground">{s.name}</h3>}
-              <div className="grid gap-3 sm:grid-cols-2">
+              {s.name && <h3 className="mb-4 border-b border-border pb-2 text-sm font-semibold text-foreground">{s.name}</h3>}
+              <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
                 {s.fields.map((f) => (
-                  <Field key={f.key} label={f.required ? `${f.label} (required)` : f.label} hint={f.hint} hl7={dev ? f.hl7 : undefined}
+                  <Field key={f.key} label={f.label} required={f.required} hint={f.hint} hl7={dev ? f.hl7 : undefined}
                     className={cn((f.full || f.type === "textarea" || f.type === "scale" || f.type === "radio" || f.type === "multiselect") && "sm:col-span-2")}>
                     <FieldInput f={f} v={v} onChange={(val) => setV((x) => ({ ...x, [f.key]: val }))} />
                   </Field>
@@ -167,11 +177,12 @@ function FormSheet({
           ))}
         </div>
         <SheetFooter className="flex-row items-center justify-between border-t border-border">
-          <span className="text-sm text-muted-foreground">
+          <span className="min-w-0 text-sm text-muted-foreground">
             {hasScores(form) ? `${form.scoreLabel ?? "Total score"}: ` : ""}
             {hasScores(form) && <strong className="text-foreground">{score}</strong>}
+            {missing.length > 0 && <span className="block">Still needed: {missing.map((m) => m.label).join(", ")}</span>}
           </span>
-          <span className="flex gap-2">
+          <span className="flex shrink-0 gap-2">
             <Button onClick={onClose}>Cancel</Button>
             <Button variant="primary" disabled={missing.length > 0} onClick={() => onSave(v)} title={missing.length ? `Missing: ${missing.map((m) => m.label).join(", ")}` : undefined}>
               Save
@@ -215,10 +226,10 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
           {records.length === 0 && <tr><Td colSpan={cols.length + 4}><Empty>No records yet. Use Add New.</Empty></Td></tr>}
           {[...records].reverse().map((r) => (
             <tr key={r.id} className="hover:bg-muted/40">
-              <Td className="whitespace-nowrap font-mono text-xs text-muted-foreground">{new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</Td>
+              <Td className="whitespace-nowrap text-sm tabular-nums text-foreground">{new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</Td>
               {cols.map((c) => <Td key={c.key} className="max-w-[260px] truncate">{display(c, r.values)}</Td>)}
               {scored && <Td><Badge tone="update">{scoreOf(form, r.values)}</Badge></Td>}
-              <Td className="text-xs text-muted-foreground">{r.author}</Td>
+              <Td className="whitespace-nowrap text-sm text-muted-foreground">{r.author}</Td>
               <Td className="text-right">
                 <span className="inline-flex gap-1">
                   <button aria-label="Edit" title="Edit" disabled={!canWrite} onClick={() => setEditing({ id: r.id, initial: r.values })} className="rounded p-1 text-move hover:bg-move/10 disabled:opacity-40"><Pencil className="size-4" /></button>

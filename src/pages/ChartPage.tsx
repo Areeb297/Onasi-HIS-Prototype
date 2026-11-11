@@ -177,7 +177,7 @@ function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
   const sev = { SV: "severe", MO: "moderate", MI: "mild" } as const;
   return (
     <>
-      <div className="sticky top-0 z-20 overflow-hidden rounded-xl border border-border bg-card shadow-sm" role="region" aria-label="Patient header">
+      <div className="sticky top-[3.4rem] z-20 overflow-hidden rounded-xl border border-border bg-card shadow-sm" role="region" aria-label="Patient header">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 border-l-4 border-l-move px-4 py-3">
           <div className="flex items-center gap-3.5">
             <span className="flex size-11 items-center justify-center rounded-full bg-move/12 text-sm font-semibold text-move" aria-hidden="true">{initials}</span>

@@ -80,6 +80,10 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
+    id: "onasi-ai", label: "Onasi AI", icon: IconRobot, color: "text-admit", perm: "ai.use",
+    pages: [{ id: "agents", label: "Agents", path: "/agents", perm: "ai.use" }],
+  },
+  {
     id: "invoice", label: "Invoice", icon: IconFileInvoice, color: "text-merge", perm: "billing",
     pages: [m("invoice", "Invoice", "billing"), m("contractual-discounts", "Contractual Discounts", "billing")],
   },

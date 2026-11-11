@@ -3,6 +3,7 @@ import {
   IconActivityHeartbeat, IconClipboardText, IconFileText, IconFlask, IconMessage2, IconNotes, IconPill, IconRadar2, IconSend,
 } from "@tabler/icons-react";
 import { AlertTriangle, CheckCircle2, ChevronRight, Copy, Info } from "lucide-react";
+import { AiChartBrief } from "@/components/ai/AiChartBrief";
 import { Badge, Button, Card, CardHeader, Empty, cn } from "@/components/ui/primitives";
 import { quickSend } from "@/lib/actions";
 import { attentionFor, buildTimeline, sbarFor, sbarText, type Attention, type TimelineItem, type TimelineKind } from "@/lib/chart-review";
@@ -180,6 +181,7 @@ export function ChartOverview({ enc, patient, children }: { enc: Encounter; pati
 
   return (
     <div className="space-y-4">
+      <AiChartBrief enc={enc} patient={patient} />
       <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
         <Card>
           <CardHeader

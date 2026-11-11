@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th } from "@/components/ui/primitives";
+import { Badge, Button, Card, Empty, Field, Input, PageHeader, RequiredNote, Select, Table, Td, Th } from "@/components/ui/primitives";
 import { MASTERS } from "@/lib/masters-data";
 import { getMasterRows, saveMasterRows, useRecords } from "@/lib/records";
 import type { MasterColumn, MasterDef, Row } from "@/lib/schema";
@@ -37,13 +37,14 @@ function EditSheet({ def, open, initial, onClose, onSave }: { def: MasterDef; op
           <SheetTitle>{def.title}</SheetTitle>
           <SheetDescription>Add or change a row.</SheetDescription>
         </SheetHeader>
-        <div className="flex-1 space-y-3 overflow-y-auto p-4">
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+          {def.columns.some((c) => c.field?.required) && <RequiredNote />}
           {def.columns.map((c) => {
             const t = c.type === "bool" ? "checkbox" : (c.field?.type ?? (c.type === "number" ? "number" : c.type === "date" ? "date" : "text"));
             return (
-              <Field key={c.key} label={c.field?.required ? `${c.label} (required)` : c.label}>
+              <Field key={c.key} label={c.label} required={c.field?.required}>
                 {t === "checkbox" ? (
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex min-h-10 items-center gap-2.5 text-sm">
                     <input type="checkbox" checked={!!v[c.key]} onChange={(e) => setV({ ...v, [c.key]: e.target.checked })} className="size-4 accent-[var(--primary)]" /> Yes
                   </label>
                 ) : t === "select" ? (

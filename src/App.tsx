@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronsUpDown, Lock, Minus, Plus, Search } from "lucide-react";
+import { ChevronsUpDown, Lock, Menu, Minus, Plus, Search } from "lucide-react";
 import { EventBadge } from "@/components/badges";
 import { IdleLock } from "@/components/IdleLock";
 import { DisplayMenu } from "@/components/DisplayMenu";
@@ -19,6 +19,7 @@ import { AccessPage, AuditPage, ConfidentialPage, RegistrationPage } from "@/pag
 import { LabWorklistPage } from "@/pages/LabWorklistPage";
 import { LogPage } from "@/pages/LogPage";
 import { MasterPage } from "@/pages/MasterPage";
+import { AgentsPage } from "@/pages/AgentsPage";
 import { NphiesClinicalPage } from "@/pages/NphiesClinicalPage";
 import { NphiesFinancialPage } from "@/pages/NphiesFinancialPage";
 import { PatientsPage } from "@/pages/PatientsPage";
@@ -278,6 +279,7 @@ function Page() {
     case "/access": return <AccessPage />;
     case "/compliance": return <CompliancePage />;
     case "/ai-governance": return <AiGovernancePage />;
+    case "/agents": return <AgentsPage />;
     case "/nphies-clinical": return <NphiesClinicalPage />;
     case "/nphies-financial": return <NphiesFinancialPage />;
     case "/encounters": return <EncountersPage />;
@@ -292,47 +294,58 @@ export default function App() {
   const route = useRoute();
   const dev = useDevMode();
   const { role } = useSession();
+  const [navOpen, setNavOpen] = React.useState(false);
+  React.useEffect(() => setNavOpen(false), [route.path, route.params]);
 
   return (
     <div className="flex h-full bg-background text-foreground">
-      <Sidebar variant="collapsible" width={270} aria-label="Main navigation" className="bg-[var(--sidebar,var(--background))]">
-        <SidebarHeader className="h-auto min-h-[60px] py-3">
-          <Brand />
-          <SidebarToggle className="ml-auto" />
-        </SidebarHeader>
-        <NavTree path={route.path} />
-        <SidebarFooter>
-          <div className="flex w-full flex-col gap-2.5">
-            <UserFooter />
-            <PoweredBy />
-          </div>
-        </SidebarFooter>
-      </Sidebar>
+      {/* Below desktop width the menu is a drawer: it slides in over the page and closes when you pick a page. */}
+      {navOpen && <button type="button" aria-label="Close the menu" className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setNavOpen(false)} />}
+      <div className={`fixed inset-y-0 left-0 z-50 h-full shadow-xl transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 lg:shadow-none ${navOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <Sidebar variant="collapsible" width={270} aria-label="Main navigation" className="bg-[var(--sidebar,var(--background))]">
+          <SidebarHeader className="h-auto min-h-[60px] py-3">
+            <Brand />
+            <SidebarToggle className="ml-auto hidden lg:flex" />
+          </SidebarHeader>
+          <NavTree path={route.path} />
+          <SidebarFooter>
+            <div className="flex w-full flex-col gap-2.5">
+              <UserFooter />
+              <PoweredBy />
+            </div>
+          </SidebarFooter>
+        </Sidebar>
+      </div>
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full max-w-[1500px] flex-col px-6 pb-6 pt-6">
-          <div className="mb-5 flex flex-wrap items-center gap-2.5 border-b border-border pb-3 text-[0.8125rem]">
-            <p className="min-w-0 flex-1 text-muted-foreground">
-              Test bench with made-up patients. Nothing is sent to NPHIES. Signed in as <strong className="font-semibold text-foreground">{role.label}</strong>.
-              <span className="hidden lg:inline"> Press Ctrl+K to jump to any page.</span>
+        <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
+          <div className="mx-auto flex max-w-[1500px] items-center gap-2 px-4 py-2.5 text-[0.8125rem] sm:px-6">
+            <Button size="sm" className="lg:hidden" onClick={() => setNavOpen(true)} aria-label="Open the menu" aria-expanded={navOpen}><Menu className="size-4" /><span className="hidden sm:inline">Menu</span></Button>
+            <img src="/brand/onasi-icon.png" alt="Onasi" className="h-6 w-auto lg:hidden dark:brightness-0 dark:invert" />
+            <p className="hidden min-w-0 flex-1 truncate text-muted-foreground md:block">
+              Made-up patients. Nothing is sent to NPHIES. Signed in as <strong className="font-semibold text-foreground">{role.label}</strong>.
+              <span className="hidden xl:inline"> Press Ctrl+K to jump to any page.</span>
             </p>
+            <span className="flex-1 md:hidden" />
             <DisplayMenu />
-            <Button size="sm" onClick={lockScreen} title="Lock the screen"><Lock className="size-4" />Lock</Button>
-            <div role="group" aria-label="View" className="flex rounded-lg border border-border bg-muted p-0.5">
-              {([[false, "HIS View"], [true, "Developer View"]] as const).map(([v, label]) => (
+            <Button size="sm" onClick={lockScreen} title="Lock the screen" aria-label="Lock the screen"><Lock className="size-4" /><span className="hidden sm:inline">Lock</span></Button>
+            <div role="group" aria-label="View" className="flex shrink-0 rounded-lg border border-border bg-muted p-0.5">
+              {([[false, "HIS", " View"], [true, "Developer", " View"]] as const).map(([v, label, rest]) => (
                 <button
                   key={label}
                   onClick={() => setDevMode(v)}
                   aria-pressed={dev === v}
-                  className={`rounded-md px-2.5 py-1 text-[0.8125rem] font-medium transition-colors ${dev === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`rounded-md px-2.5 py-1 text-[0.8125rem] font-medium whitespace-nowrap transition-colors ${dev === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                 >
-                  {label}
+                  {label}<span className="hidden sm:inline">{rest}</span>
                 </button>
               ))}
             </div>
           </div>
+        </header>
+        <div className="mx-auto flex min-h-[calc(100%-3.25rem)] max-w-[1500px] flex-col px-4 pb-6 pt-5 sm:px-6">
           <Page />
           <div className="h-10 shrink-0" aria-hidden="true" />
-          <footer className="mt-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border pe-40 pt-4 text-xs text-muted-foreground">
+          <footer className="mt-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border pt-4 text-xs sm:pe-40 text-muted-foreground">
             <span>&copy; {new Date().getFullYear()} Ebttikar. All rights reserved. Onasi and the Onasi logo are products and marks of Ebttikar.</span>
             <span>All patients shown are made up.</span>
           </footer>
