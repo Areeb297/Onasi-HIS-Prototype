@@ -1,3 +1,4 @@
+import { CTAS_LEVELS } from "./ctas";
 import type { CtasLevel, EdData, Encounter } from "./model";
 import { nowLocal, updateEncounter } from "./store";
 
@@ -6,7 +7,7 @@ import { nowLocal, updateEncounter } from "./store";
  * and the actions that change ED data on a visit.
  *
  * CTAS levels and the time-to-physician targets below are the standard published CTAS targets.
- * Check them against the version your facility has adopted. The vital sign hints are a small aid only.
+ * Check them against the version your facility has adopted. The modifier rules are in ctas.ts.
  * The triage nurse decides the level.
  */
 
@@ -15,6 +16,10 @@ export interface CtasInfo {
   label: string;
   /** Minutes from triage to physician assessment. 0 means immediate. */
   targetMin: number;
+  /** Share of patients who should be seen within the target (CTAS fractile response). */
+  fractile: number;
+  /** Re-assess every this many minutes while waiting. 0 means continuous. */
+  reassessMin: number;
   /** Tailwind classes using the CTAS colour tokens. */
   bg: string;
   ring: string;
@@ -22,13 +27,15 @@ export interface CtasInfo {
   description: string;
 }
 
-export const CTAS: CtasInfo[] = [
-  { level: 1, label: "Resuscitation", targetMin: 0, bg: "bg-ctas-1", ring: "border-ctas-1", text: "text-ctas-1", description: "Threat to life or limb. Immediate care." },
-  { level: 2, label: "Emergent", targetMin: 15, bg: "bg-ctas-2", ring: "border-ctas-2", text: "text-ctas-2", description: "Potential threat to life, limb or function. Within 15 minutes." },
-  { level: 3, label: "Urgent", targetMin: 30, bg: "bg-ctas-3", ring: "border-ctas-3", text: "text-ctas-3", description: "May progress to a serious problem. Within 30 minutes." },
-  { level: 4, label: "Less Urgent", targetMin: 60, bg: "bg-ctas-4", ring: "border-ctas-4", text: "text-ctas-4", description: "Could wait. Within 60 minutes." },
-  { level: 5, label: "Non-Urgent", targetMin: 120, bg: "bg-ctas-5", ring: "border-ctas-5", text: "text-ctas-5", description: "Minor problem. Within 120 minutes." },
-];
+const STYLE: Record<CtasLevel, Pick<CtasInfo, "bg" | "ring" | "text" | "description">> = {
+  1: { bg: "bg-ctas-1", ring: "border-ctas-1", text: "text-ctas-1", description: "Threat to life or limb. Immediate care." },
+  2: { bg: "bg-ctas-2", ring: "border-ctas-2", text: "text-ctas-2", description: "Potential threat to life, limb or function. Within 15 minutes." },
+  3: { bg: "bg-ctas-3", ring: "border-ctas-3", text: "text-ctas-3", description: "May progress to a serious problem. Within 30 minutes." },
+  4: { bg: "bg-ctas-4", ring: "border-ctas-4", text: "text-ctas-4", description: "Could wait. Within 60 minutes." },
+  5: { bg: "bg-ctas-5", ring: "border-ctas-5", text: "text-ctas-5", description: "Minor problem. Within 120 minutes." },
+};
+
+export const CTAS: CtasInfo[] = CTAS_LEVELS.map((l) => ({ ...l, ...STYLE[l.level] }));
 
 export const ctasInfo = (l: CtasLevel): CtasInfo => CTAS[l - 1];
 
@@ -91,18 +98,43 @@ export function clockOf(ed: EdData, now = Date.now()): Clock {
 /** Door to doctor: minutes from arrival to a doctor starting care. */
 export const doorToDoctor = (ed: EdData): number | undefined => minutesBetween(ed.arrivalAt, ed.seenAt);
 
-/** A small aid. It never replaces the triage nurse. */
-export function suggestCtas(v: { spo2?: number; sbp?: number; hr?: number; rr?: number; gcs?: number; pain?: number; temp?: number }): { level: CtasLevel; why: string } | null {
-  if (v.gcs !== undefined && v.gcs <= 8) return { level: 1, why: "Glasgow Coma Scale of 8 or less" };
-  if (v.spo2 !== undefined && v.spo2 < 90) return { level: 1, why: "Oxygen saturation under 90%" };
-  if (v.sbp !== undefined && v.sbp < 90) return { level: 2, why: "Systolic blood pressure under 90" };
-  if (v.hr !== undefined && (v.hr > 130 || v.hr < 40)) return { level: 2, why: "Heart rate outside 40 to 130" };
-  if (v.rr !== undefined && (v.rr > 30 || v.rr < 10)) return { level: 2, why: "Respiratory rate outside 10 to 30" };
-  if (v.gcs !== undefined && v.gcs < 13) return { level: 2, why: "Glasgow Coma Scale under 13" };
-  if (v.spo2 !== undefined && v.spo2 < 92) return { level: 2, why: "Oxygen saturation under 92%" };
-  if (v.pain !== undefined && v.pain >= 8) return { level: 3, why: "Severe pain (8 to 10)" };
-  if (v.temp !== undefined && v.temp >= 38.5) return { level: 3, why: "Temperature 38.5 or higher" };
-  return null;
+/** How long the waiting patient has gone without a re-assessment, against the CTAS interval. */
+export interface Reassess {
+  /** Minutes since the last re-assessment (or triage). */
+  since: number;
+  /** Minutes until the next one is due. Negative means late. Undefined for CTAS 1, which is continuous. */
+  due?: number;
+  late: boolean;
+  text: string;
+}
+
+export function reassessOf(ed: EdData, now = Date.now()): Reassess | undefined {
+  if (!ed.ctas || !ed.triageAt || ed.seenAt) return undefined;
+  const info = ctasInfo(ed.ctas);
+  const since = minutesSince(ed.reassessedAt ?? ed.triageAt, now);
+  if (info.reassessMin === 0) return { since, late: false, text: "Continuous nursing care" };
+  const due = info.reassessMin - since;
+  return { since, due, late: due < 0, text: due >= 0 ? `Re-assess in ${due} min` : `Re-assessment ${-due} min late` };
+}
+
+export interface Fractile {
+  level: CtasLevel;
+  /** Patients of this level seen by a doctor. */
+  seen: number;
+  /** Of those, how many were seen inside the target. */
+  met: number;
+  /** Percent, or undefined when nobody was seen. */
+  pct?: number;
+  goal: number;
+}
+
+/** CTAS fractile response: the share of patients seen within the time target, per level. Level 1 has no minute target, so only levels 2 to 5 are scored. */
+export function fractiles(encs: Encounter[]): Fractile[] {
+  return CTAS.filter((c) => c.level > 1).map((c) => {
+    const seen = encs.filter((e) => e.ed?.ctas === c.level && e.ed.triageAt && e.ed.seenAt);
+    const met = seen.filter((e) => (minutesBetween(e.ed!.triageAt, e.ed!.seenAt) ?? 0) <= c.targetMin).length;
+    return { level: c.level, seen: seen.length, met, pct: seen.length ? Math.round((met / seen.length) * 100) : undefined, goal: c.fractile };
+  });
 }
 
 /** ED disposition to the ADT event that follows it. */
@@ -133,16 +165,23 @@ export function startEd(visit: string, arrivalMode: EdData["arrivalMode"]) {
   updateEncounter(visit, (e) => { e.ed = { arrivalAt: e.admitAt ?? nowLocal(), arrivalMode }; }, touch);
 }
 
-export function saveTriage(visit: string, data: Partial<EdData>, vitals?: { bp: string; pulse: string; temp: string; spo2: string; rr: string }) {
+export function saveTriage(visit: string, data: Partial<EdData>, vitals?: { bp: string; pulse: string; temp: string; spo2: string; rr: string }, note?: string) {
   updateEncounter(visit, (e: Encounter) => {
     const base = e.ed ?? { arrivalAt: e.admitAt ?? nowLocal(), arrivalMode: "Walk-in" as const };
-    e.ed = { ...base, ...data, triageAt: data.triageAt ?? base.triageAt ?? nowLocal(), area: data.area ?? base.area ?? "Triage" };
+    const at = nowLocal();
+    const log = data.ctas ? [...(base.triageLog ?? []), { at, ctas: data.ctas, by: data.triageNurse ?? "", note }] : base.triageLog;
+    e.ed = { ...base, ...data, triageAt: data.triageAt ?? base.triageAt ?? at, area: data.area ?? base.area ?? "Triage", reassessedAt: at, triageLog: log };
     if (data.complaint) {
       e.reason = data.complaint;
       if (!e.complaints.some((c) => c.text === data.complaint)) e.complaints = [...e.complaints, { code: "", text: data.complaint }];
     }
-    if (vitals) e.vitals = { ...(e.vitals ?? { bp: "", pulse: "", temp: "", spo2: "", rr: "", weight: "", at: "" }), ...vitals, at: nowLocal() };
+    if (vitals) e.vitals = { ...(e.vitals ?? { bp: "", pulse: "", temp: "", spo2: "", rr: "", weight: "", at: "" }), ...vitals, at };
   }, touch);
+}
+
+/** The nurse looked at the waiting patient again. Resets the re-assessment clock. */
+export function reassess(visit: string) {
+  updateEncounter(visit, (e) => { if (e.ed) e.ed = { ...e.ed, reassessedAt: nowLocal() }; }, touch);
 }
 
 export function startTreatment(visit: string, area: NonNullable<EdData["area"]>, doctorId?: string) {

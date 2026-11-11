@@ -134,6 +134,16 @@ export interface EdData {
   triageAt?: string;
   /** ZPV1.22. CTAS level 1 to 5. */
   ctas?: CtasLevel;
+  /** Which modifier set the level, in words. HIS only. */
+  ctasWhy?: string;
+  /** Written reason when the nurse chose a less urgent level than the modifiers give. HIS only. */
+  ctasOverride?: string;
+  /** Every triage and re-triage, newest last. HIS only. */
+  triageLog?: { at: string; ctas: CtasLevel; by: string; note?: string }[];
+  /** Last time the nurse re-assessed the waiting patient. HIS only. */
+  reassessedAt?: string;
+  /** Registered with minimal details because the patient could not give them. The details are completed later. */
+  temporaryId?: boolean;
   triageNurse?: string;
   complaint?: string;
   gcs?: number;

@@ -67,7 +67,7 @@ describe("screens render without errors", () => {
         expect(html(h(EmergencyBoard))).toContain("Emergency Department");
         for (const mode of ["opd", "ipd", "er"] as const) expect(html(h(WorklistPage, { mode })).length).toBeGreaterThan(500);
         expect(html(h(RegistrationForm, { cls: "O" }))).toContain("Retrieve Patient Insurance Card");
-        expect(html(h(RegistrationForm, { cls: "E" }))).toContain("Arrival");
+        expect(html(h(RegistrationForm, { cls: "E" }))).toContain("Who is the patient");
         at("#/registration");
         expect(html(h(RegistrationPage))).toContain("Registration");
       });

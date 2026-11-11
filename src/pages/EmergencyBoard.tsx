@@ -1,23 +1,22 @@
 import * as React from "react";
 import { IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
-import { AlertTriangle, Clock, FolderOpen, Plus } from "lucide-react";
+import { Clock, FolderOpen, Plus, RefreshCw } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { useVisitActions } from "@/components/VisitActions";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Badge, Button, Card, Field, Input, PageHeader, Select, cn } from "@/components/ui/primitives";
+import { LevelDot, TriageSheet } from "@/components/TriageSheet";
+import { Badge, Button, PageHeader, cn } from "@/components/ui/primitives";
 import { quickSend } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
 import {
-  AREAS, ARRIVAL_MODES, CTAS, DISPOSITIONS, DISPOSITION_CODE, DISPOSITION_EVENT, STAGES, clockOf, ctasInfo, defaultArea,
-  doorToDoctor, saveTriage, setDisposition, setStage, stageOf, startTreatment, suggestCtas, type EdStage,
+  CTAS, DISPOSITIONS, DISPOSITION_CODE, DISPOSITION_EVENT, STAGES, clockOf, ctasInfo, defaultArea,
+  doorToDoctor, fractiles, reassess, reassessOf, setDisposition, setStage, stageOf, startTreatment, type EdStage,
 } from "@/lib/ed";
-import type { CtasLevel, EdData, Encounter } from "@/lib/model";
-import { COMPLAINT_SAMPLES, DOCTORS } from "@/lib/reference-data";
-import { navigate } from "@/lib/router";
-import { can, currentUser, hasGlass, useSession } from "@/lib/session";
+import type { EdData, Encounter } from "@/lib/model";
+import { DOCTORS } from "@/lib/reference-data";
+import { navigate, useRoute } from "@/lib/router";
+import { can, hasGlass, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
-import { recordFromTriage } from "@/lib/vitals";
 import { WorklistPage } from "@/pages/WorklistPage";
 
 function useNow(ms: number) {
@@ -30,114 +29,6 @@ function useNow(ms: number) {
 }
 
 const age = (dob: string) => Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86_400_000));
-
-function CtasBadge({ level, size = "md" }: { level?: CtasLevel; size?: "md" | "lg" }) {
-  const dim = size === "lg" ? "size-10 text-lg" : "size-7 text-sm";
-  if (!level) return <span className={cn("flex shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border font-semibold text-muted-foreground", dim)} title="Not triaged">?</span>;
-  const info = ctasInfo(level);
-  return (
-    <span className={cn("flex shrink-0 items-center justify-center rounded-full font-bold text-white dark:text-[#0b1f23]", info.bg, dim, level === 3 && "text-[#1a1a1a] dark:text-[#1a1a1a]")} title={`CTAS ${level}, ${info.label}`} aria-label={`CTAS ${level}, ${info.label}`}>
-      {level}
-    </span>
-  );
-}
-
-/* ---------- triage sheet ---------- */
-
-function TriageSheet({ enc, onClose }: { enc: Encounter; onClose: () => void }) {
-  const ed = enc.ed!;
-  const [ctas, setCtas] = React.useState<CtasLevel | undefined>(ed.ctas);
-  const [mode, setMode] = React.useState<EdData["arrivalMode"]>(ed.arrivalMode);
-  const [complaint, setComplaint] = React.useState(ed.complaint ?? enc.reason ?? "");
-  const [bp, setBp] = React.useState(enc.vitals?.bp ?? "");
-  const [hr, setHr] = React.useState(enc.vitals?.pulse ?? "");
-  const [rr, setRr] = React.useState(enc.vitals?.rr ?? "");
-  const [temp, setTemp] = React.useState(enc.vitals?.temp ?? "");
-  const [spo2, setSpo2] = React.useState(enc.vitals?.spo2 ?? "");
-  const [gcs, setGcs] = React.useState(ed.gcs !== undefined ? String(ed.gcs) : "");
-  const [pain, setPain] = React.useState(ed.pain !== undefined ? String(ed.pain) : "");
-  const [area, setArea] = React.useState<NonNullable<EdData["area"]>>(ed.area ?? "Triage");
-
-  const num = (s: string) => (s.trim() === "" || Number.isNaN(Number(s)) ? undefined : Number(s));
-  const hint = suggestCtas({ spo2: num(spo2), sbp: num(bp.split("/")[0]), hr: num(hr), rr: num(rr), gcs: num(gcs), pain: num(pain), temp: num(temp) });
-  const tooLow = hint && ctas && ctas > hint.level;
-
-  function save() {
-    saveTriage(enc.visitNumber, { ctas, arrivalMode: mode, complaint, gcs: num(gcs), pain: num(pain), area, triageNurse: currentUser().name }, { bp, pulse: hr, temp, spo2, rr });
-    audit("update", `Triage CTAS ${ctas}`, { patient: enc.patientId, detail: `Visit ${enc.visitNumber}` });
-    recordFromTriage(enc.visitNumber, { bp, pulse: hr, temp, spo2, rr });
-    onClose();
-  }
-
-  return (
-    <Sheet open onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
-        <SheetHeader className="border-b border-border">
-          <SheetTitle>Triage</SheetTitle>
-          <SheetDescription>Pick the CTAS level. The clock for the doctor starts when you save.</SheetDescription>
-        </SheetHeader>
-        <div className="flex-1 space-y-5 overflow-y-auto p-4">
-          <div>
-            <div className="mb-2 text-xs font-medium text-muted-foreground">CTAS level</div>
-            <div className="grid gap-2" role="radiogroup" aria-label="CTAS level">
-              {CTAS.map((c) => {
-                const on = ctas === c.level;
-                return (
-                  <button key={c.level} role="radio" aria-checked={on} onClick={() => { setCtas(c.level); if (area === "Triage") setArea(defaultArea(c.level)); }}
-                    className={cn("flex items-center gap-3 rounded-lg border-2 px-3 py-2 text-left transition-colors", on ? `${c.ring} bg-muted` : "border-border hover:bg-muted/60")}>
-                    <CtasBadge level={c.level} size="lg" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold">{c.label}</span>
-                      <span className="block text-xs text-muted-foreground">{c.description}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {hint && (
-              <p className={cn("mt-2 flex items-start gap-2 rounded-md border px-3 py-2 text-xs", tooLow ? "border-destructive/50 bg-destructive/10" : "border-warn/40 bg-warn/10")}>
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                <span>Consider CTAS {hint.level} or higher: {hint.why}. This is an aid only. The triage nurse decides.</span>
-              </p>
-            )}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Arrival mode" hl7="ZPV1-18">
-              <Select value={mode} onChange={(e) => setMode(e.target.value as EdData["arrivalMode"])}>{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>
-            </Field>
-            <Field label="Area">
-              <Select value={area} onChange={(e) => setArea(e.target.value as NonNullable<EdData["area"]>)}>{AREAS.map((a) => <option key={a}>{a}</option>)}</Select>
-            </Field>
-            <Field label="Chief complaint" className="sm:col-span-2" hl7="PV2-3">
-              <Input value={complaint} onChange={(e) => setComplaint(e.target.value)} placeholder="Type or tap one below" />
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {COMPLAINT_SAMPLES.map((c) => <button key={c.code} type="button" onClick={() => setComplaint(c.text)} className="rounded-md bg-muted px-2 py-1 text-xs hover:bg-accent">{c.text}</button>)}
-              </div>
-            </Field>
-          </div>
-
-          <div>
-            <div className="mb-2 text-xs font-medium text-muted-foreground">Vital signs</div>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <Field label="BP (mmHg)"><Input value={bp} onChange={(e) => setBp(e.target.value)} placeholder="120/80" /></Field>
-              <Field label="Heart rate"><Input value={hr} onChange={(e) => setHr(e.target.value)} inputMode="numeric" /></Field>
-              <Field label="Resp rate"><Input value={rr} onChange={(e) => setRr(e.target.value)} inputMode="numeric" /></Field>
-              <Field label="Temp (°C)"><Input value={temp} onChange={(e) => setTemp(e.target.value)} inputMode="decimal" /></Field>
-              <Field label="SpO2 (%)"><Input value={spo2} onChange={(e) => setSpo2(e.target.value)} inputMode="numeric" /></Field>
-              <Field label="GCS (3 to 15)"><Input value={gcs} onChange={(e) => setGcs(e.target.value)} inputMode="numeric" /></Field>
-              <Field label="Pain (0 to 10)"><Input value={pain} onChange={(e) => setPain(e.target.value)} inputMode="numeric" /></Field>
-            </div>
-          </div>
-        </div>
-        <SheetFooter className="flex-row justify-end gap-2 border-t border-border">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!ctas} onClick={save}>Save Triage</Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
-  );
-}
 
 /* ---------- disposition ---------- */
 
@@ -168,6 +59,7 @@ function Card1({ enc, now, onTriage, onDispose, onChart }: { enc: Encounter; now
   const stage = stageOf(ed);
   const p = state.patients.find((x) => x.id === enc.patientId);
   const clock = clockOf(ed, now);
+  const re = reassessOf(ed, now);
   const info = ed.ctas ? ctasInfo(ed.ctas) : undefined;
   const allergic = enc.allergies.length > 0;
   const masked = !!p?.confidential && !hasGlass(p.id);
@@ -182,7 +74,7 @@ function Card1({ enc, now, onTriage, onDispose, onChart }: { enc: Encounter; now
   return (
     <div className={cn("rounded-lg border border-border border-l-4 bg-card p-3 shadow-sm", info ? info.ring : "border-l-border")}>
       <div className="flex items-start gap-2.5">
-        <CtasBadge level={ed.ctas} size="lg" />
+        <LevelDot level={ed.ctas} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <button onClick={onChart} className="truncate text-sm font-semibold text-move hover:underline">{masked ? "Confidential patient" : patientName(p)}</button>
@@ -194,10 +86,30 @@ function Card1({ enc, now, onTriage, onDispose, onChart }: { enc: Encounter; now
         </div>
       </div>
       <p className="mt-2 line-clamp-2 text-sm">{masked ? "Restricted" : ed.complaint || enc.reason || "No complaint entered"}</p>
-      {flags.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{flags.map((f) => <Badge key={f} tone="danger">{f}</Badge>)}</div>}
-      <div className={cn("mt-2 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium", clock.overdue ? "bg-destructive/12 text-destructive" : "bg-muted text-muted-foreground")}>
-        <Clock className="size-3.5" />{clock.text}
-        {stage === "waiting-doctor" && info && info.targetMin > 0 && <span className="ms-auto font-normal">target {info.targetMin} min</span>}
+      {ed.ctasWhy && !masked && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground" title={ed.ctasWhy}>{ed.ctasWhy}</p>}
+      {(flags.length > 0 || ed.ctasOverride || ed.temporaryId) && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {flags.map((f) => <Badge key={f} tone="danger">{f}</Badge>)}
+          {ed.ctasOverride && <Badge tone="warn"><span title={ed.ctasOverride}>Lower than modifiers</span></Badge>}
+          {ed.temporaryId && <Badge tone="info"><span title="Registered with minimal details. Complete the registration later.">Temporary ID</span></Badge>}
+        </div>
+      )}
+      <div className="mt-2">
+        <div className="flex items-center gap-1.5 text-xs">
+          <Clock className={cn("size-3.5", clock.overdue ? "text-destructive" : "text-muted-foreground")} />
+          <span className={cn("font-medium", clock.overdue ? "text-destructive" : "text-muted-foreground")}>{clock.text}</span>
+          {stage === "waiting-doctor" && info && info.targetMin > 0 && !clock.overdue && <span className="ms-auto text-muted-foreground">of {info.targetMin} min</span>}
+        </div>
+        {stage === "waiting-doctor" && info && info.targetMin > 0 && (
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Time waited against the CTAS target" aria-valuemin={0} aria-valuemax={info.targetMin} aria-valuenow={Math.min(clock.waited, info.targetMin)}>
+            <div className={cn("h-full rounded-full", clock.overdue ? "bg-destructive" : info.bg)} style={{ width: `${Math.min(100, Math.round((clock.waited / info.targetMin) * 100))}%` }} />
+          </div>
+        )}
+        {re && (
+          <div className={cn("mt-1.5 flex items-center gap-1.5 text-xs", re.late ? "font-medium text-warn" : "text-muted-foreground")}>
+            <RefreshCw className="size-3.5" />{re.text}
+          </div>
+        )}
       </div>
       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
         <span>{ed.area ?? "Triage"}</span>
@@ -210,6 +122,7 @@ function Card1({ enc, now, onTriage, onDispose, onChart }: { enc: Encounter; now
         {stage === "waiting-doctor" && (
           <>
             <Button size="sm" variant="primary" disabled={!canWrite} onClick={() => startTreatment(enc.visitNumber, defaultArea(ed.ctas ?? 3), DOCTORS[0].id)}>Start Treatment</Button>
+            <Button size="sm" disabled={!canWrite} onClick={() => reassess(enc.visitNumber)} title="Records that you looked at the patient again and restarts the re-assessment clock">Reassessed</Button>
             <Button size="sm" disabled={!canWrite} onClick={onTriage}>Re-Triage</Button>
           </>
         )}
@@ -241,7 +154,10 @@ export function EmergencyBoard() {
   const { act, dialogs } = useVisitActions();
   const now = useNow(30_000);
   const [view, setView] = React.useState<"board" | "list">("board");
-  const [triage, setTriage] = React.useState<string | null>(null);
+  const route = useRoute();
+  const fromRoute = route.params.get("triage");
+  const [triageState, setTriage] = React.useState<string | null>(null);
+  const triage = triageState ?? fromRoute;
   const [dispose, setDispose] = React.useState<string | null>(null);
 
   const active = state.encounters.filter((e) => e.cls === "E" && e.status === "active" && e.ed);
@@ -254,6 +170,7 @@ export function EmergencyBoard() {
   const seenToday = state.encounters.filter((e) => e.cls === "E" && e.ed?.seenAt && now - new Date(e.ed.arrivalAt).getTime() < 24 * 3600_000);
   const d2d = seenToday.map((e) => doorToDoctor(e.ed!)).filter((x): x is number => x !== undefined);
   const avgD2d = d2d.length ? Math.round(d2d.reduce((a, b) => a + b, 0) / d2d.length) : undefined;
+  const frac = fractiles(seenToday);
   const longest = active.reduce((m, e) => Math.max(m, clockOf(e.ed!, now).waited), 0);
   const triageEnc = triage ? state.encounters.find((e) => e.visitNumber === triage) : undefined;
   const disposeEnc = dispose ? state.encounters.find((e) => e.visitNumber === dispose) : undefined;
@@ -291,12 +208,14 @@ export function EmergencyBoard() {
       <div className="mb-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-8">
         {CTAS.map((c) => {
           const n = active.filter((e) => e.ed!.ctas === c.level).length;
+          const fr = frac.find((f) => f.level === c.level);
           const late = active.filter((e) => e.ed!.ctas === c.level && clockOf(e.ed!, now).overdue && stageOf(e.ed!) === "waiting-doctor").length;
           return (
             <div key={c.level} className={cn("rounded-xl border border-border border-t-4 bg-card px-3 py-2", c.ring)}>
-              <div className="flex items-center gap-2"><CtasBadge level={c.level} /><span className="text-2xl font-semibold tabular-nums">{n}</span></div>
+              <div className="flex items-center gap-2"><LevelDot level={c.level} /><span className="text-2xl font-semibold tabular-nums">{n}</span></div>
               <div className="mt-0.5 text-xs font-medium">{c.label}</div>
               <div className="text-xs text-muted-foreground">{c.targetMin === 0 ? "Immediate" : `Target ${c.targetMin} min`}{late > 0 && <span className="ms-1 font-semibold text-destructive">{late} late</span>}</div>
+              {fr && <div className={cn("text-xs", fr.pct !== undefined && fr.pct < fr.goal ? "font-medium text-destructive" : "text-muted-foreground")}>{fr.pct === undefined ? `Goal ${fr.goal}% in target` : `${fr.pct}% in target, goal ${fr.goal}%`}</div>}
             </div>
           );
         })}
@@ -326,7 +245,7 @@ export function EmergencyBoard() {
         </div>
       )}
       {dev && <p className="mt-4 text-xs text-muted-foreground">Assumptions: CTAS time targets are the standard published ones. The ED codes sent in ZPV1-18, 20 and 22 are placeholders, because the value sets (CS-Adm-EDArrivalMode, CS-Adm-EDDisposition, CS-Adm-TriageCategory) are not in the guide pages read. ZPV1-17 to 22 go out in the CNHI discharge update (A08).</p>}
-      {triageEnc && <TriageSheet enc={triageEnc} onClose={() => setTriage(null)} />}
+      {triageEnc && <TriageSheet key={triageEnc.visitNumber} enc={triageEnc} onClose={() => { setTriage(null); if (fromRoute) navigate("/er"); }} />}
       {disposeEnc && <DispositionDialog enc={disposeEnc} onClose={() => setDispose(null)} onDone={(d) => complete(disposeEnc, d)} />}
       {dialogs}
     </div>

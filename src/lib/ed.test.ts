@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CTAS, clockOf, ctasInfo, doorToDoctor, stageOf, suggestCtas } from "./ed";
+import { CTAS, clockOf, ctasInfo, doorToDoctor, fractiles, reassessOf, stageOf } from "./ed";
 import type { EdData } from "./model";
 import { emptyForm, formFromEncounter, planMessage, seedState, sendOn } from "./store";
 
@@ -42,12 +42,34 @@ describe("stage and clock", () => {
   });
 });
 
-describe("triage hints", () => {
-  it("suggests a higher level for dangerous vital signs and nothing for normal ones", () => {
-    expect(suggestCtas({ spo2: 88 })?.level).toBe(1);
-    expect(suggestCtas({ sbp: 80 })?.level).toBe(2);
-    expect(suggestCtas({ pain: 9 })?.level).toBe(3);
-    expect(suggestCtas({ spo2: 98, hr: 80, sbp: 120 })).toBeNull();
+describe("re-assessment", () => {
+  const base: EdData = { arrivalAt: mins(60), arrivalMode: "Walk-in" };
+
+  it("follows the CTAS interval for the level", () => {
+    expect(reassessOf({ ...base, triageAt: mins(10), ctas: 2 })?.due).toBe(5);
+    expect(reassessOf({ ...base, triageAt: mins(20), ctas: 2 })?.late).toBe(true);
+    expect(reassessOf({ ...base, triageAt: mins(20), ctas: 3 })?.due).toBe(10);
+    expect(reassessOf({ ...base, triageAt: mins(20), ctas: 4 })?.due).toBe(40);
+    expect(reassessOf({ ...base, triageAt: mins(20), ctas: 1 })?.text).toMatch(/Continuous/);
+  });
+
+  it("restarts after a re-assessment and stops once a doctor has started", () => {
+    expect(reassessOf({ ...base, triageAt: mins(40), reassessedAt: mins(5), ctas: 3 })?.due).toBe(25);
+    expect(reassessOf({ ...base, triageAt: mins(40), seenAt: mins(2), ctas: 3 })).toBeUndefined();
+    expect(reassessOf(base)).toBeUndefined();
+  });
+});
+
+describe("fractile response", () => {
+  const mk = (ctas: 2 | 3, waited: number): { ed: EdData } => ({ ed: { arrivalAt: mins(120), arrivalMode: "Walk-in", triageAt: mins(100), seenAt: mins(100 - waited), ctas } });
+
+  it("scores the share seen within the target for levels 2 to 5", () => {
+    const encs = [mk(2, 10), mk(2, 20), mk(3, 25), mk(3, 25)] as never[];
+    const f = fractiles(encs);
+    expect(f.map((x) => x.level)).toEqual([2, 3, 4, 5]);
+    expect(f[0]).toMatchObject({ seen: 2, met: 1, pct: 50, goal: 95 });
+    expect(f[1]).toMatchObject({ seen: 2, met: 2, pct: 100, goal: 90 });
+    expect(f[2].pct).toBeUndefined();
   });
 });
 

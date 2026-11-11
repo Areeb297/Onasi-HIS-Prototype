@@ -11,6 +11,7 @@ import { hijri, isExpired, lookupById, retrieveIdCard, retrieveInsurance, REGIST
 import { navigate } from "@/lib/router";
 import { nextHealthId, nowLocal, registerPatient, getState } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { ErQuickRegistration } from "@/components/ErQuickRegistration";
 
 type Lang = "en" | "ar";
 
@@ -49,7 +50,7 @@ const Grid = ({ children, cols = 4 }: { children: React.ReactNode; cols?: 2 | 3 
   <div className={cn("grid gap-x-4 gap-y-5", cols === 4 && "sm:grid-cols-2 lg:grid-cols-4", cols === 3 && "sm:grid-cols-3", cols === 2 && "sm:grid-cols-2")}>{children}</div>
 );
 
-export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
+function FullRegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
   const dev = useDevMode();
   const [lang, setLang] = React.useState<Lang>("en");
   const ar = lang === "ar";
@@ -400,6 +401,24 @@ export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
         <Button onClick={() => navigate(cls === "E" ? "/er" : "/opd")}>{t("Cancel", "إلغاء")}</Button>
         {problems.length > 0 && <span className="text-sm text-muted-foreground">{problems[0]}</span>}
       </div>
+    </div>
+  );
+}
+
+/** Outpatient registration is the full form. Emergency registration starts with the quick form, and the full form is one tap away. */
+export function RegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
+  const [full, setFull] = React.useState(false);
+  if (cls !== "E") return <FullRegistrationForm cls={cls} />;
+  return (
+    <div>
+      <div role="group" aria-label="Registration form" className="mb-4 flex w-fit rounded-md border border-border bg-muted p-0.5">
+        {([false, true] as const).map((f) => (
+          <button key={String(f)} type="button" onClick={() => setFull(f)} aria-pressed={full === f} className={cn("rounded px-3 py-1.5 text-xs font-medium", full === f ? "bg-card shadow-sm" : "text-muted-foreground")}>
+            {f ? "Full Registration" : "Quick Emergency Registration"}
+          </button>
+        ))}
+      </div>
+      {full ? <FullRegistrationForm cls="E" /> : <ErQuickRegistration />}
     </div>
   );
 }
