@@ -1,0 +1,91 @@
+/**
+ * Shared schema types. EMR forms and setup (master) pages are described as data,
+ * and generic engines render them. Add a form or a master by adding data, not code.
+ */
+
+export type FieldType =
+  | "text"
+  | "textarea"
+  | "number"
+  | "date"
+  | "datetime"
+  | "time"
+  | "select"
+  | "multiselect"
+  | "radio"
+  | "checkbox"
+  | "scale"; // 0..max score, shown as buttons
+
+export interface FieldOption {
+  value: string;
+  label: string;
+  /** Score for risk scales. */
+  score?: number;
+}
+
+export interface FieldDef {
+  key: string;
+  label: string;
+  type: FieldType;
+  options?: (string | FieldOption)[];
+  unit?: string;
+  min?: number;
+  max?: number;
+  required?: boolean;
+  placeholder?: string;
+  /** Group fields under a heading inside the form. */
+  section?: string;
+  /** Full row on the form grid. Text areas are always full. */
+  full?: boolean;
+  /** Developer View tag, for example "DG1-3" or "Composition.section". */
+  hl7?: string;
+  hint?: string;
+}
+
+export type FormGroup = "General" | "Rehab" | "Gynecology & Antenatal (OPD)" | "Obstetrics & Labor (IPD)" | "OT" | "Nursing";
+
+export interface FormDef {
+  id: string;
+  title: string;
+  group: FormGroup;
+  description?: string;
+  fields: FieldDef[];
+  /** Field keys shown as columns in the record list. Defaults to the first four fields. */
+  summaryKeys?: string[];
+  /** Which NPHIES document or message this form feeds, if any. Shown in Developer View. */
+  nphies?: string;
+  /** Computed total for score forms: sum of scale scores. */
+  scoreLabel?: string;
+}
+
+export type CellType = "text" | "badge" | "bool" | "number" | "date" | "mono";
+
+export interface MasterColumn {
+  key: string;
+  label: string;
+  type?: CellType;
+  /** Fields in the add and edit form. Defaults to a text field. */
+  field?: Pick<FieldDef, "type" | "options" | "required" | "placeholder">;
+}
+
+export type Row = Record<string, string | number | boolean>;
+
+export interface MasterDef {
+  id: string;
+  title: string;
+  /** Group in the menu, for example "Client Setup". */
+  module: string;
+  description?: string;
+  columns: MasterColumn[];
+  seed: Row[];
+  /** Tell the user what is real and what is a scaffold. */
+  note?: string;
+  readOnly?: boolean;
+}
+
+export interface FormRecord {
+  id: string;
+  at: string; // ISO
+  author: string;
+  values: Record<string, string | number | boolean | string[]>;
+}

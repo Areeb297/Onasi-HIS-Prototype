@@ -1,0 +1,83 @@
+import type { FormDef } from "../schema";
+import { YES_NO, YES_NO_UNKNOWN, area, chk, date, dt, multi, num, radio, section, sel, text, time } from "./util";
+
+const ANESTHESIA = ["General", "Spinal", "Epidural", "Regional block", "Local with sedation", "Local only", "To be decided"];
+const OT_ROOMS = ["OT 1", "OT 2", "OT 3", "Minor OT", "Cath lab", "Labor OT"];
+
+export const OT_FORMS: FormDef[] = [
+  {
+    id: "ot-roster",
+    title: "OT Roster",
+    group: "OT",
+    description: "The team assigned to an operating theater session.",
+    summaryKeys: ["rosterDate", "room", "surgeon", "anesthetist"],
+    fields: [
+      ...section("Session", date("rosterDate", "Date", { required: true }), sel("room", "Operating theater", OT_ROOMS, { required: true }),
+        sel("shift", "Shift", ["Morning", "Evening", "Night", "On call"]), time("startTime", "Start time"), time("endTime", "Expected end time")),
+      ...section("Surgical team", text("surgeon", "Lead surgeon", { required: true, placeholder: "Dr. Example" }), text("assistant1", "First assistant"), text("assistant2", "Second assistant")),
+      ...section("Anesthesia and nursing", text("anesthetist", "Anesthetist", { required: true }), text("anesthesiaTech", "Anesthesia technician"),
+        text("scrubNurse", "Scrub nurse"), text("circulatingNurse", "Circulating nurse"), text("technician", "OT technician"),
+        area("notes", "Notes")),
+    ],
+  },
+  {
+    id: "operation-request",
+    title: "Operation Request",
+    group: "OT",
+    description: "Request to book a patient for surgery.",
+    nphies: "Operative Note: Planned Procedure and Preoperative Diagnosis sections",
+    summaryKeys: ["procedure", "urgency", "preferredDate", "anesthesiaType"],
+    fields: [
+      ...section("Operation", text("procedure", "Planned procedure", { required: true, placeholder: "Laparoscopic cholecystectomy", hl7: "Planned Procedure Entry" }),
+        text("preopDiagnosis", "Preoperative diagnosis", { required: true, hl7: "Preoperative Diagnosis Section" }),
+        sel("side", "Side", ["Left", "Right", "Both", "Midline", "Not applicable"], { hint: "Mark the site before the operation." }),
+        sel("urgency", "Urgency", ["Elective", "Urgent (within 24 hours)", "Emergency (immediate)"], { required: true }),
+        date("preferredDate", "Preferred date"), num("duration", "Estimated duration", { unit: "minutes", min: 0 })),
+      ...section("Surgeon and anesthesia", text("surgeon", "Surgeon"), sel("anesthesiaType", "Anesthesia", ANESTHESIA, { hl7: "Anesthesia Section" }),
+        radio("preAnesthesiaDone", "Pre-anesthesia assessment done", YES_NO)),
+      ...section("Preparation", text("implants", "Implants or special equipment", { placeholder: "Mesh, C-arm" }), num("bloodUnits", "Blood units to cross match", { min: 0 }),
+        radio("icuBed", "Post-operative ICU bed needed", YES_NO), radio("consent", "Written consent obtained", YES_NO, { required: true }),
+        area("instructions", "Special instructions")),
+    ],
+  },
+  {
+    id: "pre-anesthesia-assessment",
+    title: "Pre-Anesthesia Assessment",
+    group: "OT",
+    description: "Assessment before anesthesia. The ASA physical status class and Mallampati class are chosen by the anesthetist. They are classes and not summed scores.",
+    nphies: "Operative Note: Anesthesia section and Planned Procedure section",
+    summaryKeys: ["plannedProcedure", "asa", "mallampati", "npoStatus"],
+    fields: [
+      ...section("Procedure", text("plannedProcedure", "Planned procedure", { required: true, hl7: "Planned Procedure Entry" }),
+        sel("plannedAnesthesia", "Planned anesthesia", ANESTHESIA, { hl7: "Anesthesia Section" })),
+      ...section("Patient", num("weight", "Weight", { unit: "kg", min: 0 }), num("height", "Height", { unit: "cm", min: 0 }),
+        multi("comorbidities", "Comorbidities", ["None", "Hypertension", "Diabetes mellitus", "Ischemic heart disease", "Asthma or COPD", "Chronic kidney disease", "Liver disease", "Obstructive sleep apnea", "Thyroid disease", "Epilepsy", "Pregnancy", "Obesity"]),
+        text("allergies", "Allergies", { placeholder: "Penicillin, latex" }), area("medications", "Current medicines, including blood thinners"),
+        radio("previousAnesthesia", "Problem with previous anesthesia", YES_NO_UNKNOWN)),
+      ...section("Airway", sel("mallampati", "Mallampati class", ["I", "II", "III", "IV"], { hint: "I: soft palate, uvula, pillars visible. II: soft palate and uvula. III: soft palate and base of uvula. IV: hard palate only." }),
+        text("mouthOpening", "Mouth opening", { placeholder: "3 fingers" }), text("thyromental", "Thyromental distance", { placeholder: "6.5 cm" }),
+        sel("neck", "Neck movement", ["Full", "Limited"]), chk("difficultAirway", "Difficult airway expected", { placeholder: "Difficult airway expected" })),
+      ...section("Status", sel("asa", "ASA physical status", ["I", "II", "III", "IV", "V", "VI"], { required: true, hint: "I healthy. II mild systemic disease. III severe systemic disease. IV severe disease that is a constant threat to life. V moribund, not expected to survive without the operation. VI brain-dead organ donor." }),
+        chk("emergency", "Emergency case (add E)", { placeholder: "Emergency" }),
+        text("npoStatus", "NPO status", { required: true, placeholder: "Solids last 22:00, clear fluids last 05:00", hint: "Usual minimum fasting: clear fluids 2 hours, breast milk 4 hours, light meal or formula 6 hours, fatty meal 8 hours." }),
+        text("investigations", "Key investigations", { placeholder: "Hb, ECG, chest X-ray" }),
+        area("plan", "Anesthesia plan and risks discussed"), radio("consent", "Anesthesia consent obtained", YES_NO)),
+    ],
+  },
+  {
+    id: "ot-schedule",
+    title: "OT Schedule",
+    group: "OT",
+    description: "Booked slot for an operation in the operating theater list.",
+    nphies: "Operative Note: Planned Procedure section",
+    summaryKeys: ["scheduleDate", "room", "procedure", "status"],
+    fields: [
+      ...section("Slot", date("scheduleDate", "Date", { required: true }), time("startTime", "Start time", { required: true }), num("duration", "Duration", { unit: "minutes", min: 0 }),
+        sel("room", "Operating theater", OT_ROOMS, { required: true }), sel("status", "Status", ["Scheduled", "Confirmed", "In progress", "Completed", "Postponed", "Cancelled"], { required: true })),
+      ...section("Case", text("procedure", "Procedure", { required: true, hl7: "Planned Procedure Entry" }), sel("caseType", "Case type", ["Elective", "Urgent", "Emergency"]),
+        text("surgeon", "Surgeon"), text("anesthetist", "Anesthetist"), sel("anesthesiaType", "Anesthesia", ANESTHESIA),
+        text("equipment", "Special equipment"), chk("patientReady", "Patient ready", { placeholder: "Consent signed, fasting confirmed" }),
+        area("reason", "Reason if postponed or cancelled")),
+    ],
+  },
+];

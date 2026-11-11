@@ -1,0 +1,257 @@
+import type { EventId, SegId } from "./spec";
+
+export type PatientClass = "I" | "O" | "E" | "P";
+export type EncounterStatus = "preadmit" | "active" | "discharged" | "cancelled";
+
+/** Registration details kept by the HIS. Most are not sent in ADT messages. */
+export interface PatientExtra {
+  secondName?: string;
+  thirdName?: string;
+  nameAr?: { first: string; second: string; third: string; family: string };
+  religion?: string;
+  bloodGroup?: string;
+  fileStatus?: string;
+  socialStatus?: string;
+  placeOfBirth?: string;
+  occupation?: string;
+  employeeNo?: string;
+  idType?: string;
+  idNumber?: string;
+  idIssuer?: string;
+  idIssueDate?: string;
+  idExpiry?: string;
+  idCopyNo?: string;
+  addressType?: string;
+  addressText?: string;
+  homePhone?: string;
+  mobile?: string;
+  otherPhone?: string;
+  countryCode?: string;
+  areaCode?: string;
+  relationName?: string;
+  relationPhone?: string;
+  email?: string;
+  mainFileNo?: string;
+  registrationNo?: string;
+  visitPayType?: "Cash" | "Insurance";
+  insurance?: {
+    payer: string; policyNo: string; memberId: string; className: string; network: string;
+    startDate: string; expiryDate: string; copayPercent: number; status: "Active" | "Expired";
+  };
+  /** Cards saved to the patient file with the Archive buttons. */
+  archive?: { kind: "Insurance card" | "ID card"; at: string; summary: string }[];
+}
+
+export interface Patient {
+  id: string;
+  mrn: string;
+  nationalId: string;
+  family: string;
+  given: string;
+  /** YYYY-MM-DD */
+  dob: string;
+  sex: "M" | "F";
+  /** NHIC Health ID. nphies needs it in PID-3. Made-up values only. */
+  healthId: string;
+  /** Country code for PID-28 (assumed ISO 3166 numeric, 999 = unknown). */
+  nationality: string;
+  /** PID-16. S single, M married, D divorced, W widowed. */
+  maritalStatus: string;
+  /** PID-11. Saudi Post short address, AAAANNNN. */
+  address: string;
+  /** Restricted record. Opening it needs break-the-glass. */
+  confidential?: boolean;
+  /** Consent to process and share the record. ISO time when given. */
+  consentAt?: string;
+  extra?: PatientExtra;
+}
+
+export interface Doctor {
+  id: string;
+  family: string;
+  given: string;
+  service: string;
+}
+
+export interface Bed {
+  id: string;
+  ward: string;
+  wardName: string;
+  room: string;
+  bed: string;
+}
+
+export interface Dx {
+  code: string;
+  text: string;
+  /** A = admitting, W = working, F = final */
+  type: "A" | "W" | "F";
+}
+
+export interface Pr {
+  code: string;
+  text: string;
+}
+
+export interface Allergy {
+  text: string;
+  severity: "SV" | "MO" | "MI";
+  reaction: string;
+}
+
+export interface Complaint {
+  code: string;
+  text: string;
+}
+
+export interface Vitals {
+  /** Height in cm. Needed for the NPHIES prescription bundle. */
+  height?: string;
+  bp: string;
+  pulse: string;
+  temp: string;
+  spo2: string;
+  rr: string;
+  weight: string;
+  at: string;
+}
+
+export interface Note {
+  at: string;
+  author: string;
+  text: string;
+}
+
+export type CtasLevel = 1 | 2 | 3 | 4 | 5;
+
+/** Emergency department data. Feeds ZPV1.17 to ZPV1.22 of the CNHI discharge update (A08). */
+export interface EdData {
+  /** ZPV1.17. Local date-time. */
+  arrivalAt: string;
+  /** ZPV1.18 */
+  arrivalMode: "Walk-in" | "Ambulance" | "Referral" | "Police" | "Other";
+  /** ZPV1.21 */
+  triageAt?: string;
+  /** ZPV1.22. CTAS level 1 to 5. */
+  ctas?: CtasLevel;
+  triageNurse?: string;
+  complaint?: string;
+  gcs?: number;
+  pain?: number;
+  area?: "Triage" | "Resus" | "Acute" | "Fast Track" | "Observation";
+  /** ZPV1.19. When a doctor starts care. */
+  seenAt?: string;
+  stage?: "treatment" | "results" | "ready";
+  /** ZPV1.20 */
+  disposition?: "Discharged" | "Admitted" | "Transferred" | "Left Without Being Seen" | "Left Against Advice" | "Died";
+  dispositionAt?: string;
+}
+
+export interface Encounter {
+  visitNumber: string;
+  patientId: string;
+  cls: PatientClass;
+  status: EncounterStatus;
+  bedId?: string;
+  /** Beds the patient was in before each transfer, newest last. Used by A12. */
+  transfers: string[];
+  /** The bed held before discharge. Used as the default for A13. */
+  lastBedId?: string;
+  attending: string;
+  admitting: string;
+  service: string;
+  reason: string;
+  /** Local date-time strings: YYYY-MM-DDTHH:mm */
+  admitAt?: string;
+  dischargeAt?: string;
+  expectedAdmitAt?: string;
+  expectedDischargeAt?: string;
+  disposition?: string;
+  dx: Dx[];
+  pr: Pr[];
+  allergies: Allergy[];
+  /** EMR data. Not part of the ADT message, except the reason (PV2-3). */
+  complaints: Complaint[];
+  vitals?: Vitals;
+  notes: Note[];
+  /** Outpatient worklist step. Checking in does not send an ADT message. */
+  checkedIn?: boolean;
+  /** Emergency data. Only for patient class E. */
+  ed?: EdData;
+  /** Diagnoses, procedures, allergies or complaints changed after the last A08. */
+  dirty?: boolean;
+}
+
+export interface ZFields {
+  ZPV1: string[];
+  ZDG1: string[];
+  ZPR1: string[];
+}
+
+/** Everything a scenario screen can fill in. Each event uses the part it needs. */
+export interface ScenarioForm {
+  patientId: string;
+  /** Existing visit number. For new visits this stays empty until Send. */
+  encounterId: string;
+  /** Visit number to use for a new visit. */
+  visitNumber: string;
+  cls: PatientClass;
+  bedId: string;
+  attending: string;
+  admitting: string;
+  /** PV1-8, referring doctor. Empty means none. */
+  referring: string;
+  service: string;
+  reason: string;
+  eventAt: string;
+  admitAt: string;
+  dischargeAt: string;
+  expectedAdmitAt: string;
+  expectedDischargeAt: string;
+  disposition: string;
+  dx: Dx[];
+  pr: Pr[];
+  allergies: Allergy[];
+  /** A31 identity changes */
+  family: string;
+  given: string;
+  dob: string;
+  sex: "M" | "F";
+  /** A45: the patient who should own the visit. */
+  correctPatientId: string;
+  /** A50 */
+  newVisitNumber: string;
+  oldPatientId: string;
+  z: ZFields;
+}
+
+export type LogSource = "seed" | "user" | "runner";
+
+export interface Check {
+  level: "error" | "warn" | "ok";
+  text: string;
+}
+
+export interface LogEntry {
+  seq: number;
+  controlId: string;
+  eventId: EventId;
+  trigger: string;
+  sentAt: string; // ISO
+  patientId: string;
+  patientName: string;
+  visitNumber: string;
+  message: string; // segments joined with \r
+  segments: SegId[];
+  errors: number;
+  warnings: number;
+  checks: Check[];
+  source: LogSource;
+}
+
+export interface HisState {
+  patients: Patient[];
+  encounters: Encounter[];
+  log: LogEntry[];
+  counters: { visit: number; seq: number; patient: number };
+}

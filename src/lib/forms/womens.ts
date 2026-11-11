@@ -1,0 +1,97 @@
+import type { FormDef } from "../schema";
+import { YES_NO_UNKNOWN, area, chk, date, dt, multi, num, radio, scoreRange, section, sel, text } from "./util";
+
+/** New Ballard Score items (Ballard et al, J Pediatr 1991). Each item is scored from the chart pictures. */
+const bal = (key: string, label: string, min: number, max: number, hint: string) =>
+  radio(key, label, scoreRange(min, max), { hint });
+
+export const WOMENS_FORMS: FormDef[] = [
+  {
+    id: "infertility-assessment",
+    title: "Infertility Assessment",
+    group: "Gynecology & Antenatal (OPD)",
+    description: "Work-up of a couple who have not conceived. Infertility is usually defined as 12 months of regular unprotected intercourse without pregnancy.",
+    summaryKeys: ["infertilityType", "duration", "ovulation", "tubes"],
+    fields: [
+      ...section("History", sel("infertilityType", "Type", ["Primary", "Secondary"], { required: true }),
+        num("duration", "Duration of infertility", { unit: "years", min: 0, required: true }),
+        num("ageFemale", "Age of woman", { unit: "years", min: 10 }), num("ageMale", "Age of partner", { unit: "years", min: 10 }),
+        text("previousTreatment", "Previous treatment", { placeholder: "Ovulation induction x 3 cycles" })),
+      ...section("Cycle", num("menarche", "Age at menarche", { unit: "years" }), num("cycleLength", "Cycle length", { unit: "days", min: 0 }),
+        radio("regular", "Regular cycles", YES_NO_UNKNOWN), sel("intercourse", "Intercourse frequency", ["Less than once a week", "1 to 2 times a week", "3 or more times a week"])),
+      ...section("Female factor", sel("ovulation", "Ovulation", ["Ovulatory", "Anovulatory", "Not assessed"], { hint: "For example mid-luteal progesterone or ultrasound follicle tracking." }),
+        sel("tubes", "Tubal patency", ["Both open", "One open", "Both blocked", "Not assessed"], { hint: "Hysterosalpingography or laparoscopy result." }),
+        text("amh", "AMH", { placeholder: "e.g. 2.1 ng/mL" }), text("fsh", "Day 2 to 3 FSH", { placeholder: "e.g. 7 IU/L" }),
+        text("uterus", "Uterine findings")),
+      ...section("Male factor", sel("semen", "Semen analysis", ["Normal", "Abnormal", "Not done"], { hint: "Compare with the WHO laboratory manual reference limits." }),
+        text("semenDetails", "Semen details", { placeholder: "Volume, concentration, motility, morphology" })),
+      ...section("Plan", area("plan", "Plan", { placeholder: "Timed intercourse, ovulation induction, IUI, IVF referral" })),
+    ],
+  },
+  {
+    id: "ovulation-induction-cycle",
+    title: "Ovulation Induction Cycle",
+    group: "Gynecology & Antenatal (OPD)",
+    description: "Record of one treatment cycle: medicine, follicle monitoring, trigger and outcome.",
+    summaryKeys: ["cycleStart", "protocol", "follicleSize", "outcome"],
+    fields: [
+      ...section("Cycle", date("cycleStart", "Cycle start date (day 1)", { required: true }),
+        sel("protocol", "Protocol", ["Letrozole", "Clomiphene citrate", "Gonadotropins", "Letrozole plus gonadotropins", "Other"], { required: true }),
+        text("dose", "Medicine and dose", { placeholder: "Letrozole 5 mg" }), text("days", "Cycle days taken", { placeholder: "Day 3 to 7" })),
+      ...section("Monitoring", num("cycleDay", "Scan on cycle day", { min: 1 }), num("follicleSize", "Leading follicle", { unit: "mm", min: 0 }),
+        num("follicleCount", "Follicles of 14 mm or more", { min: 0 }), num("endometrium", "Endometrial thickness", { unit: "mm", min: 0 }),
+        text("lh", "LH", { placeholder: "e.g. 20 IU/L" }), text("e2", "Estradiol", { placeholder: "e.g. 250 pg/mL" })),
+      ...section("Trigger and timing", sel("trigger", "Trigger", ["None", "hCG", "GnRH agonist"]), dt("triggerAt", "Trigger time"),
+        sel("timing", "Method", ["Timed intercourse", "IUI", "IVF or ICSI"]), sel("lutealSupport", "Luteal support", ["None", "Vaginal progesterone", "Oral progesterone", "Injectable progesterone"])),
+      ...section("Outcome", date("testDate", "Pregnancy test date"), sel("outcome", "Outcome", ["Pending", "Negative", "Positive", "Biochemical pregnancy", "Clinical pregnancy", "Miscarriage", "Cycle cancelled"]),
+        chk("ohss", "Ovarian hyperstimulation suspected", { placeholder: "Suspected" })),
+    ],
+  },
+  {
+    id: "delivery-outcomes",
+    title: "Delivery Outcomes",
+    group: "Obstetrics & Labor (IPD)",
+    description: "Result of the delivery for the mother and baby. Apgar scores are entered as numbers, 0 to 10 each; 7 to 10 is reassuring.",
+    nphies: "Maternal Discharge Summary: Labor and Delivery Events and Delivery Event Outcome (live birth or stillbirth entry, with Apgar observation)",
+    summaryKeys: ["deliveredAt", "mode", "birthStatus", "birthWeight", "apgar5"],
+    fields: [
+      ...section("Delivery", dt("deliveredAt", "Date and time of birth", { required: true, hl7: "Labor and Delivery Events Procedure Entry" }),
+        sel("mode", "Mode of delivery", ["Spontaneous vaginal", "Vacuum assisted", "Forceps assisted", "Elective cesarean", "Emergency cesarean", "Vaginal birth after cesarean", "Breech vaginal"], { required: true }),
+        num("gestationalAge", "Gestational age at delivery", { unit: "weeks", min: 20, max: 45 }),
+        sel("presentation", "Presentation", ["Cephalic", "Breech", "Transverse", "Other"]),
+        sel("anesthesia", "Anesthesia or analgesia", ["None", "Epidural", "Spinal", "General", "Pudendal or local", "Nitrous oxide"]),
+        chk("episiotomy", "Episiotomy", { placeholder: "Episiotomy done" })),
+      ...section("Baby", sel("birthStatus", "Birth status", ["Live birth", "Stillbirth (fresh)", "Stillbirth (macerated)"], { required: true, hl7: "Delivery Event Outcome Section" }),
+        sel("sex", "Sex of baby", ["Female", "Male", "Indeterminate"]), num("birthWeight", "Birth weight", { unit: "g", min: 200, max: 6500 }),
+        num("apgar1", "Apgar score at 1 minute", { min: 0, max: 10, hl7: "Apgar Observation Entry" }), num("apgar5", "Apgar score at 5 minutes", { min: 0, max: 10, hl7: "Apgar Observation Entry" }),
+        sel("babyDisposition", "Baby went to", ["Mother, rooming in", "Nursery", "NICU", "Transferred to another hospital"])),
+      ...section("Mother", multi("complications", "Complications", ["None", "Postpartum hemorrhage", "Perineal tear 3rd or 4th degree", "Retained placenta", "Shoulder dystocia", "Eclampsia", "Infection", "Uterine rupture", "Other"], { hl7: "Section Complications" }),
+        num("bloodLoss", "Estimated blood loss", { unit: "mL", min: 0 }), sel("placenta", "Placenta", ["Complete", "Incomplete", "Manual removal"]),
+        area("notes", "Notes")),
+    ],
+  },
+  {
+    id: "newborn-ballard-score",
+    title: "Newborn Ballard Score",
+    group: "Obstetrics & Labor (IPD)",
+    scoreLabel: "Ballard total",
+    description: "New Ballard Score (Ballard JL et al, J Pediatr 1991;119:417). 6 neuromuscular and 6 physical maturity items, total -10 to 50, used to estimate gestational age. Best done between 12 and 20 hours of age, or at 30 to 42 hours for babies under 26 weeks. Pick each item from the Ballard chart pictures.",
+    nphies: "Newborn Discharge Summary: gestational age and newborn clinical status",
+    summaryKeys: ["assessedAt", "estimatedGa", "ageAtExam"],
+    fields: [
+      ...section("Examination", dt("assessedAt", "Examination time", { required: true }), num("ageAtExam", "Age at examination", { unit: "hours", min: 0 })),
+      ...section("Neuromuscular maturity",
+        bal("posture", "Posture", 0, 4, "Score 0 to 4 from the chart."), bal("squareWindow", "Square window (wrist)", -1, 4, "Score -1 to 4: -1 for more than 90 degrees, 4 for 0 degrees."),
+        bal("armRecoil", "Arm recoil", 0, 4, "Score 0 to 4: 0 for no recoil, 4 for brisk recoil."), bal("popliteal", "Popliteal angle", -1, 5, "Score -1 to 5: -1 for 180 degrees, 5 for under 90 degrees."),
+        bal("scarf", "Scarf sign", -1, 4, "Score -1 to 4 from the chart."), bal("heelToEar", "Heel to ear", -1, 4, "Score -1 to 4 from the chart.")),
+      ...section("Physical maturity",
+        bal("skin", "Skin", -1, 5, "Score -1 to 5: -1 for sticky, friable and transparent; 5 for leathery, cracked and wrinkled."), bal("lanugo", "Lanugo", -1, 4, "Score -1 to 4 from the chart."),
+        bal("plantar", "Plantar surface", -1, 4, "Score -1 to 4 from the chart."), bal("breast", "Breast", -1, 4, "Score -1 to 4 from the chart."),
+        bal("eyeEar", "Eye and ear", -1, 4, "Score -1 to 4 from the chart."), bal("genitals", "Genitals (male or female)", -1, 4, "Score -1 to 4 using the male or female chart.")),
+      ...section("Result", num("estimatedGa", "Estimated gestational age", {
+        unit: "weeks", min: 20, max: 44,
+        hint: "Total score to weeks: -10 = 20, -5 = 22, 0 = 24, 5 = 26, 10 = 28, 15 = 30, 20 = 32, 25 = 34, 30 = 36, 35 = 38, 40 = 40, 45 = 42, 50 = 44. The total is shown at the bottom of the form.", hl7: "Gestational Age Observation Entry",
+      }), area("notes", "Notes")),
+    ],
+  },
+];
