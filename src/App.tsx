@@ -19,6 +19,8 @@ import { AccessPage, AuditPage, ConfidentialPage, RegistrationPage } from "@/pag
 import { LabWorklistPage } from "@/pages/LabWorklistPage";
 import { LogPage } from "@/pages/LogPage";
 import { MasterPage } from "@/pages/MasterPage";
+import { DashboardPage } from "@/pages/DashboardPage";
+import { DamanDashboardPage } from "@/pages/DamanDashboardPage";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { NphiesClinicalPage } from "@/pages/NphiesClinicalPage";
 import { NphiesFinancialPage } from "@/pages/NphiesFinancialPage";
@@ -59,7 +61,9 @@ function Brand() {
   // ps-7 matches the width of the collapse button on the right, so the logo sits in the true centre.
   return (
     <div className="flex min-w-0 flex-1 justify-center ps-7">
-      <img src="/brand/onasi-logo.png" alt="Onasi EMR" className="h-9 w-auto dark:brightness-0 dark:invert" />
+      <button type="button" onClick={() => navigate("/dashboard")} aria-label="Onasi, go to the dashboard" title="Go to the dashboard" className="rounded-md focus-visible:outline-2 focus-visible:outline-ring">
+        <img src="/brand/onasi-logo.png" alt="" className="h-9 w-auto dark:brightness-0 dark:invert" />
+      </button>
     </div>
   );
 }
@@ -262,8 +266,10 @@ function Page() {
     const id = path.replace("/event/", "") as EventId;
     if (EVENT_BY_ID[id]) return <ScenarioPage key={`${id}?${route.params.toString()}`} eventId={id} />;
   }
+  if (path === "/m/daman-dashboard") return <DamanDashboardPage />;
   if (path.startsWith("/m/")) return <MasterPage key={path} id={path.replace("/m/", "")} />;
   switch (path) {
+    case "/dashboard": return <DashboardPage />;
     case "/opd": return <WorklistPage mode="opd" />;
     case "/ipd": return <WorklistPage mode="ipd" />;
     case "/er": return <EmergencyBoard />;
@@ -286,7 +292,7 @@ function Page() {
     case "/runner": return <RunnerPage />;
     case "/log": return <LogPage />;
     case "/spec": return <SpecPage />;
-    default: return <WorklistPage mode="opd" />;
+    default: return can("patient.read") ? <DashboardPage /> : <WorklistPage mode="opd" />;
   }
 }
 
@@ -320,9 +326,9 @@ export default function App() {
         <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
           <div className="mx-auto flex max-w-[1500px] items-center gap-2 px-4 py-2.5 text-[0.8125rem] sm:px-6">
             <Button size="sm" className="lg:hidden" onClick={() => setNavOpen(true)} aria-label="Open the menu" aria-expanded={navOpen}><Menu className="size-4" /><span className="hidden sm:inline">Menu</span></Button>
-            <img src="/brand/onasi-icon.png" alt="Onasi" className="h-6 w-auto lg:hidden dark:brightness-0 dark:invert" />
+            <button type="button" onClick={() => navigate("/dashboard")} aria-label="Onasi, go to the dashboard" className="lg:hidden"><img src="/brand/onasi-icon.png" alt="" className="h-6 w-auto dark:brightness-0 dark:invert" /></button>
             <p className="hidden min-w-0 flex-1 truncate text-muted-foreground md:block">
-              Made-up patients. Nothing is sent to NPHIES. Signed in as <strong className="font-semibold text-foreground">{role.label}</strong>.
+              Signed in as <strong className="font-semibold text-foreground">{role.label}</strong>.
               <span className="hidden xl:inline"> Press Ctrl+K to jump to any page.</span>
             </p>
             <span className="flex-1 md:hidden" />
@@ -345,9 +351,8 @@ export default function App() {
         <div className="mx-auto flex min-h-[calc(100%-3.25rem)] max-w-[1500px] flex-col px-4 pb-6 pt-5 sm:px-6">
           <Page />
           <div className="h-10 shrink-0" aria-hidden="true" />
-          <footer className="mt-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border pt-4 text-xs sm:pe-40 text-muted-foreground">
-            <span>&copy; {new Date().getFullYear()} Ebttikar. All rights reserved. Onasi and the Onasi logo are products and marks of Ebttikar.</span>
-            <span>All patients shown are made up.</span>
+          <footer className="mt-auto border-t border-border pt-4 text-xs text-muted-foreground sm:pe-40">
+            &copy; {new Date().getFullYear()} Ebttikar. All rights reserved.
           </footer>
         </div>
       </main>

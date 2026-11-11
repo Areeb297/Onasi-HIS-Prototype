@@ -30,7 +30,7 @@
   --ring: #2563eb;
   --chart-1: #00805a;
   --chart-2: #2776ec;
-  --chart-3: #0198b0;
+  --chart-3: #c2410c;
   --chart-4: #e5b95c;
   --chart-5: #8ed8ba;
   /* Brand. Onasi deep green and mint, from onasi.care. Ebttikar blue for the powered-by credit. */
@@ -61,6 +61,10 @@
 }
 
 .dark {
+  /* Chart series. Checked with the dataviz palette validator against the dark surface. */
+  --chart-1: #169e78;
+  --chart-2: #4587e6;
+  --chart-3: #cf6f2a;
   --background: #05130f;
   --foreground: #e6f3ee;
   --card: #0a1f19;
