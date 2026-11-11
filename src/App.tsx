@@ -71,7 +71,7 @@ function PoweredBy() {
     <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
       <span>Powered by</span>
       <span className="rounded-md bg-white px-1.5 py-1 ring-1 ring-border">
-        <img src="/brand/ebttikar-logo.png" alt="Ebttikar" className="h-14 w-auto" />
+        <img src="/brand/ebttikar-logo.png" alt="Ebttikar, Innovative Business Solutions" className="h-14 w-auto" />
       </span>
       <span className="ms-auto">&copy; {new Date().getFullYear()}</span>
     </div>
