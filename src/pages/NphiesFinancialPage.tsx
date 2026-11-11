@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Money } from "@/components/Money";
 import { Eye, EyeOff } from "lucide-react";
 import { Gate } from "@/components/emr/fhir-ui";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -12,7 +13,7 @@ import { getMasterRows, useRecords } from "@/lib/records";
 import { can, useSession } from "@/lib/session";
 import { useHis, patientName } from "@/lib/store";
 
-const sar = (n: number) => `${n.toLocaleString()} SAR`;
+const sar = (n: number) => <Money value={n} />;
 const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export function NphiesFinancialPage() {

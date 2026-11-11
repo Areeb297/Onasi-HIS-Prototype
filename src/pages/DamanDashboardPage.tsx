@@ -1,9 +1,10 @@
 import * as React from "react";
 import { RotateCcw, Search } from "lucide-react";
+import { Money } from "@/components/Money";
 import { ChartCard, StatTile } from "@/components/charts/ChartCard";
 import { HBars, Lines, Stacked, VBars } from "@/components/charts/SimpleCharts";
 import { Badge, Button, Card, CardHeader, Field, Input, Select, Table, Td, Th } from "@/components/ui/primitives";
-import { DAMAN_COUNTS, DAMAN_MONTHS, DAMAN_PRIOR_AUTH, DAMAN_REJECTED_SERVICES, DAMAN_SECTIONS, sar } from "@/lib/dashboard-data";
+import { DAMAN_COUNTS, DAMAN_MONTHS, DAMAN_PRIOR_AUTH, DAMAN_REJECTED_SERVICES, DAMAN_SECTIONS } from "@/lib/dashboard-data";
 import { PAYERS } from "@/lib/nphies-financial";
 
 const OUTCOME = [
@@ -62,7 +63,7 @@ export function DamanDashboardPage() {
           <StatTile label="Requested items" value={pa.requested.toLocaleString("en-US")} note="lines sent for approval" />
           <StatTile label="Approved items" value={pa.approved.toLocaleString("en-US")} note={`${pa.partial} more approved in part`} tone="ok" />
           <StatTile label="Rejected items" value={pa.rejected.toLocaleString("en-US")} note={`${rate.toFixed(1)}% rejection rate`} tone={rate > 10 ? "danger" : "warn"} />
-          <StatTile label="Approved benefit amount" value={sar(pa.approvedAmount)} note="approved by the payer" />
+          <StatTile label="Approved benefit amount" value={<Money value={pa.approvedAmount} />} note="approved by the payer" />
         </div>
       </Card>
 
@@ -82,7 +83,7 @@ export function DamanDashboardPage() {
         <ChartCard title="Prior authorization rejection rate" note="Rejected items as a percent of requested items, by month." rows={DAMAN_MONTHS.map((m) => ({ Month: m.month, "Rejection rate (%)": m.rate }))} columns={["Month", "Rejection rate (%)"]}>
           <Lines data={DAMAN_MONTHS} name="month" series={[{ key: "rate", color: "var(--chart-3)" }]} format={(v) => `${v}%`} />
         </ChartCard>
-        <ChartCard title="Monthly approved amount" note="Approved benefit amount, in thousand SAR." rows={DAMAN_MONTHS.map((m) => ({ Month: m.month, "Approved (thousand SAR)": m.amount }))} columns={["Month", "Approved (thousand SAR)"]}>
+        <ChartCard title="Monthly approved amount" note="Approved benefit amount, in thousand Saudi riyals." rows={DAMAN_MONTHS.map((m) => ({ Month: m.month, "Approved (thousands)": m.amount }))} columns={["Month", "Approved (thousands)"]}>
           <VBars data={DAMAN_MONTHS} name="month" value="amount" label="Approved" color="var(--chart-1)" format={(v) => `${v}K`} />
         </ChartCard>
         <ChartCard title="Top rejected services" note="Service lines most often rejected for prior authorization." rows={DAMAN_REJECTED_SERVICES.map((r) => ({ Service: r.service, Rejections: r.rejections }))} columns={["Service", "Rejections"]}>

@@ -1,10 +1,11 @@
 import * as React from "react";
 import { IconActivityHeartbeat } from "@tabler/icons-react";
 import { CalendarDays } from "lucide-react";
+import { Money } from "@/components/Money";
 import { ChartCard, StatTile } from "@/components/charts/ChartCard";
 import { HBars, Lines, Ring, Stacked, VBars } from "@/components/charts/SimpleCharts";
 import { Button, Card, CardHeader, Table, Td, Th, cn } from "@/components/ui/primitives";
-import { RANGES, liveCounts, operations, patientMix, sar, visitTrend, type RangeId } from "@/lib/dashboard-data";
+import { RANGES, liveCounts, operations, patientMix, visitTrend, type RangeId } from "@/lib/dashboard-data";
 import { useDocs } from "@/lib/docs";
 import { useLab } from "@/lib/lab";
 import { useRad } from "@/lib/radiology";
@@ -69,7 +70,7 @@ export function DashboardPage() {
         <StatTile label="IPD patients" value={String(c.ipd)} note={`active admits, ${occ}% of beds`} tone={occ >= 90 ? "danger" : undefined} />
         <StatTile label="Emergency patients" value={String(c.er)} note={c.edLate ? `${c.edLate} past the CTAS target` : "all inside the CTAS target"} tone={c.edLate ? "danger" : "ok"} />
         {billing
-          ? <StatTile label="Invoice revenue" value={sar(ops.revenue.generated)} note={`${ops.revenue.invoices} invoices`} />
+          ? <StatTile label="Invoice revenue" value={<Money value={ops.revenue.generated} />} note={`${ops.revenue.invoices} invoices`} />
           : <StatTile label="Ready to send to NPHIES" value={String(c.ready)} note={c.rejected ? `${c.rejected} refused` : "none refused"} tone={c.rejected ? "danger" : undefined} />}
       </div>
 
@@ -107,18 +108,18 @@ export function DashboardPage() {
         <>
           <h2 className="mb-3 mt-7 text-base font-semibold">Money</h2>
           <div className="grid gap-3 sm:grid-cols-3">
-            <StatTile label="Generated" value={sar(ops.revenue.generated)} note={`${ops.revenue.invoices} invoices in this range`} />
-            <StatTile label="Collected" value={sar(ops.revenue.collected)} note={`${Math.round((ops.revenue.collected / Math.max(1, ops.revenue.generated)) * 100)}% of generated`} tone="ok" />
-            <StatTile label="Outstanding" value={sar(ops.revenue.outstanding)} note="Not collected yet" tone="warn" />
+            <StatTile label="Generated" value={<Money value={ops.revenue.generated} />} note={`${ops.revenue.invoices} invoices in this range`} />
+            <StatTile label="Collected" value={<Money value={ops.revenue.collected} />} note={`${Math.round((ops.revenue.collected / Math.max(1, ops.revenue.generated)) * 100)}% of generated`} tone="ok" />
+            <StatTile label="Outstanding" value={<Money value={ops.revenue.outstanding} />} note="Not collected yet" tone="warn" />
           </div>
           <div className="mt-4 grid gap-4 xl:grid-cols-3">
-            <ChartCard title="Revenue by department" note="In SAR. Sample figures." rows={ops.departments.map((d) => ({ Department: d.department, "Revenue (SAR)": d.revenue }))} columns={["Department", "Revenue (SAR)"]} height={250}>
+            <ChartCard title="Revenue by department" note="In Saudi riyals. Sample figures." rows={ops.departments.map((d) => ({ Department: d.department, "Revenue": d.revenue }))} columns={["Department", "Revenue"]} height={250}>
               <HBars data={ops.departments} name="department" value="revenue" label="Revenue" width={118} format={money} />
             </ChartCard>
-            <ChartCard title="Payment generation by insurance company" note="Insurance share in SAR. Sample figures." legend={[{ label: "Collected", color: "var(--chart-1)" }, { label: "Outstanding", color: "var(--chart-3)" }]} rows={ops.payers.map((p) => ({ Payer: p.payer, Collected: p.Collected, Outstanding: p.Outstanding }))} columns={["Payer", "Collected", "Outstanding"]} height={250}>
+            <ChartCard title="Payment generation by insurance company" note="Insurance share, in Saudi riyals. Sample figures." legend={[{ label: "Collected", color: "var(--chart-1)" }, { label: "Outstanding", color: "var(--chart-3)" }]} rows={ops.payers.map((p) => ({ Payer: p.payer, Collected: p.Collected, Outstanding: p.Outstanding }))} columns={["Payer", "Collected", "Outstanding"]} height={250}>
               <Stacked horizontal data={ops.payers} name="payer" width={92} series={[{ key: "Collected", color: "var(--chart-1)" }, { key: "Outstanding", color: "var(--chart-3)" }]} format={money} />
             </ChartCard>
-            <ChartCard title="Cash, card and online payments" note="Receipts by payment method, in SAR. Sample figures." rows={ops.payments.map((p) => ({ Method: p.method, "Amount (SAR)": p.amount }))} columns={["Method", "Amount (SAR)"]} height={250}>
+            <ChartCard title="Cash, card and online payments" note="Receipts by payment method, in Saudi riyals. Sample figures." rows={ops.payments.map((p) => ({ Method: p.method, "Amount": p.amount }))} columns={["Method", "Amount"]} height={250}>
               <VBars data={ops.payments} name="method" value="amount" label="Amount" color="var(--chart-2)" format={money} />
             </ChartCard>
           </div>

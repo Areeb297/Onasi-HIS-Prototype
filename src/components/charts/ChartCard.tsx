@@ -68,7 +68,7 @@ export const TOOLTIP = {
   cursor: { fill: "var(--muted)", opacity: 0.6 },
 } as const;
 
-export function StatTile({ label, value, note, tone }: { label: string; value: string; note: string; tone?: "ok" | "warn" | "danger" }) {
+export function StatTile({ label, value, note, tone }: { label: string; value: React.ReactNode; note: React.ReactNode; tone?: "ok" | "warn" | "danger" }) {
   return (
     <div className="rounded-xl border border-border bg-card px-5 py-4">
       <div className="text-[0.8125rem] font-medium text-muted-foreground">{label}</div>
