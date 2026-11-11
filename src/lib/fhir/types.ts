@@ -45,7 +45,7 @@ export type LabStatus = "received" | "collected" | "in-progress" | "resulted" | 
 export interface LabSpecimen {
   id: string;
   /** SpecimenKey from the catalogue. */
-  key: "BLD" | "SER" | "PLS" | "URN";
+  key: "BLD" | "SER" | "PLS" | "URN" | "NPS";
   collectedAt: string;
   receivedAt?: string;
   collectedBy: string;
@@ -62,6 +62,8 @@ export interface LabResult {
   organism?: { code: string; display: string } | null;
   sens?: { key: string; result: "S" | "I" | "R" }[];
   note?: string;
+  /** Who determined this value: provider-directory id and name. Sent as Observation.performer. */
+  performedBy?: { id: string; name: string };
 }
 
 export interface LabOrder {
@@ -70,6 +72,11 @@ export interface LabOrder {
   visitNumber: string;
   patientId: string;
   codes: string[];
+  /**
+   * Placer order number of each ordered test, by LOINC code. Given once when the test is ordered and never reused,
+   * so removing or reordering tests in an amendment cannot move a number onto another test.
+   */
+  placers?: Record<string, string>;
   priority: Priority;
   /** null = not stated */
   fasting: boolean | null;

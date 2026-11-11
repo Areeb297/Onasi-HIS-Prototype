@@ -1,26 +1,36 @@
 /**
  * Laboratory test catalogue (LOINC) with reference ranges, plus helpers to turn a typed value into an interpretation.
  *
- * Codes: only LOINC codes the author is confident about are left unmarked. Anything else carries `madeUp: true`
- * (shown as "(test code)" in the UI). Reference ranges are generic adult demo values, not clinical guidance.
- * Real mapping of a hospital catalogue must use the IS0200 value sets (see the nphies-uhr skill).
+ * Codes and names were checked against the LOINC table (NLM Clinical Tables look-up, November 2026). A code that is
+ * not confirmed carries `madeUp: true` (shown as "(test code)" in the UI); none is left at present.
+ * Reference ranges are generic adult demo values, not clinical guidance.
+ * Real mapping of a hospital catalogue must use the NHIC "Laboratory Orders and Results" value set.
  */
 
-export type LabDept = "HM" | "CH" | "MB" | "SR";
-export type SpecimenKey = "BLD" | "SER" | "PLS" | "URN";
+/** Short keys used inside the app. What is sent is the LOINC code in LAB_DEPTS. */
+export type LabDept = "HM" | "CH" | "MB" | "SR" | "CO" | "BB" | "UA" | "MO";
+export type SpecimenKey = "BLD" | "SER" | "PLS" | "URN" | "NPS";
 export type ValueKind = "quantity" | "integer" | "string" | "organism";
 export type Interp = "N" | "H" | "L" | "HH" | "LL" | "A" | "POS" | "NEG";
 
-/** HL7 table 0074 codes. Assumption: the "Laboratory Department" value set is not in the snapshot. */
-export const LAB_DEPTS: Record<LabDept, string> = {
-  HM: "Hematology",
-  CH: "Chemistry",
-  MB: "Microbiology",
-  SR: "Serology",
+/**
+ * Section codes from the NPHIES "Laboratory Department" value set (Confluence page id 23234312): LOINC codes,
+ * code system OID 2.16.840.1.113883.6.1. The display is the concept name on that page.
+ */
+export const LAB_DEPTS: Record<LabDept, { code: string; display: string }> = {
+  HM: { code: "18723-7", display: "Hematology Studies" },
+  CH: { code: "18719-5", display: "Biochemistry" },
+  MB: { code: "18725-2", display: "Microbiology" },
+  SR: { code: "18727-8", display: "Serology" },
+  CO: { code: "18720-3", display: "Coagulation Studies" },
+  BB: { code: "18717-9", display: "Blood Banking" },
+  UA: { code: "18729-4", display: "Urinalysis Studies" },
+  MO: { code: "26435-8", display: "Molecular Biology" },
 };
 
-/** SNOMED CT specimen types. Assumption: the "Specimen type" value set is not in the snapshot. */
+/** SNOMED CT specimen types. All are in the NPHIES "Specimen type" value set (CS-Lab-SpecimenType, page id 30736696). */
 export const SPECIMEN_TYPES: Record<SpecimenKey, { code: string; display: string }> = {
+  NPS: { code: "258500001", display: "Nasopharyngeal swab" },
   BLD: { code: "119297000", display: "Blood specimen" },
   SER: { code: "119364003", display: "Serum specimen" },
   PLS: { code: "119361006", display: "Plasma specimen" },
@@ -35,7 +45,7 @@ export interface LabTest {
   dept: LabDept;
   specimen: SpecimenKey;
   kind: ValueKind;
-  /** UCUM unit sent in valueQuantity. */
+  /** UCUM unit sent in valueQuantity. Must be in KSA_LAB_UNITS (lab-units.ts). Leave it out for a number that has no unit. */
   unit?: string;
   /** Unit as people read it, when it differs from UCUM. */
   unitLabel?: string;
@@ -67,7 +77,7 @@ export const LAB_CATALOG: LabTest[] = [
   T({ code: "58410-2", display: "CBC panel - Blood by Automated count", short: "CBC", dept: "HM", specimen: "BLD", kind: "quantity", common: true, panel: ["718-7", "6690-2", "777-3", "789-8", "4544-3", "787-2"] }),
   T({ code: "24323-8", display: "Comprehensive metabolic 2000 panel - Serum or Plasma", short: "CMP", dept: "CH", specimen: "SER", kind: "quantity", common: true, panel: ["2345-7", "3094-0", "2160-0", "2951-2", "2823-3", "2075-0", "17861-6", "1751-7", "1742-6", "1920-8", "6768-6", "1975-2"] }),
   T({ code: "24331-1", display: "Lipid 1996 panel - Serum or Plasma", short: "Lipid Panel", dept: "CH", specimen: "SER", kind: "quantity", common: true, panel: ["2093-3", "2571-8", "2085-9", "13457-7"] }),
-  T({ code: "24357-6", display: "Urinalysis macro (dipstick) panel - Urine", short: "Urinalysis", dept: "CH", specimen: "URN", kind: "string", common: true, panel: ["5811-5", "5803-2", "25428-4", "20454-5"] }),
+  T({ code: "24357-6", display: "Urinalysis macro (dipstick) panel - Urine", short: "Urinalysis", dept: "UA", specimen: "URN", kind: "string", common: true, panel: ["5811-5", "5803-2", "25428-4", "20454-5"] }),
 
   // ---- hematology
   T({ code: "718-7", display: "Hemoglobin [Mass/volume] in Blood", short: "Hemoglobin", dept: "HM", specimen: "BLD", kind: "quantity", unit: "g/dL", low: 13.0, high: 17.0, lowF: 12.0, highF: 15.5, critLow: 7.0, critHigh: 20.0,
@@ -77,10 +87,10 @@ export const LAB_CATALOG: LabTest[] = [
   T({ code: "777-3", display: "Platelets [#/volume] in Blood by Automated count", short: "Platelets", dept: "HM", specimen: "BLD", kind: "quantity", unit: "10*3/uL", unitLabel: "x10^3/uL", low: 150, high: 400, critLow: 20, critHigh: 1000 }),
   T({ code: "789-8", display: "Erythrocytes [#/volume] in Blood by Automated count", short: "RBC", dept: "HM", specimen: "BLD", kind: "quantity", unit: "10*6/uL", unitLabel: "x10^6/uL", low: 4.5, high: 5.9, lowF: 4.1, highF: 5.1 }),
   T({ code: "4544-3", display: "Hematocrit [Volume Fraction] of Blood by Automated count", short: "Hematocrit", dept: "HM", specimen: "BLD", kind: "quantity", unit: "%", low: 40, high: 52, lowF: 36, highF: 46, critLow: 20, critHigh: 60 }),
-  T({ code: "787-2", display: "MCV [Entitic volume] by Automated count", short: "MCV", dept: "HM", specimen: "BLD", kind: "quantity", unit: "fL", low: 80, high: 100 }),
-  T({ code: "6301-6", display: "INR in Platelet poor plasma by Coagulation assay", short: "INR", dept: "HM", specimen: "PLS", kind: "quantity", unit: "{INR}", unitLabel: "", low: 0.8, high: 1.2, critHigh: 5.0, common: true }),
-  T({ code: "5902-2", display: "Prothrombin time (PT)", short: "PT", dept: "HM", specimen: "PLS", kind: "quantity", unit: "s", low: 11, high: 13.5 }),
-  T({ code: "883-9", display: "ABO group [Type] in Blood", short: "ABO Group", dept: "HM", specimen: "BLD", kind: "string", choices: ["A", "B", "AB", "O"], normal: ["A", "B", "AB", "O"], refText: "No reference range. Report the ABO group." }),
+  T({ code: "787-2", display: "MCV [Entitic mean volume] in Red Blood Cells by Automated count", short: "MCV", dept: "HM", specimen: "BLD", kind: "quantity", unit: "fL", low: 80, high: 100 }),
+  T({ code: "6301-6", display: "INR in Platelet poor plasma by Coagulation assay", short: "INR", dept: "CO", specimen: "PLS", kind: "quantity", unit: "{INR}", unitLabel: "", low: 0.8, high: 1.2, critHigh: 5.0, common: true }),
+  T({ code: "5902-2", display: "Prothrombin time (PT)", short: "PT", dept: "CO", specimen: "PLS", kind: "quantity", unit: "s", low: 11, high: 13.5 }),
+  T({ code: "883-9", display: "ABO group [Type] in Blood", short: "ABO Group", dept: "BB", specimen: "BLD", kind: "string", choices: ["A", "B", "AB", "O"], normal: ["A", "B", "AB", "O"], refText: "No reference range. Report the ABO group." }),
 
   // ---- chemistry
   T({ code: "2345-7", display: "Glucose [Mass/volume] in Serum or Plasma", short: "Glucose", dept: "CH", specimen: "SER", kind: "quantity", unit: "mg/dL", low: 70, high: 99, critLow: 50, critHigh: 500, common: true,
@@ -106,15 +116,15 @@ export const LAB_CATALOG: LabTest[] = [
   // Numeric results sent as an integer or a string, with a text range that has < or >.
   T({ code: "1988-5", display: "C reactive protein [Mass/volume] in Serum or Plasma", short: "CRP", dept: "CH", specimen: "SER", kind: "integer", unit: "mg/L", high: 5, critHigh: 200, refText: "< 5 mg/L", common: true }),
   T({ code: "10839-9", display: "Troponin I.cardiac [Mass/volume] in Serum or Plasma", short: "Troponin I", dept: "CH", specimen: "SER", kind: "string", unit: "ng/mL", high: 0.04, critHigh: 0.5, refText: "< 0.04 ng/mL", common: true }),
-  // ---- urinalysis members
-  T({ code: "5811-5", display: "Specific gravity of Urine by Test strip", short: "Specific Gravity", dept: "CH", specimen: "URN", kind: "quantity", unit: "1", unitLabel: "", low: 1.005, high: 1.03 }),
-  T({ code: "5803-2", display: "pH of Urine by Test strip", short: "Urine pH", dept: "CH", specimen: "URN", kind: "quantity", unit: "[pH]", unitLabel: "pH", low: 4.5, high: 8.0 }),
-  T({ code: "25428-4", display: "Glucose [Presence] in Urine by Test strip", short: "Urine Glucose", dept: "CH", specimen: "URN", kind: "string", choices: ["Negative", "Trace", "1+", "2+", "3+", "4+"], normal: ["Negative"], refText: "Negative" }),
-  T({ code: "20454-5", display: "Protein [Presence] in Urine by Test strip", short: "Urine Protein", dept: "CH", specimen: "URN", kind: "string", choices: ["Negative", "Trace", "1+", "2+", "3+", "4+"], normal: ["Negative"], refText: "Negative" }),
+  // ---- urinalysis members. Specific gravity has no unit: "1" is not in the KSA unit value set, so the number is sent alone.
+  T({ code: "5811-5", display: "Specific gravity of Urine by Test strip", short: "Specific Gravity", dept: "UA", specimen: "URN", kind: "quantity", low: 1.005, high: 1.03 }),
+  T({ code: "5803-2", display: "pH of Urine by Test strip", short: "Urine pH", dept: "UA", specimen: "URN", kind: "quantity", unit: "[pH]", unitLabel: "pH", low: 4.5, high: 8.0 }),
+  T({ code: "25428-4", display: "Glucose [Presence] in Urine by Test strip", short: "Urine Glucose", dept: "UA", specimen: "URN", kind: "string", choices: ["Negative", "Trace", "1+", "2+", "3+", "4+"], normal: ["Negative"], refText: "Negative" }),
+  T({ code: "20454-5", display: "Protein [Presence] in Urine by Test strip", short: "Urine Protein", dept: "UA", specimen: "URN", kind: "string", choices: ["Negative", "Trace", "1+", "2+", "3+", "4+"], normal: ["Negative"], refText: "Negative" }),
 
   // ---- serology and molecular
-  T({ code: "94500-6", display: "SARS-CoV-2 RNA [Presence] in Respiratory specimen by NAA with probe detection", short: "COVID-19 PCR", dept: "SR", specimen: "BLD", kind: "string", choices: ["Not Detected", "Detected"], normal: ["Not Detected"], refText: "Not Detected", common: true }),
-  T({ code: "2106-3", display: "Choriogonadotropin (pregnancy test) [Presence] in Urine", short: "Pregnancy Test (Urine)", dept: "SR", specimen: "URN", kind: "string", choices: ["Negative", "Positive"], normal: ["Negative"], refText: "Negative" }),
+  T({ code: "94500-6", display: "SARS-CoV-2 (COVID-19) RNA [Presence] in Respiratory system specimen by NAA with probe detection", short: "COVID-19 PCR", dept: "MO", specimen: "NPS", kind: "string", choices: ["Not Detected", "Detected"], normal: ["Not Detected"], refText: "Not Detected", common: true }),
+  T({ code: "2106-3", display: "Choriogonadotropin [Presence] in Urine", short: "Pregnancy Test (Urine)", dept: "SR", specimen: "URN", kind: "string", choices: ["Negative", "Positive"], normal: ["Negative"], refText: "Negative" }),
 
   // ---- microbiology
   T({ code: "630-4", display: "Bacteria identified in Urine by Culture", short: "Urine Culture", dept: "MB", specimen: "URN", kind: "organism", refText: "No growth", common: true }),
@@ -145,14 +155,14 @@ export const ORGANISMS: Organism[] = [
   { code: "52499004", display: "Pseudomonas aeruginosa" },
 ];
 
-/** Susceptibility codes are not confirmed LOINC codes, so all are marked made-up and shown as "(test code)". */
-export const ANTIBIOTICS: { key: string; code: string; display: string; madeUp: true }[] = [
-  { key: "AMP", code: "18864-9", display: "Ampicillin [Susceptibility]", madeUp: true }, // made-up
-  { key: "AMC", code: "18862-3", display: "Amoxicillin+Clavulanate [Susceptibility]", madeUp: true }, // made-up
-  { key: "CRO", code: "18886-2", display: "Ceftriaxone [Susceptibility]", madeUp: true }, // made-up
-  { key: "CIP", code: "18906-8", display: "Ciprofloxacin [Susceptibility]", madeUp: true }, // made-up
-  { key: "GEN", code: "18928-2", display: "Gentamicin [Susceptibility]", madeUp: true }, // made-up
-  { key: "NIT", code: "18955-5", display: "Nitrofurantoin [Susceptibility]", madeUp: true }, // made-up
+/** LOINC susceptibility codes, checked against the LOINC table. */
+export const ANTIBIOTICS: { key: string; code: string; display: string }[] = [
+  { key: "AMP", code: "18864-9", display: "Ampicillin [Susceptibility]" },
+  { key: "AMC", code: "18862-3", display: "Amoxicillin+Clavulanate [Susceptibility]" },
+  { key: "CRO", code: "18895-3", display: "Ceftriaxone [Susceptibility]" }, // 18886-2 is Cefotaxime
+  { key: "CIP", code: "18906-8", display: "Ciprofloxacin [Susceptibility]" },
+  { key: "GEN", code: "18928-2", display: "Gentamicin [Susceptibility]" },
+  { key: "NIT", code: "18955-5", display: "Nitrofurantoin [Susceptibility]" },
 ];
 
 /* ---------- helpers ---------- */

@@ -17,7 +17,7 @@ export type FillType = "FF" | "FFP" | "FFC" | "RF" | "RFP" | "RFC";
 
 export interface Drug {
   id: string;
-  /** Test code. Not a real "KSA Prescription Pharmacy Item Name" value. */
+  /** Demo code (DEMO-DRG-nnn). Not a real "KSA Prescription Pharmacy Item Name" (MRID) value. */
   code: string;
   generic: string;
   /** Fictional brand name used as the dispensed product. */
@@ -110,8 +110,11 @@ export interface Prescription {
   prescriberId: string;
   authoredAt: string;
   usage: UsageSetting;
-  /** Overarching prescription id. Replaced by the Raqeeb reference id after the first accepted submission. */
+  /** Overarching prescription id. Replaced by the reference id nphies returns after the first accepted submission (all medication types). */
   groupId: string;
+  /** Reference id returned by nphies on the first accepted submission. Set for every prescription. */
+  nationalRef?: string;
+  /** The same reference id, kept only when the prescription is in Raqeeb scope. */
   raqeebRef?: string;
   /** True when the items are N, C or R. Controlled items are kept on their own prescription. */
   controlled: boolean;
@@ -148,7 +151,7 @@ export interface Dispense {
   handedOverAt: string;
   lines: DispenseLine[];
   /** Raqeeb secure code workflow, only for controlled items in Raqeeb scope. */
-  secure?: { mode: "authenticated" | "override"; value?: string; justification?: string };
+  secure?: { mode: "authenticated" | "override"; value?: string; /** Code from OVERRIDE_REASONS. */ justification?: string };
   /** Closed-loop scan result. */
   verification: { patientScan: boolean; drugScans: string[]; skippedReason?: string };
 }

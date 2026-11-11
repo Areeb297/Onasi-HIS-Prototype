@@ -9,7 +9,7 @@
 import type { Encounter, Patient } from "../model";
 import { OID } from "../reference-data";
 import {
-  EXT, FILLER_OID, PROFILE, SPECIMEN_OID, SYS, addDays, buildParticipants, codeable, coding, fhirDateTime, identifier, makeBundle,
+  EXT, FILLER_OID, PROFILE, SPECIMEN_OID, SYS, TERM, addDays, buildParticipants, codeable, coding, fhirDateTime, identifier, makeBundle,
   narrative, orgIdentifier, oidSystem, participantResources, quantity, refTo, uuid, versionExtension, type Json, type Person,
 } from "./common";
 import {
@@ -64,14 +64,23 @@ export function specimenResource(s: LabSpecimen, forReport: boolean, receiverRol
   };
 }
 
+/** One section per laboratory department. The code is LOINC from the "Laboratory Department" value set (page id 23234312). */
 const deptSection = (dept: LabDept, text: string, entries: Json[]): Json => ({
-  title: LAB_DEPTS[dept],
-  code: { coding: [coding(SYS.labDepartment, dept, LAB_DEPTS[dept])], text: LAB_DEPTS[dept] },
+  title: LAB_DEPTS[dept].display,
+  code: { coding: [coding(TERM.loinc, LAB_DEPTS[dept].code, LAB_DEPTS[dept].display)], text: LAB_DEPTS[dept].display },
   text: narrative(text),
   entry: entries,
 });
 
-const placerIdentifier = (order: LabOrder, i: number) => identifier(oidSystem(OID.participant), `${order.id}-${i + 1}`, "PLAC");
+/**
+ * Placer order number of one ordered test. It is stored on the order when the test is ordered (order.placers).
+ * Orders made before that field existed fall back to the position in the list.
+ */
+export const placerNumber = (order: Pick<LabOrder, "id" | "codes" | "placers">, code: string): string =>
+  order.placers?.[code] ?? `${order.id}-${order.codes.indexOf(code) + 1}`;
+
+const placerIdentifier = (order: LabOrder, code: string) => identifier(oidSystem(OID.participant), placerNumber(order, code), "PLAC");
+const fillerNumber = (order: LabOrder, code: string) => placerNumber(order, code).replace(/^LO-/, "ACC");
 
 /* ======================================================================== */
 /* Laboratory Order                                                          */
@@ -87,7 +96,7 @@ export function buildLabOrderBundle(ctx: LabBuildCtx): Json {
 
   const specimens = order.specimens.map((s) => ({ key: s.key, res: specimenResource(s, false) }));
 
-  const srs = tests.map((t, i) => {
+  const srs = tests.map((t) => {
     const sp = specimens.find((s) => s.key === t.specimen);
     return {
       test: t,
@@ -95,11 +104,11 @@ export function buildLabOrderBundle(ctx: LabBuildCtx): Json {
         resourceType: "ServiceRequest",
         id: uuid(),
         meta: { profile: [PROFILE.serviceRequest] },
-        identifier: [placerIdentifier(order, i)],
+        identifier: [placerIdentifier(order, t.code)],
         status: "active", // an ORDER is always active. The cancellation lives in Composition.status.
         intent: "order",
         priority: order.priority,
-        code: codeable(SYS.loinc, t.code, t.display),
+        code: codeable(TERM.loinc, t.code, t.display),
         subject: refTo(parts.patient),
         requester: refTo(role),
         occurrencePeriod: { start: fhirDateTime(order.orderedAt), end: addDays(order.orderedAt, 30) },
@@ -128,9 +137,9 @@ export function buildLabOrderBundle(ctx: LabBuildCtx): Json {
   const extra: Json[] = [];
   const dx = enc.dx[0];
   if (dx) {
-    extra.push(aoi("148006", "Preliminary diagnosis", { valueCodeableConcept: { coding: [coding("http://hl7.org/fhir/sid/icd-10-am", dx.code, dx.text)], text: dx.text } }));
+    extra.push(aoi("148006", "Preliminary diagnosis", { valueCodeableConcept: { coding: [coding(TERM.icd10am, dx.code, dx.text)], text: dx.text } }));
   }
-  extra.push(aoi("424144002", "Current Chronological Age", { valueQuantity: { value: ageYears(patient.dob, now), unit: "years", system: SYS.ucum, code: "a" } }));
+  extra.push(aoi("424144002", "Current Chronological Age", { valueQuantity: { value: ageYears(patient.dob, now), unit: "years", system: TERM.ucum, code: "a" } }));
   const kg = Number(enc.vitals?.weight);
   if (kg > 0) extra.push(aoi("363808001", "Body Weight Measure", { valueQuantity: quantity(kg, "kg") }));
   if (order.fasting === true) extra.push(aoi("16985007", "Fasting", { valueBoolean: true }));
@@ -191,7 +200,8 @@ function resultValue(t: LabTest, r: LabResult): Json {
     return { valueString: v || "No growth" };
   }
   const num = parseNumeric(v);
-  if (t.kind === "quantity" && num && !num.op && t.unit) return { valueQuantity: quantity(num.n, t.unit) };
+  // A number without a unit (specific gravity) is a Quantity with only a value.
+  if (t.kind === "quantity" && num && !num.op) return { valueQuantity: t.unit ? quantity(num.n, t.unit) : { value: num.n } };
   if (t.kind === "integer" && num && !num.op && Number.isInteger(num.n)) return { valueInteger: num.n };
   return { valueString: v };
 }
@@ -199,9 +209,10 @@ function resultValue(t: LabTest, r: LabResult): Json {
 function referenceRange(t: LabTest, sex: "M" | "F"): Json {
   const sr = structuredRange(t, sex);
   const rr: Json = { type: { coding: [coding(SYS.referenceRangeMeaning, "normal", "Normal Range")] }, text: refTextFor(t, sex) };
-  if (sr && t.unit) {
-    if (sr.low !== undefined) rr.low = quantity(sr.low, t.unit);
-    if (sr.high !== undefined) rr.high = quantity(sr.high, t.unit);
+  if (sr) {
+    const q = (n: number): Json => (t.unit ? quantity(n, t.unit) : { value: n });
+    if (sr.low !== undefined) rr.low = q(sr.low);
+    if (sr.high !== undefined) rr.high = q(sr.high);
   }
   return rr;
 }
@@ -217,30 +228,38 @@ export function buildLabReportBundle(ctx: LabReportCtx): Json {
   const { patient, enc, order, orderer, performer, authenticator } = ctx;
   const now = ctx.now ?? new Date().toISOString();
   const reportDt = fhirDateTime(now);
-  const parts = buildParticipants(patient, enc, [performer, authenticator, orderer], order.orderedAt);
+  // Each result names who determined it. Results saved before that was recorded fall back to the person publishing.
+  const resultPerformers = Object.values(order.results).map((r) => r.performedBy).filter((p): p is Person => !!p);
+  const parts = buildParticipants(patient, enc, [performer, authenticator, orderer, ...resultPerformers], order.orderedAt);
   const techRole = parts.roles[performer.id].role;
+  const roleOf = (r?: LabResult): Json => parts.roles[(r?.performedBy ?? performer).id].role;
   const authRole = parts.roles[authenticator.id].role;
   const orderRole = parts.roles[orderer.id].role;
   const startDt = fhirDateTime(order.specimens[0]?.collectedAt ?? order.orderedAt);
 
   const specimens = order.specimens.map((s) => ({ key: s.key, res: specimenResource(s, true, techRole) }));
 
-  const srs = orderedTests(order).map((t, i) => ({
-    test: t,
-    res: {
-      resourceType: "ServiceRequest",
-      id: uuid(),
-      meta: { profile: [PROFILE.serviceRequestLabReport] },
-      identifier: [placerIdentifier(order, i), identifier(oidSystem(FILLER_OID), `${order.id.replace("LO-", "ACC")}-${i + 1}`, "FILL")],
-      status: "completed",
-      intent: "order",
-      priority: order.priority,
-      code: codeable(SYS.loinc, t.code, t.display),
-      subject: refTo(parts.patient),
-      requester: refTo(orderRole),
-      occurrencePeriod: { start: fhirDateTime(order.orderedAt), end: addDays(order.orderedAt, 30) },
-    } as Json,
-  }));
+  const srs = orderedTests(order).map((t) => {
+    const sp = specimens.find((s) => s.key === t.specimen);
+    return {
+      test: t,
+      res: {
+        resourceType: "ServiceRequest",
+        id: uuid(),
+        meta: { profile: [PROFILE.serviceRequestLabReport] },
+        identifier: [placerIdentifier(order, t.code), identifier(oidSystem(FILLER_OID), fillerNumber(order, t.code), "FILL")],
+        status: "completed",
+        intent: "order",
+        priority: order.priority,
+        code: codeable(TERM.loinc, t.code, t.display),
+        subject: refTo(parts.patient),
+        requester: refTo(orderRole),
+        occurrencePeriod: { start: fhirDateTime(order.orderedAt), end: addDays(order.orderedAt, 30) },
+        // Required if known (page id 67993727): the specimen this order was performed on.
+        ...(sp ? { specimen: [refTo(sp.res)] } : {}),
+      } as Json,
+    };
+  });
 
   const observations: Json[] = [];
   /** Top-level results per department, for the composition sections and DiagnosticReport.result. */
@@ -258,10 +277,10 @@ export function buildLabReportBundle(ctx: LabReportCtx): Json {
       basedOn: [refTo(sr)],
       status: r.status,
       category: [{ coding: [coding(SYS.observationCategory, "laboratory", "Laboratory")] }],
-      code: codeable(SYS.loinc, t.code, t.display),
+      code: codeable(TERM.loinc, t.code, t.display),
       subject: refTo(parts.patient),
       effectivePeriod: { start: startDt, end: fhirDateTime(r.at) },
-      performer: [refTo(techRole)],
+      performer: [refTo(roleOf(r))],
       ...resultValue(t, r),
       interpretation: [{ coding: [coding(SYS.interpretation, r.interp, INTERP_TEXT[r.interp])], text: INTERP_TEXT[r.interp] }],
       ...(sp ? { specimen: refTo(sp.res) } : {}),
@@ -285,10 +304,10 @@ export function buildLabReportBundle(ctx: LabReportCtx): Json {
         basedOn: [refTo(sr)],
         status: panelStatus(members.map((x) => order.results[x.m.code].status)),
         category: [{ coding: [coding(SYS.observationCategory, "laboratory", "Laboratory")] }],
-        code: codeable(SYS.loinc, t.code, t.display),
+        code: codeable(TERM.loinc, t.code, t.display),
         subject: refTo(parts.patient),
         effectivePeriod: { start: startDt, end: ends[ends.length - 1] },
-        performer: [refTo(techRole)],
+        performer: [refTo(roleOf(order.results[members[0].m.code]))],
         // A panel has no value of its own, only members.
         referenceRange: [{ type: { coding: [coding(SYS.referenceRangeMeaning, "normal", "Normal Range")] }, text: "undefined" }],
         hasMember: members.map((x) => refTo(x.l!.obs)),
@@ -314,10 +333,10 @@ export function buildLabReportBundle(ctx: LabReportCtx): Json {
             basedOn: [refTo(sr)],
             status: r.status === "cancelled" ? "cancelled" : r.status,
             category: [{ coding: [coding(SYS.observationCategory, "laboratory", "Laboratory")] }],
-            code: codeable(SYS.loinc, abx.code, abx.display), // made-up
+            code: codeable(TERM.loinc, abx.code, abx.display),
             subject: refTo(parts.patient),
             effectivePeriod: { start: startDt, end: fhirDateTime(r.at) },
-            performer: [refTo(techRole)],
+            performer: [refTo(roleOf(r))],
             valueCodeableConcept: { coding: [coding(SYS.interpretation, s.result, s.result === "S" ? "Susceptible" : s.result === "I" ? "Intermediate" : "Resistant")], text: s.result },
             interpretation: [{ coding: [coding(SYS.interpretation, s.result)] }],
             ...(sp ? { specimen: refTo(sp.res) } : {}),

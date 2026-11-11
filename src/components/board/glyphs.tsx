@@ -50,7 +50,7 @@ export function ModalityGlyph({ modality, className }: { modality: string; class
   return (
     <svg viewBox="0 0 24 24" className={cn("size-6 shrink-0", className)} role="img" aria-label={`${modality} scanner`}>
       <title>{modality}</title>
-      {modality === "CR" && (
+      {(modality === "DX" || modality === "CR") && (
         <g {...common}>
           <rect x="7" y="2.5" width="10" height="5" rx="1.2" />
           <path d="M9 9.5 L5.5 17.5 M15 9.5 L18.5 17.5 M12 9.5 V17.5" strokeDasharray="1.6 2" />
@@ -93,7 +93,7 @@ export function ModalityGlyph({ modality, className }: { modality: string; class
           <path d="M3.5 4.7 H5.5 M3.5 11.7 H5.5 M3.5 18.7 H5.5 M18.5 4.7 H20.5 M18.5 11.7 H20.5 M18.5 18.7 H20.5" strokeDasharray="0.5 1.5" />
         </g>
       )}
-      {!["CR", "CT", "MR", "US", "MG", "BMD"].includes(modality) && (
+      {!["DX", "CR", "CT", "MR", "US", "MG", "BMD"].includes(modality) && (
         <g {...common}>
           <rect x="3" y="4" width="18" height="16" rx="3" />
           <circle cx="12" cy="12" r="3.5" />

@@ -1,6 +1,7 @@
 import type { EventId, SegId } from "./spec";
 
-export type PatientClass = "I" | "O" | "E" | "P";
+/** PV1-2, from CS-Adm-PatientClass. A pre-admission is a visit status, not a class. */
+export type PatientClass = "I" | "O" | "E";
 export type EncounterStatus = "preadmit" | "active" | "discharged" | "cancelled";
 
 /** Registration details kept by the HIS. Most are not sent in ADT messages. */
@@ -53,9 +54,9 @@ export interface Patient {
   sex: "M" | "F";
   /** NHIC Health ID. nphies needs it in PID-3. Made-up values only. */
   healthId: string;
-  /** Country code for PID-28 (assumed ISO 3166 numeric, 999 = unknown). */
+  /** Country code for PID-28, from CS-Adm-Country (ISO 3166 alpha-3, 999 = unknown). */
   nationality: string;
-  /** PID-16. S single, M married, D divorced, W widowed. */
+  /** PID-16, from CS-Adm-MaritalStatus. S single, M married, D divorced, W widowed, A separated, U unknown. */
   maritalStatus: string;
   /** PID-11. Saudi Post short address, AAAANNNN. */
   address: string;
@@ -86,17 +87,35 @@ export interface Dx {
   text: string;
   /** A = admitting, W = working, F = final */
   type: "A" | "W" | "F";
+  /** When the diagnosis was made. Local date-time. DG1-5. */
+  at?: string;
+  /** ZDG1-3 condition onset flag (CS-Clinical-ConditionOnsetFlag: 1, 2 or 9). Inpatients only. */
+  onset?: "1" | "2" | "9";
 }
 
 export interface Pr {
   code: string;
   text: string;
+  /** When the procedure started. Local date-time. PR1-5 (required). */
+  at?: string;
+  /** When the procedure ended. Local date-time. ZPR1-3. */
+  endAt?: string;
+  /** Code list the code comes from. Decides the coding system OID in PR1-3. ACHI when empty. */
+  system?: "ACHI" | "ADA" | "IMG";
+  /** PR1-6 functional type: A anesthesia, D diagnostic, I invasive (other), P treatment. */
+  type?: "A" | "D" | "I" | "P";
+  /** Doctor id. PR1-11. */
+  surgeon?: string;
 }
 
 export interface Allergy {
   text: string;
   severity: "SV" | "MO" | "MI";
   reaction: string;
+  /** AL1-2, from CS-Allergy-Type: DALG drug, FALG food, ALG other. Drug when empty. */
+  type?: "DALG" | "FALG" | "ALG";
+  /** SNOMED CT code of the allergen for AL1-3. Empty means free text only. */
+  code?: string;
 }
 
 export interface Complaint {
@@ -128,8 +147,15 @@ export type CtasLevel = 1 | 2 | 3 | 4 | 5;
 export interface EdData {
   /** ZPV1.17. Local date-time. */
   arrivalAt: string;
-  /** ZPV1.18 */
-  arrivalMode: "Walk-in" | "Ambulance" | "Referral" | "Police" | "Other";
+  /**
+   * ZPV1.18. The names from "Other" on are the published CS-Adm-EDArrivalMode list.
+   * "Walk-in", "Ambulance", "Referral" and "Police" are HIS values kept so saved records still open.
+   */
+  arrivalMode:
+    | "Walk-in" | "Ambulance" | "Referral" | "Police" | "Other"
+    | "Ground EMS Ambulance" | "Ground MOH Ambulance" | "Ground Civil Defense Ambulance" | "Ground Military Ambulance"
+    | "Ground Private Ambulance" | "EMS Air Ambulance" | "Air Civil Defense Ambulance" | "Air Military Ambulance"
+    | "Police Vehicle" | "Other Government Vehicles" | "Personal Vehicle" | "Not Stated";
   /** ZPV1.21 */
   triageAt?: string;
   /** ZPV1.22. CTAS level 1 to 5. */
@@ -153,7 +179,7 @@ export interface EdData {
   seenAt?: string;
   stage?: "treatment" | "results" | "ready";
   /** ZPV1.20 */
-  disposition?: "Discharged" | "Admitted" | "Transferred" | "Left Without Being Seen" | "Left Against Advice" | "Died";
+  disposition?: "Discharged" | "Admitted" | "Transferred" | "Left Without Being Seen" | "Left Against Advice" | "Died" | "Dead On Arrival";
   dispositionAt?: string;
 }
 
@@ -171,6 +197,12 @@ export interface Encounter {
   admitting: string;
   service: string;
   reason: string;
+  /** ICD-10-AM code for the reason, when it is coded. PV2-3 is sent only with a code. */
+  reasonCode?: string;
+  /** Doctor id. PV1-9. */
+  consulting?: string;
+  /** PV1-4, from CS-Adm-AdmissionMethod. */
+  admissionMethod?: string;
   /** Local date-time strings: YYYY-MM-DDTHH:mm */
   admitAt?: string;
   dischargeAt?: string;
@@ -192,12 +224,6 @@ export interface Encounter {
   dirty?: boolean;
 }
 
-export interface ZFields {
-  ZPV1: string[];
-  ZDG1: string[];
-  ZPR1: string[];
-}
-
 /** Everything a scenario screen can fill in. Each event uses the part it needs. */
 export interface ScenarioForm {
   patientId: string;
@@ -211,8 +237,14 @@ export interface ScenarioForm {
   admitting: string;
   /** PV1-8, referring doctor. Empty means none. */
   referring: string;
+  /** PV1-9, consulting doctor. Empty means none. */
+  consulting: string;
+  /** PV1-4, from CS-Adm-AdmissionMethod. */
+  admissionMethod: string;
   service: string;
   reason: string;
+  /** ICD-10-AM code for the reason. Empty means free text only. */
+  reasonCode: string;
   eventAt: string;
   admitAt: string;
   dischargeAt: string;
@@ -232,7 +264,6 @@ export interface ScenarioForm {
   /** A50 */
   newVisitNumber: string;
   oldPatientId: string;
-  z: ZFields;
 }
 
 export type LogSource = "seed" | "user" | "runner";

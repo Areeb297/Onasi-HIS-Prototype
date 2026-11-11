@@ -9,6 +9,7 @@ import {
   EXT, FHIR_DATETIME_TZ, PROFILE, SYS, byType, findByRef, firstIdentifier, need, validateBundleBase, validateParticipants,
   validateReferences, type Json,
 } from "./common";
+import { KSA_LAB_UNITS } from "./lab-units";
 
 export interface ValidateCtx {
   /** The visit number on the chart. The Encounter in the bundle must carry the same one. */
@@ -23,6 +24,34 @@ export const PRIORITY_CODES = ["routine", "urgent", "asap", "stat"];
 const AOI_CODES: Record<string, "cc" | "q" | "b"> = {
   "148006": "cc", "102478008": "cc", "80943009": "cc", "424144002": "q", "50373000": "q", "363808001": "q", "16985007": "b", "440565004": "b",
 };
+
+/**
+ * Fixed values from the guide. The validator checks against these, not against what the builder happens to send.
+ *
+ * "Laboratory Department" value set, Confluence page id 23234312: LOINC codes for Composition.section.code.
+ */
+export const LAB_DEPARTMENT_CODES: Record<string, string> = {
+  "27898-6": "Anatomic Pathology", "18717-9": "Blood Banking", "18719-5": "Biochemistry", "26438-2": "Cytology", "18727-8": "Serology",
+  "18725-2": "Microbiology", "26435-8": "Molecular Biology", "18728-6": "Toxicology", "26436-6": "Laboratory Studies",
+  "18767-4": "Blood Gas Studies", "18768-2": "Cell Counts + Differential Studies", "18718-7": "Cell Marker Studies",
+  "26437-4": "Chemistry Challenge Studies", "18720-3": "Coagulation Studies", "18722-9": "Fertility Studies", "18723-7": "Hematology Studies",
+  "18724-5": "HLA Studies", "18769-0": "Microbial Susceptibility Tests", "18721-1": "Therapeutic Drug Monitoring Studies",
+  "18729-4": "Urinalysis Studies",
+};
+/** Microbiology in the Laboratory Department value set. Used by the Seha minimum "abnormal microbiology result". */
+const MICROBIOLOGY_SECTION = "18725-2";
+/** LOINC and UCUM may be named by OID (as in the official samples) or by URL. The guide does not fix the form for these elements. */
+const LOINC_SYSTEMS = ["urn:oid:2.16.840.1.113883.6.1", "http://loinc.org"];
+const UCUM_SYSTEMS = ["urn:oid:2.16.840.1.113883.6.8", "http://unitsofmeasure.org"];
+
+/** Problems with the unit of a Quantity: it must be UCUM and in the "KSA Laboratory Observation Units" value set (page id 23135664). */
+function unitProblem(q: Json | undefined): string | null {
+  if (!q || (q.unit === undefined && q.code === undefined && q.system === undefined)) return null; // a plain number has no unit to check
+  const unit = (q.code ?? q.unit) as string;
+  if (!KSA_LAB_UNITS.has(unit)) return `unit ${unit} is not in the KSA Laboratory Observation Units value set`;
+  if (!UCUM_SYSTEMS.includes(q.system)) return "unit system must be UCUM";
+  return null;
+}
 
 export const compositionOf = (b: Json): Json | undefined => byType(b, "Composition")[0];
 export const versionOf = (b: Json): number => {
@@ -57,6 +86,13 @@ export function compositionChecks(comp: Json | undefined, c: Check[], o: { title
 function sectionChecks(b: Json, comp: Json | undefined, c: Check[], what: string) {
   const sections = (comp?.section ?? []) as Json[];
   need(c, sections.length >= 1, `${sections.length} ${what} section(s).`, `At least one ${what} section is required.`);
+  const wrongDept = sections.filter((s) => !(s.code?.coding?.[0]?.code in LAB_DEPARTMENT_CODES) || !LOINC_SYSTEMS.includes(s.code?.coding?.[0]?.system));
+  need(
+    c,
+    wrongDept.length === 0,
+    "Every section code is a LOINC code from the Laboratory Department value set.",
+    `Section code not in the Laboratory Department value set (LOINC, for example 18723-7 Hematology Studies): ${wrongDept.map((s) => s.code?.coding?.[0]?.code ?? "none").join(", ")}.`,
+  );
   const bad = sections.filter((s) => !s.code?.coding?.[0]?.code || !s.title || !s.text?.div || !(s.entry ?? []).length);
   need(c, bad.length === 0, "Every section has code, title, narrative text and entries.", `${bad.length} section(s) lack a code, title, text or entries.`);
   const unresolved = sections.flatMap((s) => (s.entry ?? []) as Json[]).filter((e) => !findByRef(b, e.reference));
@@ -110,7 +146,7 @@ export function validateLabOrderBundle(b: Json, ctx: ValidateCtx = {}): Check[] 
       !sr.subject?.reference && "subject",
       !(sr.occurrencePeriod?.start && sr.occurrencePeriod?.end) && "occurrencePeriod",
       !PRIORITY_CODES.includes(sr.priority) && "priority",
-      sr.code?.coding?.[0]?.system !== SYS.loinc && "LOINC code",
+      !LOINC_SYSTEMS.includes(sr.code?.coding?.[0]?.system) && "LOINC code",
       sr.orderDetail && "orderDetail (modality) is for radiology only",
     ].filter(Boolean);
     if (problems.length) bad.push(`${sr.code?.coding?.[0]?.code ?? "?"}: ${problems.join(", ")}`);
@@ -174,7 +210,7 @@ export function validateLabReportBundle(b: Json, ctx: ValidateCtx = {}): Check[]
     if ((o.basedOn ?? []).length !== 1) add("basedOn (exactly one ServiceRequest)");
     if (!OBS_STATUSES.includes(o.status)) add("status");
     if (o.category?.[0]?.coding?.[0]?.code !== "laboratory") add("category laboratory");
-    if (o.code?.coding?.[0]?.system !== SYS.loinc) add("LOINC code");
+    if (!LOINC_SYSTEMS.includes(o.code?.coding?.[0]?.system)) add("LOINC code");
     if (!o.subject?.reference) add("subject");
     if (!(o.effectivePeriod?.start && o.effectivePeriod?.end)) add("effectivePeriod");
     if (!(o.performer ?? []).length) add("performer");
@@ -186,11 +222,14 @@ export function validateLabReportBundle(b: Json, ctx: ValidateCtx = {}): Check[]
     const rr = o.referenceRange?.[0];
     if (!rr?.text) add("referenceRange.text (use 'undefined' when none)");
     if (rr && rr.type?.coding?.[0]?.code !== "normal") add("referenceRange.type normal");
-    if (o.valueQuantity && !o.valueQuantity.unit) add("unit on valueQuantity");
+    for (const q of [o.valueQuantity, rr?.low, rr?.high]) {
+      const up = unitProblem(q);
+      if (up) add(up);
+    }
     if (hasSpecimen && !isPanel && !o.specimen && o.category) add("specimen link");
   }
   const tallyText = Object.entries(tally).map(([k, n]) => `${k} (${n})`).join(", ");
-  need(c, !tallyText, "Every Observation has profile, status, category, code, subject, period, performer, value, interpretation system and reference range.", `Observation problems: ${tallyText}.`);
+  need(c, !tallyText, "Every Observation has profile, status, category, code, subject, period, performer, value, a unit from the KSA value set, interpretation system and reference range.", `Observation problems: ${tallyText}.`);
 
   const srs = byType(b, "ServiceRequest");
   need(c, srs.length >= 1, `${srs.length} ServiceRequest.`, "At least one ServiceRequest is required in a report.");
@@ -200,6 +239,21 @@ export function validateLabReportBundle(b: Json, ctx: ValidateCtx = {}): Check[]
     "ServiceRequest has profile servicerequestLabReport, a valid status, intent order and a period.",
     "A ServiceRequest has a wrong profile, status, intent or no period.",
   );
+  need(
+    c,
+    srs.every((s) => LOINC_SYSTEMS.includes(s.code?.coding?.[0]?.system) && !s.orderDetail),
+    "Each ServiceRequest has a LOINC code and no modality.",
+    "A ServiceRequest in a laboratory report needs a LOINC code and must not carry orderDetail (modality).",
+  );
+  if (hasSpecimen) {
+    need(
+      c,
+      srs.every((s) => (s.specimen ?? []).length > 0),
+      "Each ServiceRequest links its Specimen.",
+      "A ServiceRequest has no specimen reference. It is required when the specimen is known.",
+      "warn",
+    );
+  }
   need(
     c,
     srs.every((s) => ["PLAC", "FILL"].every((t) => (s.identifier ?? []).some((i: Json) => i.type?.coding?.some((x: Json) => x.code === t) && i.system?.startsWith("urn:oid:") && i.value))),
@@ -235,8 +289,8 @@ export function labResultMinimums(b: Json): MinStep[] {
   let panelMet = false;
   for (const p of panels) {
     const members = (p.hasMember as Json[]).map((m) => findByRef(b, m.reference)).filter((m): m is Json => !!m);
-    const abn = members.find((m) => m.valueQuantity && abnormal(interpCode(m)) && (m.referenceRange?.[0]?.low || m.referenceRange?.[0]?.high));
-    const norm = members.find((m) => m.valueQuantity && interpCode(m) === "N" && rangeText(m).length > 100);
+    const abn = members.find((m) => m.valueQuantity?.unit && abnormal(interpCode(m)) && (m.referenceRange?.[0]?.low || m.referenceRange?.[0]?.high));
+    const norm = members.find((m) => m.valueQuantity?.unit && interpCode(m) === "N" && rangeText(m).length > 100);
     if (abn && norm) {
       panelMet = true;
       panelDetail = `Panel ${p.code?.coding?.[0]?.display ?? ""}: abnormal ${abn.code?.coding?.[0]?.display}, normal ${norm.code?.coding?.[0]?.display}.`;
@@ -247,7 +301,7 @@ export function labResultMinimums(b: Json): MinStep[] {
   const textual = obs.filter((o) => (o.valueString !== undefined || o.valueInteger !== undefined) && abnormal(interpCode(o)) && /[<>]/.test(rangeText(o)) && /\d/.test(String(o.valueString ?? o.valueInteger)));
   const normalText = obs.filter((o) => ((o.valueString !== undefined && !/^[<>]?\s*-?\d/.test(o.valueString)) || o.valueCodeableConcept) && ["N", "NEG"].includes(interpCode(o) ?? ""));
   const comp = compositionOf(b);
-  const mbEntries = ((comp?.section ?? []) as Json[]).filter((s) => s.code?.coding?.[0]?.code === "MB").flatMap((s) => (s.entry ?? []) as Json[]);
+  const mbEntries = ((comp?.section ?? []) as Json[]).filter((s) => s.code?.coding?.[0]?.code === MICROBIOLOGY_SECTION).flatMap((s) => (s.entry ?? []) as Json[]);
   const micro = mbEntries.map((e) => findByRef(b, e.reference)).filter((o): o is Json => !!o && abnormal(interpCode(o)) && !!(o.valueCodeableConcept || o.valueString));
   const specimens = byType(b, "Specimen").filter((s) => s.collection?.collectedDateTime);
   return [

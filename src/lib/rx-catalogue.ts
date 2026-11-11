@@ -2,12 +2,17 @@ import type { ControlClass, Drug, Frequency } from "./rx-types";
 
 /**
  * Demo drug catalogue. About 30 common drugs, made up for the app.
- * Codes are TEST codes (prefix TST). The real value set is "KSA Prescription Pharmacy Item Name" in IS0200.
+ * Drug codes are demo codes (prefix DEMO-). The real codes are NHIC Medication Registry ids (MRID) from the
+ * "KSA Prescription Pharmacy Item Name" value set in IS0200 (guide pages 118063634 and 81166338).
  * Brand names are fictional. Control classes are for demonstration only.
  */
 
-export const ROUTES: { code: string; label: string }[] = [
-  { code: "PO", label: "Oral" },
+/**
+ * Routes. `snomed` is set only where the official sample shows the real code (oral route, 26643006).
+ * The rest of the "KSA Medication Route of Administration" value set (page 117965427) is in IS0200, so demo codes are sent.
+ */
+export const ROUTES: { code: string; label: string; snomed?: string; snomedName?: string }[] = [
+  { code: "PO", label: "Oral", snomed: "26643006", snomedName: "oral route" },
   { code: "SL", label: "Sublingual" },
   { code: "IV", label: "Intravenous" },
   { code: "IM", label: "Intramuscular" },
@@ -19,6 +24,24 @@ export const ROUTES: { code: string; label: string }[] = [
 ];
 
 export const ROUTE_LABEL: Record<string, string> = Object.fromEntries(ROUTES.map((r) => [r.code, r.label]));
+export const ROUTE_BY_CODE: Record<string, (typeof ROUTES)[number]> = Object.fromEntries(ROUTES.map((r) => [r.code, r]));
+
+/**
+ * Reasons for dispensing without the patient's secure code ("Override-SecureCode-Justification" value set, page 117965118).
+ * Code 3 is the only one shown in the official sample. The others are demo codes until the IS0200 list is loaded.
+ */
+export const OVERRIDE_REASONS: { code: string; label: string }[] = [
+  { code: "3", label: "Patient has no mobile Phone" },
+  { code: "DEMO-OVR-NO-MESSAGE", label: "Code message not received" },
+  { code: "DEMO-OVR-GUARDIAN", label: "Patient is a minor, guardian collects" },
+  { code: "DEMO-OVR-SYSTEM-DOWN", label: "System unavailable" },
+];
+export const OVERRIDE_LABEL: Record<string, string> = Object.fromEntries(OVERRIDE_REASONS.map((r) => [r.code, r.label]));
+
+/** Dose form code. 6401 (tablet) is in the official sample and the Mapping Guide. Other forms get a demo code. */
+export function doseFormCode(form: string): string {
+  return form === "Tablet" ? "6401" : `DEMO-FORM-${form.toUpperCase().replace(/[^A-Z]/g, "")}`;
+}
 
 /** Routes that need an injection or infusion. A tablet or capsule can never use them. */
 export const PARENTERAL = ["IV", "IM", "SC"];
@@ -55,14 +78,14 @@ function drug(
   const num = String(n).padStart(3, "0");
   return {
     id: `DRG${num}`,
-    code: `TST-DRG-${num}`,
+    code: `DEMO-DRG-${num}`,
     generic,
     brand,
     strengthValue,
     strengthUnit,
     perUnit: strengthValue,
     form,
-    formCode: form.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6),
+    formCode: doseFormCode(form),
     unit,
     routes: ["PO"],
     controlClass: cls,

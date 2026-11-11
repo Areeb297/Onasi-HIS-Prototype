@@ -11,7 +11,9 @@ import { getState } from "./store";
  * Separate from the ADT store. Every prescription carries the visit number of the encounter.
  */
 
-const KEY = "onasi-emr-rx-v1";
+/** v2: drug, route and specialty codes changed and every sent prescription now holds the reference id from nphies. Older saved data is dropped. */
+const KEY = "onasi-emr-rx-v2";
+const OLD_KEYS = ["onasi-emr-rx-v1"];
 const EMPTY: RxState = { prescriptions: [], dispenses: [], sends: [], heights: {}, counters: { rx: 0, item: 0, disp: 0, ref: 0 } };
 
 let state: RxState = load();
@@ -19,6 +21,7 @@ const listeners = new Set<() => void>();
 
 function load(): RxState {
   try {
+    for (const k of OLD_KEYS) localStorage.removeItem(k);
     const raw = localStorage.getItem(KEY);
     if (raw) return { ...EMPTY, ...(JSON.parse(raw) as RxState) };
   } catch {
@@ -277,7 +280,7 @@ function seed(): RxState {
   try {
     const encs = getState().encounters;
     const find = (pid: string) => encs.find((e) => e.patientId === pid && e.status === "active");
-    const mk = (visit: string, patientId: string, doctor: string, usage: UsageSetting, drugId: string, over: Partial<RxItem>, ref?: string): void => {
+    const mk = (visit: string, patientId: string, doctor: string, usage: UsageSetting, drugId: string, over: Partial<RxItem>, ref: string): void => {
       const drug = DRUG_BY_ID[drugId];
       s.counters.rx += 1;
       s.counters.item += 1;
@@ -311,8 +314,9 @@ function seed(): RxState {
         prescriberId: doctor,
         authoredAt: new Date(Date.now() - 40 * 60_000).toISOString(),
         usage,
-        groupId: ref ?? `RXG-${pad(s.counters.rx)}`,
-        raqeebRef: ref,
+        groupId: ref,
+        nationalRef: ref,
+        raqeebRef: ref.startsWith("RQB") ? ref : undefined,
         controlled: isControlled(drug.controlClass),
         items: [item],
         sentAt: new Date(Date.now() - 35 * 60_000).toISOString(),
@@ -322,13 +326,13 @@ function seed(): RxState {
       s.heights[visit] = s.heights[visit] ?? 168;
     };
     const p2 = find("P002");
-    if (p2) mk(p2.visitNumber, "P002", p2.attending, "inpatient", "DRG010", { reason: { code: "E11.9", text: "Type 2 diabetes mellitus without complications" } });
+    if (p2) mk(p2.visitNumber, "P002", p2.attending, "inpatient", "DRG010", { reason: { code: "E11.9", text: "Type 2 diabetes mellitus without complications" } }, "NRX10007919");
     const p7 = find("P007");
     if (p7) {
-      mk(p7.visitNumber, "P007", p7.attending, "outpatient", "DRG001", { reason: { code: "R50.9", text: "Fever, unspecified" } });
-      mk(p7.visitNumber, "P007", p7.attending, "outpatient", "DRG033", { reason: { code: "R52", text: "Pain, unspecified" } }, "RQB10007919");
-      s.counters.ref = 1;
+      mk(p7.visitNumber, "P007", p7.attending, "outpatient", "DRG001", { reason: { code: "R50.9", text: "Fever, unspecified" } }, "NRX10015838");
+      mk(p7.visitNumber, "P007", p7.attending, "outpatient", "DRG033", { reason: { code: "R52", text: "Pain, unspecified" } }, "RQB10023757");
     }
+    s.counters.ref = 3;
   } catch {
     /* seed is optional */
   }

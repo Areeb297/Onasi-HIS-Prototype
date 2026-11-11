@@ -15,7 +15,7 @@ import {
   CONFORMANCE_SAMPLE_CODES, ORGANISMS, expand, interpretValue, normalizeCodes, sampleValue, testByCode, type LabTest,
 } from "./fhir/lab-catalog";
 import { labAmendmentMinimums, labResultMinimums, validateLabOrderBundle, validateLabReportBundle } from "./fhir/lab-validate";
-import { LAB_DIRECTOR, doctorIdForUser, personFromDoctor, personFromUser } from "./fhir/people";
+import { LAB_DIRECTOR, doctorIdForUser, personFromDoctor, personFromUser, providerIdForUser } from "./fhir/people";
 import { createStore } from "./fhir/store-util";
 import {
   lastAccepted, nextVersion, type DocStatus, type LabOrder, type LabResult, type LabSpecimen, type Priority, type SendRecord,
@@ -26,11 +26,11 @@ import { getState, patientName } from "./store";
 import { pushToast } from "./toast";
 
 export * from "./fhir/lab-catalog";
-export { buildLabOrderBundle, buildLabReportBundle, formatResult } from "./fhir/lab-bundles";
+export { buildLabOrderBundle, buildLabReportBundle, formatResult, placerNumber } from "./fhir/lab-bundles";
 export { labAmendmentMinimums, labResultMinimums, validateLabOrderBundle, validateLabReportBundle } from "./fhir/lab-validate";
 export type { LabOrder, LabResult, LabSpecimen, LabStatus, Priority } from "./fhir/types";
 
-export { LAB_DIRECTOR, doctorIdForUser, personFromDoctor, personFromUser };
+export { LAB_DIRECTOR, doctorIdForUser, personFromDoctor, personFromUser, providerIdForUser };
 
 /* ---------- store ---------- */
 
@@ -55,7 +55,7 @@ function seedLab(): LabState {
     if (!e) return;
     n += 1;
     const order: LabOrder = {
-      id: `LO-${n}`, visitNumber: e.visitNumber, patientId: pid, codes, priority, fasting: null, note, orderedAt: iso(minsAgo),
+      id: `LO-${n}`, visitNumber: e.visitNumber, patientId: pid, codes, placers: withPlacers(`LO-${n}`, codes), priority, fasting: null, note, orderedAt: iso(minsAgo),
       orderedById: e.attending, status, specimens: [], results: {}, orderDirty: false, resultDirty: false, sends: [],
     };
     if (status === "collected") order.specimens = specimensFor(order, iso(minsAgo - 20), "Faisal Alqahtani, MLT");
@@ -68,7 +68,26 @@ function seedLab(): LabState {
   return { orders, counter: n - 100000, rejectNext: false, viewed: {} };
 }
 
-const store = createStore<LabState>("onasi-emr-lab-v1", seedLab);
+/**
+ * Give every ordered test a placer order number that it keeps for life. Numbers already given are never reused,
+ * also not for a test that was removed, so an amendment cannot move a number onto another test.
+ */
+function withPlacers(orderId: string, codes: string[], existing: Record<string, string> = {}): Record<string, string> {
+  const out = { ...existing };
+  let n = Object.keys(out).length;
+  for (const c of codes) if (!out[c]) out[c] = `${orderId}-${++n}`;
+  return out;
+}
+
+/** The signed-in user as the performer of a result, when the account has a provider-directory id. */
+function resultPerformer(): { id: string; name: string } | undefined {
+  const u = currentUser();
+  const id = providerIdForUser(u);
+  return id ? { id, name: u.name } : undefined;
+}
+
+// v2: section codes, placer numbers per test and the performer per result changed. Saved v1 data is not read.
+const store = createStore<LabState>("onasi-emr-lab-v2", seedLab);
 export const useLab = store.use;
 export const getLab = store.get;
 export const resetLab = store.reset;
@@ -155,6 +174,7 @@ export function placeLabOrder(
     visitNumber: enc.visitNumber, // one visit number everywhere
     patientId: enc.patientId,
     codes,
+    placers: withPlacers(`LO-${100000 + counter}`, codes),
     priority: input.priority,
     fasting: input.fasting,
     note: input.note.trim(),
@@ -179,7 +199,10 @@ export function amendLabOrder(id: string, input: { codes: string[]; priority: Pr
   if (o.status === "cancelled" || o.status === "resulted" || o.status === "amended") return false;
   const wasSent = !!lastAccepted(o.sends, "lab-order");
   mutate(id, (x) => {
-    if (x.status === "received") x.codes = normalizeCodes(input.codes).filter((c) => testByCode(c));
+    if (x.status === "received") {
+      x.codes = normalizeCodes(input.codes).filter((c) => testByCode(c));
+      x.placers = withPlacers(x.id, x.codes, x.placers ?? withPlacers(x.id, o.codes));
+    }
     x.priority = input.priority;
     x.fasting = input.fasting;
     x.note = input.note.trim();
@@ -265,6 +288,8 @@ export function saveLabResult(id: string, code: string, patch: ResultPatch): boo
       next.interp = t.kind === "organism" ? (next.organism ? "POS" : "NEG") : interpretValue(t, next.value, sex);
     }
     const changed = !old || old.value !== next.value || old.interp !== next.interp || old.organism?.code !== next.organism?.code || JSON.stringify(old.sens) !== JSON.stringify(next.sens);
+    // Whoever sets or changes the value is the performer of this result.
+    next.performedBy = (changed ? resultPerformer() : undefined) ?? old?.performedBy;
     if (published && old && changed && next.status !== "cancelled") next.status = "corrected";
     if (published && changed) x.resultDirty = true;
     x.results[code] = next;
@@ -297,6 +322,7 @@ export function fillSampleResults(id: string): boolean {
   const o = getOrder(id);
   if (!o || !allowed("lab.result", `Lab order ${id}`)) return false;
   const sex = getState().patients.find((p) => p.id === o.patientId)?.sex ?? "M";
+  const performedBy = resultPerformer();
   mutate(id, (x) => {
     for (const t of leafTests(x)) {
       if (x.results[t.code]) continue;
@@ -305,10 +331,11 @@ export function fillSampleResults(id: string): boolean {
         x.results[t.code] = {
           code: t.code, value: ">100,000 CFU/mL", interp: "POS", status: "final", at, organism: ORGANISMS[0],
           sens: [{ key: "AMP", result: "R" }, { key: "CRO", result: "S" }, { key: "CIP", result: "S" }, { key: "NIT", result: "S" }],
+          performedBy,
         };
       } else {
         const value = sampleValue(t, sex);
-        x.results[t.code] = { code: t.code, value, interp: interpretValue(t, value, sex), status: "final", at };
+        x.results[t.code] = { code: t.code, value, interp: interpretValue(t, value, sex), status: "final", at, performedBy };
       }
     }
   });
@@ -382,6 +409,11 @@ export function publishLabResult(id: string, amendStatus: "amended" | "corrected
   if (!ctx) return null;
   if (missingResults(o).length) {
     pushToast({ tone: "warn", text: "Some results are still empty.", detail: "Enter every result before publishing." });
+    return null;
+  }
+  // Practitioner.identifier must be a provider-directory id, never the app user id (Practitioner page id 68026521).
+  if (!providerIdForUser(currentUser())) {
+    pushToast({ tone: "warn", text: "Your account has no provider ID.", detail: "A result can only be published by a user who is in the national provider directory." });
     return null;
   }
   const version = nextVersion(o.sends.filter((s) => s.kind === "lab-result"), "lab-result");

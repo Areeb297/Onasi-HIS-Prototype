@@ -68,12 +68,41 @@ export const SYS = {
   participationType: "http://terminology.hl7.org/CodeSystem/v3-ParticipationType",
   patientClass: "urn:oid:2.16.840.1.113883.18.5",
   confidentiality: "http://terminology.hl7.org/CodeSystem/v3-Confidentiality",
-  labDepartment: "http://terminology.hl7.org/CodeSystem/v2-0074",
   dicomModality: "http://dicom.nema.org/resources/ontology/DCM",
   endpointType: "http://terminology.hl7.org/CodeSystem/endpoint-connection-type",
   endpointPayload: "http://terminology.hl7.org/CodeSystem/endpoint-payload-type",
   deviceNameType: "http://hl7.org/fhir/device-nametype",
 } as const;
+
+/**
+ * How LOINC, UCUM and ICD-10-AM are named on coded values (test and section codes, units, the diagnosis value).
+ * The guide does not state the form for these elements. Every official sample bundle (Confluence pages 358776855,
+ * 358514693, 387481602, 414089220) uses the OID form, so "oid" is the default. Set it to "url" if a test send shows
+ * NPHIES wants the FHIR URLs. Composition.type and DiagnosticReport.code always use http://loinc.org (SYS.loinc),
+ * because the guide fixes that value.
+ */
+export const CODE_SYSTEM_FORM: "oid" | "url" = "oid";
+
+const CODE_SYSTEM_FORMS = {
+  oid: { loinc: "urn:oid:2.16.840.1.113883.6.1", ucum: "urn:oid:2.16.840.1.113883.6.8", icd10am: "urn:oid:2.16.840.1.113883.6.135" },
+  url: { loinc: "http://loinc.org", ucum: "http://unitsofmeasure.org", icd10am: "http://hl7.org/fhir/sid/icd-10-am" },
+} as const;
+
+/** The code system URIs picked by CODE_SYSTEM_FORM. Use these for test codes, section codes, units and diagnoses. */
+export const TERM: { loinc: string; ucum: string; icd10am: string } = CODE_SYSTEM_FORMS[CODE_SYSTEM_FORM];
+
+/** Both accepted spellings of each system, for validators. */
+export const TERM_FORMS = {
+  loinc: [CODE_SYSTEM_FORMS.oid.loinc, CODE_SYSTEM_FORMS.url.loinc],
+  ucum: [CODE_SYSTEM_FORMS.oid.ucum, CODE_SYSTEM_FORMS.url.ucum],
+  icd10am: [CODE_SYSTEM_FORMS.oid.icd10am, CODE_SYSTEM_FORMS.url.icd10am],
+} as const;
+
+/**
+ * Encounter.class codes the Encounter page allows with the HL7 Patient Class OID (page id 67961103):
+ * E Emergency, I Inpatient, O Outpatient, D Inpatient Daycase.
+ */
+export const ENCOUNTER_CLASS_CODES = ["E", "I", "O", "D"] as const;
 
 export const EXT = {
   versionNumber: "http://hl7.org/fhir/StructureDefinition/composition-clinicaldocument-versionNumber",
@@ -157,7 +186,7 @@ export function narrative(text: string): Json {
 }
 
 export function quantity(value: number, unit: string): Json {
-  return { value, unit, system: SYS.ucum, code: unit };
+  return { value, unit, system: TERM.ucum, code: unit };
 }
 
 /** First identifier of a resource (resources may carry one object or a list). */
@@ -166,11 +195,23 @@ export function firstIdentifier(res: Json): Json | undefined {
 }
 
 /**
+ * The identifier a reference to this resource repeats. A PractitionerRole has no identifier of its own in the guide
+ * (page id 67993867); the official samples put the Practitioner's provider id on references to a role.
+ */
+export function referenceIdentifier(res: Json): Json | undefined {
+  if (res?.resourceType === "PractitionerRole") {
+    const p = res.practitioner?.identifier;
+    return Array.isArray(p) ? p[0] : p;
+  }
+  return firstIdentifier(res ?? {});
+}
+
+/**
  * Reference to a resource inside the bundle: "Type/<GUID>" plus the same identifier as the target,
  * which is what the NPHIES pages ask for ("reference/identifier SHALL contain exactly the same Identifier").
  */
 export function refTo(res: Json): Json {
-  const ident = firstIdentifier(res);
+  const ident = referenceIdentifier(res);
   return { reference: `${res.resourceType}/${res.id}`, ...(ident ? { identifier: ident } : {}) };
 }
 
@@ -206,13 +247,12 @@ export function organizationResource(): Json {
   };
 }
 
-export function practitionerRoleResource(p: Person, practitioner: Json, org: Json): Json {
+export function practitionerRoleResource(_p: Person, practitioner: Json, org: Json): Json {
   return {
     resourceType: "PractitionerRole",
     id: uuid(),
     meta: { profile: [PROFILE.practitionerRole] },
-    // The guide lists no identifier for PractitionerRole, but every reference to it must repeat one. See the Assumptions note.
-    identifier: [orgIdentifier(`PR-${p.id}`)],
+    // No identifier: the PractitionerRole page lists none. References to a role repeat the Practitioner's identifier.
     practitioner: refTo(practitioner),
     organization: refTo(org),
   };
@@ -228,6 +268,15 @@ export function patientResource(p: Patient): Json {
   };
 }
 
+/**
+ * Encounter.class for the HL7 Patient Class OID. The ADT pre-admit class "P" must not be sent here: in the NPHIES
+ * Patient Class value set (page id 23134851) "P" means primary care under a different code system. A pre-admitted
+ * patient is not an inpatient yet, so the visit is sent as outpatient (O) until the admission.
+ */
+export function encounterClassCode(cls: string): string {
+  return (ENCOUNTER_CLASS_CODES as readonly string[]).includes(cls) ? cls : "O";
+}
+
 export function encounterResource(enc: Encounter, fallbackStart: string): Json {
   const start = enc.admitAt ?? enc.expectedAdmitAt ?? fallbackStart;
   return {
@@ -237,7 +286,7 @@ export function encounterResource(enc: Encounter, fallbackStart: string): Json {
     // One visit number everywhere: the same value as PV1-19 in the ADT messages.
     identifier: [orgIdentifier(enc.visitNumber)],
     status: enc.status === "discharged" ? "finished" : "in-progress",
-    class: coding(SYS.patientClass, enc.cls),
+    class: coding(SYS.patientClass, encounterClassCode(enc.cls)),
     period: {
       start: fhirDateTime(start),
       ...(enc.dischargeAt ? { end: fhirDateTime(enc.dischargeAt) } : {}),
@@ -370,7 +419,7 @@ export function validateReferences(b: Json): Check[] {
     count++;
     const target = findByRef(b, ref.reference);
     if (!target) missing.push(`${ref.reference} (${path})`);
-    else if (ref.identifier && !sameIdentifier(ref.identifier, firstIdentifier(target))) mismatched.push(`${ref.reference} (${path})`);
+    else if (ref.identifier && !sameIdentifier(ref.identifier, referenceIdentifier(target))) mismatched.push(`${ref.reference} (${path})`);
   });
   const c: Check[] = [];
   need(c, missing.length === 0, `All ${count} references resolve inside the bundle.`, `References not found in the bundle: ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? "..." : ""}.`);
@@ -412,6 +461,7 @@ export function validateParticipants(
     `Practitioner.identifier needs system ${oidSystem(OID.provider)} and a value.`,
   );
   need(c, roles.every((r) => r.practitioner?.reference && r.organization?.reference), "Every PractitionerRole links a Practitioner and an Organization.", "PractitionerRole needs practitioner and organization.");
+  need(c, roles.every((r) => !("identifier" in r)), "No PractitionerRole carries its own identifier.", "PractitionerRole has an identifier. The guide lists none; references to a role repeat the Practitioner identifier.", "warn");
   const orgs = byType(b, "Organization");
   need(c, orgs.length >= 1, `${orgs.length} Organization resource.`, "At least one Organization is required.");
   need(
@@ -426,7 +476,12 @@ export function validateParticipants(
     const vis = firstIdentifier(e)?.value;
     if (o.visitNumber) need(c, vis === o.visitNumber, `Encounter carries the visit number ${o.visitNumber}.`, `Encounter.identifier is ${vis ?? "empty"}, expected the chart visit number ${o.visitNumber}.`);
     else need(c, !!vis, "Encounter has a visit number.", "Encounter.identifier is empty.");
-    need(c, e.class?.system === SYS.patientClass && !!e.class?.code, "Encounter.class uses the HL7 Patient Class OID.", `Encounter.class needs system ${SYS.patientClass} and a code.`);
+    need(
+      c,
+      e.class?.system === "urn:oid:2.16.840.1.113883.18.5" && ["E", "I", "O", "D"].includes(e.class?.code),
+      `Encounter.class is ${e.class?.code} with the HL7 Patient Class OID.`,
+      "Encounter.class needs system urn:oid:2.16.840.1.113883.18.5 and one of E, I, O, D.",
+    );
     need(c, !!e.period?.start, "Encounter.period.start is present.", "Encounter.period.start is required.");
     need(c, !!e.serviceProvider?.display, "Encounter.serviceProvider.display is present.", "Encounter.serviceProvider.display is required.");
   } else {

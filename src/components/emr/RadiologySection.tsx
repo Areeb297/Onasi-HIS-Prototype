@@ -114,7 +114,6 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {proc && `${MODALITIES[proc.modality].display} · ${BODY_REGIONS[proc.region].display}`}
-                      {proc?.madeUp && " · (test code)"}
                       <br />
                       Ordered {when(o.orderedAt)} by {personFromDoctor(o.orderedById).name}
                       {o.indication && ` · Reason: ${o.indication}`}

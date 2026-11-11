@@ -4,7 +4,7 @@ import {
   type PrescriptionIn,
 } from "./fhir/medication";
 import {
-  makeRaqeebRef, simulateResponse, validateDispenseBundle, validateDispenseInput, validatePrescriptionBundle, validatePrescriptionInput,
+  makeNationalRef, simulateResponse, validateDispenseBundle, validateDispenseInput, validatePrescriptionBundle, validatePrescriptionInput,
 } from "./fhir/medication-validate";
 import type { Encounter, Patient } from "./model";
 import { DOCTORS, FACILITY, FACILITY_NAME } from "./reference-data";
@@ -27,13 +27,18 @@ export interface SendOutcome {
 
 /* ---------- people and visit ---------- */
 
+/**
+ * Doctor specialties. Demo codes: the real "Healthcare Specialty Identifier" codes are in IS0200 (page 118063485).
+ * Pharmacy below is the real code from the official sample messages.
+ */
 const SPECIALTY: Record<string, [string, string]> = {
-  MED: ["internal-medicine", "Internal Medicine"],
-  SUR: ["general-surgery", "General Surgery"],
-  ICU: ["critical-care", "Critical Care"],
-  RAD: ["radiology", "Radiology"],
-  ORT: ["orthopedics", "Orthopedics"],
+  MED: ["DEMO-SPEC-INTERNAL-MEDICINE", "Internal Medicine"],
+  SUR: ["DEMO-SPEC-GENERAL-SURGERY", "General Surgery"],
+  ICU: ["DEMO-SPEC-CRITICAL-CARE", "Critical Care"],
+  RAD: ["DEMO-SPEC-RADIOLOGY", "Radiology"],
+  ORT: ["DEMO-SPEC-ORTHOPEDICS", "Orthopedics"],
 };
+const PHARMACY_SPECIALTY = "FB9D7C6B-62F9-E811-B80F-005056AD2FD8";
 
 function digits(s: string, n: number): string {
   return s.replace(/\D/g, "").padStart(n, "0").slice(-n);
@@ -54,19 +59,20 @@ export function patientIn(p: Patient): PatientIn {
 
 export function prescriberIn(doctorId: string): PractitionerIn {
   const d = DOCTORS.find((x) => x.id === doctorId) ?? DOCTORS[0];
-  const [code, text] = SPECIALTY[d.service] ?? ["general-practice", "General Practice"];
-  return { npi: `NPI${digits(d.id, 7)}`, family: d.family, given: d.given, phone: `+96655${digits(d.id, 7)}`, specialtyCode: code, specialtyText: text, role: "prescriber" };
+  const [code, text] = SPECIALTY[d.service] ?? ["DEMO-SPEC-GENERAL-PRACTICE", "General Practice"];
+  // The provider id is the doctor id, the same value ADT sends in PV1-7 and the lab, radiology and document messages send.
+  return { providerId: d.id, family: d.family, given: d.given, phone: `+96655${digits(d.id, 7)}`, specialtyCode: code, specialtyText: text, role: "prescriber" };
 }
 
 export function pharmacistIn(): PractitionerIn {
   const u = currentUser();
   const words = u.name.split(",")[0].replace(/^Dr\.\s*/, "").split(" ");
   return {
-    npi: `NPI-PH-${digits(u.id, 4)}`,
+    providerId: u.id,
     given: words[0] ?? u.name,
     family: words.slice(1).join(" ") || words[0] || u.name,
     phone: `+96654${digits(u.id, 7)}`,
-    specialtyCode: "pharmacy",
+    specialtyCode: PHARMACY_SPECIALTY,
     specialtyText: "Pharmacy",
     role: "pharmacist",
   };
@@ -135,7 +141,7 @@ export function planPrescription(s: RxState, rx: Prescription, change?: { itemId
   });
   const input: PrescriptionIn = {
     groupId: rx.groupId,
-    groupIsRaqeeb: !!rx.raqeebRef,
+    groupFromNphies: !!(rx.nationalRef ?? rx.raqeebRef),
     controlled: rx.controlled,
     usage: rx.usage,
     authoredAt: new Date(rx.authoredAt),
@@ -169,7 +175,7 @@ export function sendPrescription(rxId: string, action: PrescriptionAction, chang
   const plan = planPrescription(s, rx, change, false);
   if (!plan) return null;
   const raqeeb = isRaqeebScope(rx.controlled, rx.usage);
-  const sim = simulateResponse({ checks: plan.checks, kind: "prescription", raqeebScope: raqeeb, groupId: rx.groupId, existingRef: rx.raqeebRef, newRef: makeRaqeebRef(s.counters.ref + 1) });
+  const sim = simulateResponse({ checks: plan.checks, kind: "prescription", raqeebScope: raqeeb, groupId: rx.groupId, existingRef: rx.nationalRef ?? rx.raqeebRef, newRef: makeNationalRef(s.counters.ref + 1, raqeeb) });
   const ok = sim.http === 201;
   const before = change ? rx.items.find((i) => i.id === change.itemId)?.status ?? "active" : "active";
   const rec = record({
@@ -188,13 +194,15 @@ export function sendPrescription(rxId: string, action: PrescriptionAction, chang
   let next = addSendRecord(s, rec);
   const now = new Date().toISOString();
   if (ok) {
-    const isNewRef = !!sim.refId && !rx.raqeebRef;
+    const known = rx.nationalRef ?? rx.raqeebRef;
+    const isNewRef = !!sim.refId && !known;
     const updated: Prescription = {
       ...rx,
       items: rx.items.map((i) => (change && i.id === change.itemId ? { ...i, status: change.status, statusReason: change.reason } : i)),
       sentAt: rx.sentAt ?? now,
       dirty: false,
-      raqeebRef: sim.refId ?? rx.raqeebRef,
+      nationalRef: sim.refId ?? known,
+      raqeebRef: raqeeb ? sim.refId ?? rx.raqeebRef : rx.raqeebRef,
       groupId: isNewRef ? (sim.refId as string) : rx.groupId,
       lastSend: { at: now, http: sim.http, ok: true },
     };
@@ -205,7 +213,7 @@ export function sendPrescription(rxId: string, action: PrescriptionAction, chang
   setRx(next);
   audit("send-fhir", `Prescription ${rx.number}`, {
     patient: rx.patientId,
-    detail: `Visit ${rx.visitNumber}. ${action}. HTTP ${sim.http}${sim.refId ? `. Raqeeb ref ${sim.refId}` : ""}`,
+    detail: `Visit ${rx.visitNumber}. ${action}. HTTP ${sim.http}${sim.refId ? `. ${raqeeb ? "Raqeeb ref" : "Reference"} ${sim.refId}` : ""}`,
   });
   return { ok, record: rec, refId: sim.refId };
 }
@@ -308,7 +316,7 @@ export function planDispense(s: RxState, req: DispenseRequest, stable = true): D
 function sendDispenseBundle(
   s: RxState, rx: Prescription, input: DispenseIn, bundle: FhirBundle, checks: RxCheck[], action: "dispense" | "cancel" | "update", steps: string[], label: string,
 ): { ok: boolean; rec: SendRecord; state: RxState } {
-  const sim = simulateResponse({ checks, kind: "dispense", raqeebScope: input.raqeebScope, groupId: rx.groupId, existingRef: rx.raqeebRef, newRef: rx.raqeebRef ?? "" });
+  const sim = simulateResponse({ checks, kind: "dispense", raqeebScope: input.raqeebScope, groupId: rx.groupId, existingRef: rx.nationalRef ?? rx.raqeebRef, newRef: "" });
   const rec = record({
     kind: "dispense",
     steps,
@@ -347,11 +355,14 @@ export function sendDispense(req: DispenseRequest): { outcome: SendOutcome | nul
     });
   }
   setRx(next);
-  audit("send-fhir", `Dispense ${plan.dispense.number}`, { patient: rx.patientId, detail: `Visit ${rx.visitNumber}. HTTP ${sent.rec.http}${sent.rec.refId ? `. Raqeeb ref ${sent.rec.refId}` : ""}` });
+  audit("send-fhir", `Dispense ${plan.dispense.number}`, { patient: rx.patientId, detail: `Visit ${rx.visitNumber}. HTTP ${sent.rec.http}${sent.rec.refId ? `. Reference ${sent.rec.refId}` : ""}` });
   return { outcome: { ok: sent.ok, record: sent.rec, refId: sent.rec.refId }, problems: [] };
 }
 
-/** Cancel or update a completed dispense line. Offered for narcotic, controlled and restricted items. */
+/**
+ * Cancel or update a completed dispense line. The new version replaces the old one (Workflows page 117964923, Exception 1),
+ * for every medication type. Only the controlled ones count toward a Seha conformance step (7.4).
+ */
 export function changeDispenseLine(
   dispenseId: string, lineId: string, action: "cancel" | "update", patch: { quantity?: number; lot?: string; expiry?: string } = {},
 ): { outcome: SendOutcome | null; problems: string[] } {
@@ -361,7 +372,7 @@ export function changeDispenseLine(
   const line = d?.lines.find((l) => l.id === lineId);
   if (!d || !rx || !line) return { outcome: null, problems: ["Dispense not found."] };
   const item = rx.items.find((i) => i.id === line.itemId) as RxItem;
-  if (!isControlled(getDrug(line.drugId).controlClass)) return { outcome: null, problems: ["Cancel and update are offered for narcotic, controlled and restricted items."] };
+  const controlled = isControlled(getDrug(line.drugId).controlClass);
   if (line.status === "cancelled") return { outcome: null, problems: ["This dispense is already cancelled."] };
   const others = linesFor(s, rx.id).filter((l) => l.id !== line.id);
   const st = fillState(item, others);
@@ -384,7 +395,7 @@ export function changeDispenseLine(
   if (!input) return { outcome: null, problems: ["Visit not found."] };
   const bundle = buildDispenseBundle(input, { uuid });
   const checks = [...validateDispenseInput(input), ...validateDispenseBundle(bundle)];
-  const sent = sendDispenseBundle(s, rx, input, bundle, checks, action, dispenseSteps(action, true, [changed.type]), d.number);
+  const sent = sendDispenseBundle(s, rx, input, bundle, checks, action, dispenseSteps(action, controlled, [changed.type]), d.number);
   let next = sent.state;
   if (sent.ok) {
     next = refreshStatuses({ ...next, dispenses: next.dispenses.map((x) => (x.id === d.id ? { ...x, lines: x.lines.map((l) => (l.id === line.id ? changed : l)) } : x)) }, rx.id);

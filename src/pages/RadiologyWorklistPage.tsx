@@ -185,7 +185,6 @@ export function RadiologyWorklistPage() {
                         <div className="font-medium">{proc?.short ?? o.procCode}</div>
                         <div className="text-xs text-muted-foreground">
                           {proc && `${MODALITIES[proc.modality].display} · ${BODY_REGIONS[proc.region].display}`}
-                          {proc?.madeUp && " (test code)"}
                         </div>
                         {o.indication && <div className="text-xs text-muted-foreground">Reason: {o.indication}</div>}
                       </Td>

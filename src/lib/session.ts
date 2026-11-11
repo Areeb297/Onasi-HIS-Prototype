@@ -22,6 +22,8 @@ export interface DemoUser {
   name: string;
   role: string;
   department: string;
+  /** Id in the national provider directory, sent as Practitioner.identifier on NPHIES documents. Made-up demo values. */
+  providerId?: string;
 }
 
 const ALL: Permission[] = [
@@ -46,11 +48,11 @@ export const USERS: DemoUser[] = [
   { id: "U2", name: "Huda Alotaibi, RN", role: "nurse", department: "Ward 3A" },
   { id: "U3", name: "Omar Alshehri", role: "registration", department: "Front Desk" },
   { id: "U4", name: "Noura Alzahrani, PharmD", role: "pharmacist", department: "Pharmacy" },
-  { id: "U5", name: "Faisal Alqahtani, MLT", role: "lab", department: "Laboratory" },
-  { id: "U6", name: "Dr. Layla Alanazi", role: "radiologist", department: "Radiology" },
+  { id: "U5", name: "Faisal Alqahtani, MLT", role: "lab", department: "Laboratory", providerId: "T5001" },
+  { id: "U6", name: "Dr. Layla Alanazi", role: "radiologist", department: "Radiology", providerId: "R6001" },
   { id: "U7", name: "Majed Aldosari", role: "billing", department: "RCM" },
   { id: "U8", name: "Reem Alghamdi", role: "auditor", department: "Compliance" },
-  { id: "U9", name: "System Administrator", role: "admin", department: "IT" },
+  { id: "U9", name: "System Administrator", role: "admin", department: "IT", providerId: "A9001" },
 ];
 
 const KEY = "onasi-emr-session-v1";

@@ -6,7 +6,10 @@ import {
   sendLabOrder, setRejectNext, startProcessing, testByCode, validateLabOrderBundle, validateLabReportBundle,
 } from "./lab";
 import { byType, GUID_RE, resourcesOf } from "./fhir/common";
-import { versionOf } from "./fhir/lab-validate";
+import { LAB_DEPARTMENT_CODES, versionOf } from "./fhir/lab-validate";
+import { KSA_LAB_UNITS } from "./fhir/lab-units";
+import { ANTIBIOTICS, LAB_DEPTS, SPECIMEN_TYPES } from "./fhir/lab-catalog";
+import { placerNumber } from "./fhir/lab-bundles";
 import type { LabOrder } from "./fhir/types";
 import type { Check } from "./model";
 import { currentUser, switchUser } from "./session";
@@ -322,5 +325,141 @@ describe("laboratory lifecycle with the simulated NPHIES response", () => {
     expect(collectSpecimens(o.id)).toBe(false);
     switchUser("U5"); // lab technologist cannot order
     expect(placeLabOrder(enc(), { codes: ["4548-4"], priority: "routine", fasting: null, note: "" })).toBeNull();
+  });
+});
+
+describe("fixes from the audit against the live NPHIES guide", () => {
+  beforeEach(() => {
+    resetLab();
+    switchUser("U9");
+  });
+
+  const report = (o: LabOrder) =>
+    buildLabReportBundle({ ...ctx(), order: o, orderer: personFromDoctor(o.orderedById), performer: personFromUser(currentUser()), authenticator: LAB_DIRECTOR, version: 1, docStatus: "final" });
+  const sectionCodes = (b: ReturnType<typeof report>): { system: string; code: string }[] =>
+    byType(b, "Composition")[0].section.map((s: { code: { coding: { system: string; code: string }[] } }) => s.code.coding[0]);
+
+  it("section codes come from the Laboratory Department value set (LOINC), and the validator rejects the old HL7 codes", () => {
+    for (const d of Object.values(LAB_DEPTS)) expect(LAB_DEPARTMENT_CODES[d.code], d.code).toBeTruthy();
+    const b = report(sampleOrder());
+    const codes = sectionCodes(b);
+    expect(codes.map((c) => c.code).sort()).toEqual(["18719-5", "18723-7", "18725-2", "18729-4"]);
+    for (const c of codes) expect(c.system).toBe("urn:oid:2.16.840.1.113883.6.1");
+    const bad = structuredClone(b);
+    byType(bad, "Composition")[0].section[0].code.coding[0] = { system: "http://terminology.hl7.org/CodeSystem/v2-0074", code: "HM" };
+    expect(errors(validateLabReportBundle(bad)).map((c) => c.text).join(" ")).toContain("Laboratory Department value set");
+  });
+
+  it("never sends an app user id as the practitioner id, and keeps the performer of each result", () => {
+    const o = createConformanceSampleOrder(enc())!; // results filled by U9
+    switchUser("U5");
+    expect(saveLabResult(o.id, "718-7", { value: "10.1" })).toBe(true); // the lab technologist determines this one
+    switchUser("U9");
+    const pub = publishLabResult(o.id)!;
+    expect(errors(pub.checks)).toEqual([]);
+    const ids = byType(pub.bundle, "Practitioner").map((p) => p.identifier[0].value);
+    expect(ids).toContain("T5001");
+    expect(ids).toContain("A9001");
+    for (const id of ids) expect(id).not.toMatch(/^U\d+$/);
+    const obs = byType(pub.bundle, "Observation");
+    expect(obs.find((x) => x.code.coding[0].code === "718-7")!.performer[0].identifier.value).toBe("T5001");
+    expect(obs.find((x) => x.code.coding[0].code === "6690-2")!.performer[0].identifier.value).toBe("A9001");
+  });
+
+  it("ceftriaxone uses LOINC 18895-3, not the cefotaxime code", () => {
+    expect(ANTIBIOTICS.find((a) => a.key === "CRO")!.code).toBe("18895-3");
+    expect(ANTIBIOTICS.map((a) => a.code)).not.toContain("18886-2");
+  });
+
+  it("a placer order number stays with its test when the order is amended", () => {
+    const o = placeLabOrder(enc(), { codes: ["58410-2", "2345-7", "2160-0"], priority: "routine", fasting: null, note: "" })!;
+    const before = placerNumber(o, "2160-0");
+    expect(before).toBe(`${o.id}-3`);
+    sendLabOrder(o.id);
+    // Glucose removed, the list reordered, HbA1c added.
+    amendLabOrder(o.id, { codes: ["2160-0", "58410-2", "4548-4"], priority: "routine", fasting: null, note: "" });
+    const after = getOrder(o.id)!;
+    expect(placerNumber(after, "2160-0")).toBe(before);
+    expect(placerNumber(after, "58410-2")).toBe(`${o.id}-1`);
+    expect(placerNumber(after, "4548-4")).toBe(`${o.id}-4`); // the number of the removed test is not reused
+    const r = sendLabOrder(o.id)!;
+    const sr = byType(r.bundle, "ServiceRequest").find((x) => x.code.coding[0].code === "2160-0")!;
+    expect(sr.identifier[0].value).toBe(before);
+    expect(errors(r.checks)).toEqual([]);
+  });
+
+  it("PractitionerRole has no identifier and references to it carry the Practitioner identifier", () => {
+    const b = report(sampleOrder());
+    for (const role of byType(b, "PractitionerRole")) expect("identifier" in role).toBe(false);
+    const comp = byType(b, "Composition")[0];
+    expect(comp.author[0].identifier.system).toBe("urn:oid:2.16.840.1.113883.3.3731.1.2.1");
+    expect(comp.attester[0].party.identifier.value).toBe(LAB_DIRECTOR.id);
+  });
+
+  it("uses the OID form for LOINC, UCUM and ICD-10-AM, and http://loinc.org where the guide fixes it", () => {
+    const b = report(sampleOrder());
+    expect(byType(b, "Composition")[0].type.coding[0].system).toBe("http://loinc.org");
+    expect(byType(b, "DiagnosticReport")[0].code.coding[0].system).toBe("http://loinc.org");
+    for (const o of byType(b, "Observation")) expect(o.code.coding[0].system).toBe("urn:oid:2.16.840.1.113883.6.1");
+    for (const s of byType(b, "ServiceRequest")) expect(s.code.coding[0].system).toBe("urn:oid:2.16.840.1.113883.6.1");
+    expect(byType(b, "Observation").find((o) => o.code.coding[0].code === "718-7")!.valueQuantity.system).toBe("urn:oid:2.16.840.1.113883.6.8");
+    const order = buildLabOrderBundle({ ...ctx(), order: mkOrder(["4548-4"], { status: "received" }), orderer: personFromDoctor(enc().attending), version: 1, docStatus: "final" });
+    const dx = byType(order, "Observation").find((o) => o.code.coding[0].code === "148006");
+    if (dx) expect(dx.valueCodeableConcept.coding[0].system).toBe("urn:oid:2.16.840.1.113883.6.135");
+    expect(byType(order, "Observation").find((o) => o.code.coding[0].code === "424144002")!.valueQuantity.system).toBe("urn:oid:2.16.840.1.113883.6.8");
+  });
+
+  it("a visit class outside E, I, O, D (the old pre-admit class P) is never sent, and the validator rejects P", () => {
+    // Saved data from before the class list was tightened can still hold "P".
+    const pre = { ...enc(), cls: "P" as unknown as ReturnType<typeof enc>["cls"] };
+    const o = mkOrder(["4548-4"], { status: "received" });
+    const b = buildLabOrderBundle({ patient: patient(), enc: pre, order: o, orderer: personFromDoctor(pre.attending), version: 1, docStatus: "final" });
+    expect(byType(b, "Encounter")[0].class.code).toBe("O");
+    expect(errors(validateLabOrderBundle(b))).toEqual([]);
+    const bad = structuredClone(b);
+    byType(bad, "Encounter")[0].class.code = "P";
+    expect(errors(validateLabOrderBundle(bad)).map((c) => c.text).join(" ")).toContain("E, I, O, D");
+  });
+
+  it("the COVID-19 PCR is a molecular test on a nasopharyngeal swab", () => {
+    const t = testByCode("94500-6")!;
+    expect(SPECIMEN_TYPES[t.specimen].code).toBe("258500001");
+    expect(LAB_DEPTS[t.dept].code).toBe("26435-8");
+    const o = mkOrder(["94500-6"], { specimens: [{ id: "SP-9-NPS", key: "NPS", collectedAt: new Date().toISOString(), receivedAt: new Date().toISOString(), collectedBy: "Tech" }] });
+    o.results["94500-6"] = { code: "94500-6", value: "Not Detected", interp: "N", status: "final", at: new Date().toISOString() };
+    const b = report(o);
+    expect(byType(b, "Specimen")[0].type.coding[0].code).toBe("258500001");
+    expect(sectionCodes(b)[0].code).toBe("26435-8");
+    expect(errors(validateLabReportBundle(b))).toEqual([]);
+  });
+
+  it("every catalogue unit is in the KSA unit value set, and specific gravity is sent without a unit", () => {
+    for (const t of LAB_CATALOG) if (t.unit) expect(KSA_LAB_UNITS.has(t.unit), `${t.code} ${t.unit}`).toBe(true);
+    expect(KSA_LAB_UNITS.has("1")).toBe(false);
+    const b = report(sampleOrder());
+    const sg = byType(b, "Observation").find((o) => o.code.coding[0].code === "5811-5")!;
+    expect(sg.valueQuantity).toEqual({ value: 1.015 });
+    const bad = structuredClone(b);
+    byType(bad, "Observation").find((o) => o.code.coding[0].code === "5811-5")!.valueQuantity = { value: 1.015, unit: "1", system: "urn:oid:2.16.840.1.113883.6.8", code: "1" };
+    expect(errors(validateLabReportBundle(bad)).map((c) => c.text).join(" ")).toContain("KSA Laboratory Observation Units");
+  });
+
+  it("a ServiceRequest in a report links its specimen", () => {
+    const b = report(sampleOrder());
+    const specimenIds = byType(b, "Specimen").map((s) => `Specimen/${s.id}`);
+    for (const sr of byType(b, "ServiceRequest")) expect(specimenIds).toContain(sr.specimen[0].reference);
+  });
+
+  it("will not publish a result for an account without a provider id", () => {
+    const o = createConformanceSampleOrder(enc())!;
+    const user = currentUser();
+    const real = user.providerId;
+    user.providerId = undefined;
+    try {
+      expect(publishLabResult(o.id)).toBeNull();
+    } finally {
+      user.providerId = real;
+    }
+    expect(publishLabResult(o.id)).toBeTruthy();
   });
 });

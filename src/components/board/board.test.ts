@@ -26,7 +26,7 @@ function withAllResults(o: LabOrder): LabOrder {
 }
 
 const rad = (over: Partial<RadOrder> = {}): RadOrder => ({
-  id: "RO-1", visitNumber: "V1", patientId: "P001", procCode: "XCHPA", priority: "routine", indication: "", clinicalInfo: "", orderedAt: ago(30), orderedById: "D1",
+  id: "RO-1", visitNumber: "V1", patientId: "P001", procCode: "XCHES-PA", priority: "routine", indication: "", clinicalInfo: "", orderedAt: ago(30), orderedById: "D1",
   status: "received", orderDirty: false, reportDirty: false, sends: [], ...over,
 });
 const report = (over: Partial<NonNullable<RadOrder["report"]>> = {}) => ({
@@ -198,12 +198,12 @@ describe("radiology board", () => {
     expect(RAD_LANES.map((l) => l.id)).toEqual(["xray", "ct", "mri", "us", "other"]);
   });
   it("puts each exam in the lane of its modality", () => {
-    expect(radLaneOf({ procCode: "XCHPA" })).toBe("xray");
-    expect(radLaneOf({ procCode: "CTCHE" })).toBe("ct");
-    expect(radLaneOf({ procCode: "MBRAN" })).toBe("mri");
+    expect(radLaneOf({ procCode: "XCHES-PA" })).toBe("xray");
+    expect(radLaneOf({ procCode: "CCHES" })).toBe("ct");
+    expect(radLaneOf({ procCode: "MSKUH" })).toBe("mri");
     expect(radLaneOf({ procCode: "UABDO" })).toBe("us");
-    expect(radLaneOf({ procCode: "MBILA" })).toBe("other"); // mammography
-    expect(radLaneOf({ procCode: "DBMDW" })).toBe("other"); // bone density
+    expect(radLaneOf({ procCode: "XMAMB" })).toBe("other"); // mammography
+    expect(radLaneOf({ procCode: "XBDXW" })).toBe("other"); // bone density
     expect(radLaneOf({ procCode: "NOPE" })).toBe("other");
   });
   it("derives the stage, with Reporting once the radiologist typed something", () => {

@@ -34,7 +34,7 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
   const stage = ctx.stage.id as RadStageId;
   const clock = radClock(order, stage);
   const next = NEXT_ACTION[stage];
-  const modality = proc?.modality ?? "CR";
+  const modality = proc?.modality ?? "DX";
   const t = TONE[ctx.lane.tone];
   const prio = order.priority === "stat" ? { tone: "cancel" as const, label: "STAT" } : order.priority === "routine" ? { tone: "muted" as const, label: "Routine" } : { tone: "merge" as const, label: "Urgent" };
   return (

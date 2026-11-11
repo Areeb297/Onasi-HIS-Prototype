@@ -161,6 +161,7 @@ export type DispenseAction = "dispense" | "cancel" | "update";
 export function dispenseSteps(action: DispenseAction, controlled: boolean, types: FillType[]): string[] {
   const g = controlled ? "7.4" : "7.3";
   const out: string[] = [];
+  // Uncontrolled dispenses can be cancelled and updated too, but the Seha sheet has steps only for the controlled ones.
   if (action === "cancel") return controlled ? ["7.4.cancel"] : [];
   if (action === "update") return controlled ? ["7.4.update"] : [];
   const t = types[0];

@@ -56,7 +56,7 @@ describe("swim lane boards render", () => {
     const r1 = createRadConformanceSample(enc)!; // performed + normal report typed = reporting
     sendRadOrder(r1.id);
     publishRadReport(r1.id);
-    const r2 = placeRadOrder(enc, { procCode: "CTCHE", priority: "stat", indication: "Test", clinicalInfo: "" })!;
+    const r2 = placeRadOrder(enc, { procCode: "CCHES", priority: "stat", indication: "Test", clinicalInfo: "" })!;
     markPerformed(r2.id);
     saveRadReport(r2.id, { critical: true });
     expect(getRad().orders.length).toBeGreaterThan(3);

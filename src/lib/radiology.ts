@@ -11,7 +11,7 @@ import { conformanceStep, type ConfStep } from "./fhir/conformance";
 import { simulateNphies, type Json, type Person } from "./fhir/common";
 import { newDicomUid, buildRadOrderBundle, buildRadReportBundle } from "./fhir/rad-bundles";
 import { procByCode, REPORT_TEMPLATES } from "./fhir/rad-catalog";
-import { validateRadOrderBundle, validateRadReportBundle } from "./fhir/rad-validate";
+import { amendmentChecks, validateRadOrderBundle, validateRadReportBundle } from "./fhir/rad-validate";
 import { createStore } from "./fhir/store-util";
 import {
   lastAccepted, nextVersion, type DocStatus, type Priority, type RadOrder, type RadReport, type RadStudy, type SendRecord,
@@ -53,13 +53,17 @@ function seedRad(): RadState {
       orderedById: e.attending, status: "received", orderDirty: false, reportDirty: false, sends: [],
     });
   };
-  add("P001", "XCHPA", "urgent", 120, "Fever and productive cough, rule out pneumonia", "Admitted yesterday. Oxygen saturation 94 percent.");
-  add("P004", "XCHPA", "routine", 50, "Chest X-ray requested by clinic", "");
+  add("P001", "XCHES-PA", "urgent", 120, "Fever and productive cough, rule out pneumonia", "Admitted yesterday. Oxygen saturation 94 percent.");
+  add("P004", "XCHES-PA", "routine", 50, "Chest X-ray requested by clinic", "");
   add("P007", "UABDO", "routine", 30, "Abdominal pain", "Fever for two days.");
   return { orders, counter: n - 200000, rejectNext: false, viewed: {} };
 }
 
-const store = createStore<RadState>("onasi-emr-radiology-v1", seedRad);
+/**
+ * v2: the catalogue now holds only codes from the national KSA Imaging Procedure value set, so orders saved under v1
+ * (which may name removed codes) are left behind and the store starts from fresh seeds.
+ */
+const store = createStore<RadState>("onasi-emr-radiology-v2", seedRad);
 export const useRad = store.use;
 export const getRad = store.get;
 export const resetRad = store.reset;
@@ -105,6 +109,17 @@ export function radReportNphiesState(o: RadOrder): { label: string; tone: "neutr
   return { label: acc && acc.version > 1 ? `Published (Version ${acc.version})` : "Published", tone: "ok" };
 }
 
+/** NPHIES rejects a radiology order without the Procedure Indications sub-section (Error Handling Guide 1.1.7). */
+export const RAD_INDICATION_REQUIRED = "Enter the reason for the exam. NPHIES rejects a radiology order without it.";
+
+/** Encounter.class in a radiology document must be E, I, O or D (page id 414875649). A pre-admission visit (P) cannot be sent. */
+const SENDABLE_CLASSES = ["E", "I", "O", "D"];
+function classBlocksSend(enc: Encounter, what: string): boolean {
+  if (SENDABLE_CLASSES.includes(enc.cls)) return false;
+  pushToast({ tone: "warn", text: `${what} cannot be sent for this visit yet.`, detail: "NPHIES accepts emergency, inpatient, outpatient and day case visits only. Admit or register the patient first." });
+  return true;
+}
+
 function allowed(perm: "order.rad" | "rad.report", target: string, patient?: string): boolean {
   if (can(perm)) return true;
   audit("denied", target, { patient, detail: `Needs ${perm}` });
@@ -118,6 +133,10 @@ export function placeRadOrder(enc: Encounter, input: { procCode: string; priorit
   const patient = getState().patients.find((p) => p.id === enc.patientId);
   if (!allowed("order.rad", "Radiology order", patient && patientName(patient))) return null;
   if (!procByCode(input.procCode)) return null;
+  if (!input.indication.trim()) {
+    pushToast({ tone: "warn", text: "The order was not placed.", detail: RAD_INDICATION_REQUIRED });
+    return null;
+  }
   const s = store.get();
   const counter = s.counter + 1;
   const order: RadOrder = {
@@ -144,6 +163,10 @@ export function amendRadOrder(id: string, input: { procCode: string; priority: P
   const o = getRadOrder(id);
   if (!o || !allowed("order.rad", `Radiology order ${id}`)) return false;
   if (o.status === "cancelled" || o.status === "resulted" || o.status === "amended") return false;
+  if (!input.indication.trim()) {
+    pushToast({ tone: "warn", text: "The order was not changed.", detail: RAD_INDICATION_REQUIRED });
+    return false;
+  }
   const wasSent = !!lastAccepted(o.sends, "rad-order");
   mutate(id, (x) => {
     if (x.status === "received" && procByCode(input.procCode)) x.procCode = input.procCode;
@@ -262,7 +285,7 @@ export function sendRadOrder(id: string): SendRecord | null {
   const o = getRadOrder(id);
   if (!o || !allowed("order.rad", `Radiology order ${id}`)) return null;
   const ctx = radContext(o);
-  if (!ctx) return null;
+  if (!ctx || classBlocksSend(ctx.enc, "The radiology order")) return null;
   const version = nextVersion(radSendsOf(o, "rad-order"), "rad-order");
   const docStatus: DocStatus = o.status === "cancelled" ? "cancelled" : version > 1 ? "amended" : "final";
   const bundle = buildRadOrderBundle({ ...ctx, order: o, orderer: personFromDoctor(o.orderedById), version, docStatus });
@@ -278,7 +301,7 @@ export function publishRadReport(id: string, amendStatus: "amended" | "corrected
   const o = getRadOrder(id);
   if (!o || !allowed("rad.report", `Radiology order ${id}`)) return null;
   const ctx = radContext(o);
-  if (!ctx) return null;
+  if (!ctx || classBlocksSend(ctx.enc, "The radiology report")) return null;
   if (!o.study || reportMissing(o).length) {
     pushToast({ tone: "warn", text: "The report is not complete.", detail: `Missing: ${o.study ? reportMissing(o).join(", ") : "exam not performed"}.` });
     return null;
@@ -333,7 +356,7 @@ export function releaseRadReport(id: string): boolean {
 
 /** One click for testers: a chest X-ray order, exam done and a normal report typed, ready to publish. */
 export function createRadConformanceSample(enc: Encounter): RadOrder | null {
-  const o = placeRadOrder(enc, { procCode: "XCHPA", priority: "routine", indication: "Conformance sample", clinicalInfo: "Made-up test case." });
+  const o = placeRadOrder(enc, { procCode: "XCHES-PA", priority: "routine", indication: "Conformance sample", clinicalInfo: "Made-up test case." });
   if (!o) return null;
   markPerformed(o.id);
   applyReportTemplate(o.id, "normal");
@@ -350,8 +373,8 @@ export function radConformance(s: RadState): ConfStep[] {
   const base = { viewed: s.viewed };
   return [
     conformanceStep({ ...base, id: "6.1", title: "Radiology Order: Publish", what: "a radiology order bundle", sends: orders, amendment: false, hint: "Place an order in the chart and press Send Order To NPHIES." }),
-    conformanceStep({ ...base, id: "6.2", title: "Radiology Order: Amended Order", what: "an amendment that replaces the order", sends: orders, amendment: true, hint: "Change or cancel a sent order in the chart, then send it again." }),
+    conformanceStep({ ...base, id: "6.2", title: "Radiology Order: Amended Order", what: "an amendment that replaces the order", sends: orders, amendment: true, minimums: amendmentChecks, hint: "Change a sent order in the chart, then send it again." }),
     conformanceStep({ ...base, id: "3.1", title: "Radiology Report: Publish", what: "a radiology report bundle", sends: reports, amendment: false, hint: "Use Create Conformance Sample, then Publish Report." }),
-    conformanceStep({ ...base, id: "3.2", title: "Radiology Report: Amended Report", what: "an amendment that replaces the report", sends: reports, amendment: true, hint: "Edit the report text, then Publish Amendment." }),
+    conformanceStep({ ...base, id: "3.2", title: "Radiology Report: Amended Report", what: "an amendment that replaces the report", sends: reports, amendment: true, minimums: amendmentChecks, hint: "Edit the report text, then Publish Amendment." }),
   ];
 }

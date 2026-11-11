@@ -20,7 +20,7 @@ function Chip({ proc, on, toggle, disabled }: { proc: RadProcedure; on: boolean;
       aria-pressed={on}
       disabled={disabled}
       onClick={toggle}
-      title={`${proc.display} (code ${proc.code})${proc.madeUp ? " (test code)" : ""}`}
+      title={`${proc.display} (code ${proc.code})`}
       className={cn(
         "rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
         on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted",
@@ -66,7 +66,9 @@ export function RadOrderPad({
 
   const toggle = (c: string) => setCodes((cur) => (single ? [c] : cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
   const picked = codes.map((c) => procByCode(c)).filter((p): p is RadProcedure => !!p);
-  const ready = canOrder && picked.length > 0;
+  const hasReason = indication.trim().length > 0;
+  const ready = canOrder && picked.length > 0 && hasReason;
+  const whyOff = !canOrder ? "" : picked.length === 0 ? "Pick a procedure first." : !hasReason ? "Enter the reason for the exam. NPHIES rejects a radiology order without it." : "";
   const value: RadOrderInput = { procCodes: codes, priority, indication, clinicalInfo };
 
   return (
@@ -98,7 +100,6 @@ export function RadOrderPad({
               <span className="text-xs text-muted-foreground">
                 {MODALITIES[p.modality].display} · {BODY_REGIONS[p.region].display}
                 {p.contrast && " · Contrast needed"}
-                {p.madeUp && " · (test code)"}
               </span>
               {dev && <span className="font-mono text-xs text-muted-foreground">orderDetail {p.modality}, bodySite {BODY_REGIONS[p.region].code}</span>}
             </div>
@@ -114,8 +115,8 @@ export function RadOrderPad({
             ))}
           </Select>
         </Field>
-        <Field label="Reason For The Exam" hl7="Composition.section (procedure indications)">
-          <Input value={indication} onChange={(e) => setIndication(e.target.value)} placeholder="For example: cough and fever" />
+        <Field label="Reason For The Exam" required hl7="Composition.section (procedure indications, LOINC 59768-2)">
+          <Input value={indication} required aria-required="true" aria-invalid={!hasReason} onChange={(e) => setIndication(e.target.value)} placeholder="For example: cough and fever" />
         </Field>
         <Field label="Clinical History" hl7="Composition.section (clinical information)">
           <Input value={clinicalInfo} onChange={(e) => setClinicalInfo(e.target.value)} placeholder="Optional" />
@@ -132,6 +133,7 @@ export function RadOrderPad({
         )}
         {onCancel && <Button variant="ghost" onClick={onCancel}>Close</Button>}
         {!canOrder && <span className="self-center text-xs text-muted-foreground">{reason}</span>}
+        {whyOff && <span className="self-center text-xs text-muted-foreground" role="status">{whyOff}</span>}
       </div>
     </div>
   );

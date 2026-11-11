@@ -130,7 +130,7 @@ function ResultRow({ order, test, sex, editable, indent }: { order: LabOrder; te
               </label>
               <div>
                 <div className="mb-1 text-xs font-medium text-muted-foreground">
-                  Sensitivity {dev && <span className="ml-1 font-normal">(antibiotic codes are test codes)</span>}
+                  Sensitivity {dev && <span className="ml-1 font-normal">(LOINC susceptibility codes)</span>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {ANTIBIOTICS.map((a) => {

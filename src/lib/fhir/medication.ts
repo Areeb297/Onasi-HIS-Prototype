@@ -1,12 +1,17 @@
 import { OID } from "../reference-data";
-import { FREQ_BY_ID, ROUTE_LABEL } from "../rx-catalogue";
+import { FREQ_BY_ID, OVERRIDE_LABEL, ROUTE_BY_CODE, ROUTE_LABEL } from "../rx-catalogue";
 import { addDays } from "../rx-logic";
-import type { Drug, DispenseLine, Frequency, ItemStatus, RxItem, UsageSetting } from "../rx-types";
+import type { ControlClass, Drug, DispenseLine, Frequency, ItemStatus, RxItem, UsageSetting } from "../rx-types";
 
 /**
  * FHIR R4 builders for the nphies Medication Prescription and Dispense (Raqeeb) messages.
- * Self-contained. Follows the Confluence snapshot in references/pages/medication/.
- * Codes marked TEST are demo values. The real value sets live in IS0200 and are not in the snapshot.
+ * Follows the Confluence guide (page ids in the comments) and the official sample messages
+ * ("Sample Messages" page 125206589 and "Samples - Raqeeb" page 927268883).
+ *
+ * Two kinds of codes are sent:
+ *  - real code systems and codes, where the guide or an official sample shows them;
+ *  - demo codes, always with the prefix DEMO-, where the real value set is in IS0200 and was not available.
+ *    Every demo code is listed in ASSUMPTIONS and raised as a warning by the validator.
  */
 
 export type Json = Record<string, unknown>;
@@ -40,8 +45,16 @@ export const PROFILE = {
   medicationKnowledge: `${SD}medicationknowledge|1.0`,
 } as const;
 
-/** Demo OID root. Real item, group and Raqeeb OIDs are assigned at onboarding. */
-export const TEST_OID = "2.16.840.1.113883.3.3731.9999";
+/** Prefix of every code that is a stand-in for an IS0200 value this app could not load. */
+export const DEMO_PREFIX = "DEMO-";
+
+/**
+ * One root OID for every identifier this system hands out (prescription items, prescriptions, dispenses, visits).
+ * It is the same participant OID the ADT messages use for the visit number (PV1-19), so nphies can link them.
+ * The real OID is assigned at onboarding.
+ */
+const LOCAL_ROOT = `urn:oid:${OID.participant}`;
+
 export const SYS = {
   healthId: `urn:oid:${OID.healthId}`,
   provider: `urn:oid:${OID.provider}`,
@@ -51,42 +64,65 @@ export const SYS = {
   encounterClass: "urn:oid:2.16.840.1.113883.18.5",
   actCode: "urn:oid:2.16.840.1.113883.5.4",
   eventCoding: "http://nphies.sa/fhir/ksa/nphies-cs/terminology/CodeSystem/EventCoding",
-  // TEST systems
-  rxItem: `urn:oid:${TEST_OID}.10`,
-  rxGroup: `urn:oid:${TEST_OID}.11`,
-  dispenseItem: `urn:oid:${TEST_OID}.12`,
-  encounter: `urn:oid:${TEST_OID}.13`,
-  raqeeb: `urn:oid:${TEST_OID}.90`,
-  drug: `urn:oid:${TEST_OID}.20`,
-  product: `urn:oid:${TEST_OID}.21`,
-  form: `urn:oid:${TEST_OID}.22`,
-  route: `urn:oid:${TEST_OID}.23`,
-  rxType: `urn:oid:${TEST_OID}.24`,
-  usage: `urn:oid:${TEST_OID}.25`,
-  duration: `urn:oid:${TEST_OID}.26`,
-  packForm: `urn:oid:${TEST_OID}.27`,
-  providerType: `urn:oid:${TEST_OID}.28`,
-  specialty: `urn:oid:${TEST_OID}.29`,
-  secureCode: `urn:oid:${TEST_OID}.30`,
-  override: `urn:oid:${TEST_OID}.31`,
-  allergyCode: `urn:oid:${TEST_OID}.32`,
+  // Code systems shown in the official sample messages.
+  /** KSA Medication Prescription Type */
+  rxType: "urn:oid:2.16.840.1.113883.3.3731.1.205.14",
+  /** Prescription Category Codes (usage setting) */
+  usage: "urn:oid:2.16.840.1.113883.4.642.3.1322",
+  /** KSA Prescription Pharmacy Item Name (generic MRID) */
+  drug: "urn:oid:2.16.840.1.113883.3.3731.1.205.1",
+  /** KSA Dispensation Pharmacy Item Name (brand MRID) */
+  product: "urn:oid:2.16.840.1.113883.3.3731.1.205.2",
+  /** KSA Medication Pharmaceutical Dose Form */
+  form: "urn:oid:2.16.840.1.113883.3.3731.1.205.8",
+  /** KSA Medication Package Form */
+  packForm: "urn:oid:2.16.840.1.113883.3.3731.1.205.9",
+  /** KSA Individual Provider Type */
+  providerType: "urn:oid:2.16.840.1.113883.3.3731.1.202.1",
+  /** Healthcare Specialty Identifier */
+  specialty: "urn:oid:2.16.840.1.113883.3.3731.1.202.5",
+  /** SecureCode Status */
+  secureCode: "urn:oid:2.16.840.1.113883.3.3731.1.203.53",
+  /** Override-SecureCode-Justification */
+  override: "urn:oid:2.16.840.1.113883.3.3731.1.203.52",
+  // Identifiers this system issues. All share the organization root OID.
+  rxItem: LOCAL_ROOT,
+  rxGroup: LOCAL_ROOT,
+  dispenseItem: LOCAL_ROOT,
+  encounter: LOCAL_ROOT,
+  /** Demo value. The reference id nphies returns sits in an OID range the guide does not publish (page 118162249). */
+  nationalRef: `urn:oid:${OID.participant}.90`,
 } as const;
 
-/** Things the snapshot does not settle. Shown as "Assumption" notes in Developer View. */
+/** Real provider type codes from the official samples (KSA Individual Provider Type). */
+export const PROVIDER_TYPE = {
+  prescriber: { code: "100000003", display: "Medicine and Surgery" },
+  pharmacist: { code: "100000005", display: "Pharmacists and Pharmacy Technicians" },
+} as const;
+
+/** Things the guide and samples do not settle. Shown as "Assumption" notes in Developer View. */
 export const ASSUMPTIONS: string[] = [
-  "Value-set codes (prescription type, usage setting, dose form, route, duration unit, package form, provider type, specialty, SecureCode status) are not in the snapshot. Demo TEST codes are used.",
-  "Item, group and Raqeeb identifier OIDs come from onboarding. Demo OIDs are used and the Raqeeb reference id is made up (RQB plus 8 digits).",
-  "Bundle type is 'message' as the Raqeeb Bundle page says. The skill summary says 'document'. The Raqeeb page was followed.",
+  "Codes that start with DEMO- are stand-ins. The real values are in the IS0200 data dictionary, which was not available. The validator warns about each one.",
+  "Prescription type (page 118128831, KSA Medication Prescription Type): U and C are the real codes from the official samples. Narcotic and restricted use DEMO-NARCOTIC and DEMO-RESTRICTED.",
+  "Drug codes (pages 118063634 and 118161914): the real codes are NHIC registry ids (MRID), generic for prescribing and brand for dispensing. The demo catalogue sends DEMO-DRG codes.",
+  "Dose form (page 118063634, KSA Medication Pharmaceutical Dose Form): 6401 tablet is real. Other forms use DEMO-FORM codes. Package form (page 118129076) uses DEMO-PACK codes.",
+  "Route (page 117965427, KSA Medication Route of Administration): 26643006 oral route is real. Other routes use DEMO-ROUTE codes.",
+  "Frequency code for Raqeeb items (page 118129183, Frequency Code value set): DEMO-FREQ codes are sent in timing.code.",
+  "Specialty (page 118063485, Healthcare Specialty Identifier): Pharmacy is the real code from the samples. Doctor specialties use DEMO-SPEC codes.",
+  "Override reason (page 117965118, Override-SecureCode-Justification): code 3 is real. The other reasons use DEMO-OVR codes.",
+  "Drug allergy (page 117965377, KSA Drug Allergy): the chart holds allergy text only, so a DEMO-ALG code is sent with the SNOMED CT system.",
+  "Quantity units (KSA Medication Quantity Unit, page 118128831) and the age unit (KSA Time Units, page 118063524) are plain words, not the IS0200 values.",
+  "Organization id, provider ids and the root OID for identifiers are demo values. Real ones come from the KSA-wide provider directory and from onboarding.",
+  "The reference id nphies returns after the first submission is simulated (RQB or NRX plus 8 digits) and its OID is a demo value.",
   "Bundle entry fullUrl is written as urn:uuid:<id>. The page says only 'the UUID in the id element'.",
   "The page lists 'extension/definition/reference' for the medication definition link. A valid FHIR extension needs value[x], so valueReference is used.",
-  "Dispense type uses the v3 ActCode values FF, FFP, FFC, RF, RFP, RFC. The element row is missing from the snapshot table.",
   "Patient phone is mandatory for Raqeeb items but is not held in the demo patient record. A made-up E.164 number is derived from the national id.",
   "Health ID is checked as 10 digits in the simulator. The real format is not in the integration guide.",
   "Narcotic, controlled and restricted classes in the drug catalogue are for demonstration only.",
-  "Validity period end is treatment days times fills plus 7 days. The real rule is not in the snapshot.",
-  "Cancel on a completed controlled item (7.2.5) is allowed. The status definitions say cancelled is for items with no dispense, so a dispense should be cancelled first.",
+  "Validity period end is treatment days times fills plus 7 days. The real rule is not in the guide.",
+  "Cancel on a completed controlled item (Seha step 7.2.5) is allowed. The status definitions say cancelled is for items with no dispense, so a dispense should be cancelled first.",
   "Controlled items are issued on their own prescription so one Raqeeb reference id covers them.",
-  "Cancel and update of a dispense are offered for controlled items only, as the conformance sheet lists them under 7.4.",
+  "On a partial dispense, the duration in the dosage is set to the days supplied, so it equals daysSupply as the page asks.",
 ];
 
 /* ---------- inputs ---------- */
@@ -101,8 +137,8 @@ export interface PatientIn {
   phone: string;
 }
 export interface PractitionerIn {
-  /** Value in the KSA-wide provider directory. Made up for the demo. */
-  npi: string;
+  /** Value in the KSA-wide provider directory. In the demo it is the same id the ADT messages send in PV1-7. */
+  providerId: string;
   family: string;
   given: string;
   phone: string;
@@ -136,8 +172,8 @@ export interface ItemIn {
 }
 export interface PrescriptionIn {
   groupId: string;
-  /** True when the group id is a Raqeeb reference id returned by a first submission. */
-  groupIsRaqeeb: boolean;
+  /** True when the group id is the reference id nphies returned on the first submission. */
+  groupFromNphies: boolean;
   controlled: boolean;
   usage: UsageSetting;
   authoredAt: Date;
@@ -197,23 +233,35 @@ const cc = (system: string, code: string, display: string): Json => ({ coding: [
 const ident = (system: string, value: string): Json => ({ system, value });
 const ref = (type: string, id: string): string => `${type}/${id}`;
 const meta = (profile: string): Json => ({ profile: [profile] });
-const dayDuration = (n: number): Json => ({ value: n, unit: "day", system: SYS.duration, code: "d" });
+/** KSA Medication Duration Unit, written as in the official samples: code "d", concept name "day(s)". */
+const dayDuration = (n: number): Json => ({ value: n, unit: "day(s)", code: "d" });
 
-export const PRESCRIPTION_TYPE: Record<string, string> = { U: "uncontrolled", N: "narcotic", C: "controlled", R: "restricted" };
+export const PRESCRIPTION_TYPE: Record<ControlClass, { code: string; display: string }> = {
+  U: { code: "U", display: "Uncontrolled" },
+  C: { code: "C", display: "Controlled" },
+  N: { code: `${DEMO_PREFIX}NARCOTIC`, display: "Narcotic" },
+  R: { code: `${DEMO_PREFIX}RESTRICTED`, display: "Restricted" },
+};
+const CLASS_TEXT: Record<string, string> = { I: "Inpatient", O: "Outpatient", E: "Emergency", P: "Preadmit" };
+
+function routeConcept(code: string): Json {
+  const r = ROUTE_BY_CODE[code];
+  return r?.snomed ? cc(SYS.snomed, r.snomed, r.snomedName ?? r.label) : cc(SYS.snomed, `${DEMO_PREFIX}ROUTE-${code}`, r?.label ?? code);
+}
 const USAGE_TEXT: Record<UsageSetting, string> = { outpatient: "Outpatient", inpatient: "Inpatient", discharge: "Discharge", community: "Community" };
 
 export function freqOf(id: string): Frequency {
   return FREQ_BY_ID[id] ?? FREQ_BY_ID.OD;
 }
 
-export function dosageNarrative(drug: Drug, item: RxItem): string {
+export function dosageNarrative(drug: Drug, item: RxItem, days: number = item.durationDays): string {
   const f = freqOf(item.frequencyId);
   const parts = [
     `${item.dose} ${drug.unit}`,
     f.label.toLowerCase(),
     ROUTE_LABEL[item.route] ? `by ${ROUTE_LABEL[item.route].toLowerCase()} route` : "",
     item.asNeeded ? "as needed" : "",
-    `for ${item.durationDays} day${item.durationDays === 1 ? "" : "s"}`,
+    `for ${days} day${days === 1 ? "" : "s"}`,
   ].filter(Boolean);
   return parts.join(", ");
 }
@@ -242,26 +290,26 @@ export function buildPatient(p: PatientIn, id: string, raqeeb: boolean): Json {
   };
 }
 
-export function buildPractitioner(p: PractitionerIn, id: string): Json {
+export function buildPractitioner(p: PractitionerIn, id: string, raqeeb = false): Json {
   return {
     resourceType: "Practitioner",
     id,
     meta: meta(PROFILE.practitioner),
-    identifier: [ident(SYS.provider, p.npi)],
-    name: [{ family: p.family, given: [p.given], prefix: p.role === "prescriber" ? ["Dr."] : [] }],
-    telecom: [{ system: "phone", value: p.phone }],
+    identifier: [ident(SYS.provider, p.providerId)],
+    name: [{ family: p.family, given: [p.given], ...(p.role === "prescriber" ? { prefix: ["Dr."] } : {}) }],
+    telecom: [{ system: "phone", value: p.phone, ...(raqeeb ? { rank: 1 } : {}) }],
   };
 }
 
 export function buildPractitionerRole(p: PractitionerIn, id: string, practitionerId: string, orgId: string, org: OrgIn): Json {
-  const prescriber = p.role === "prescriber";
+  const type = PROVIDER_TYPE[p.role];
   return {
     resourceType: "PractitionerRole",
     id,
     meta: meta(PROFILE.practitionerRole),
-    practitioner: { reference: ref("Practitioner", practitionerId), identifier: ident(SYS.provider, p.npi) },
+    practitioner: { reference: ref("Practitioner", practitionerId), identifier: ident(SYS.provider, p.providerId) },
     organization: { reference: ref("Organization", orgId), identifier: ident(SYS.organization, org.id) },
-    code: [cc(SYS.providerType, prescriber ? "medicine-and-surgery" : "pharmacists-and-technicians", prescriber ? "Medicine and Surgery" : "Pharmacists and Pharmacy Technicians")],
+    code: [cc(SYS.providerType, type.code, type.display)],
     specialty: [cc(SYS.specialty, p.specialtyCode, p.specialtyText)],
   };
 }
@@ -278,7 +326,7 @@ export function buildEncounter(e: EncounterIn, id: string): Json {
     meta: meta(PROFILE.encounter),
     identifier: [ident(SYS.encounter, e.visitNumber)],
     status: e.endAt ? "finished" : "in-progress",
-    class: coding(SYS.encounterClass, e.cls, e.cls),
+    class: coding(SYS.encounterClass, e.cls, CLASS_TEXT[e.cls] ?? e.cls),
     period: { start: iso(e.startAt), ...(e.endAt ? { end: iso(e.endAt) } : {}) },
     serviceProvider: { display: e.facilityName },
   };
@@ -300,13 +348,13 @@ export function buildAdditionalInfo(kind: "height" | "weight" | "age", value: nu
   };
 }
 
-/** Drug allergy code is a TEST code. The real value set is "KSA Drug Allergy". */
+/** The chart holds allergy text only, so a DEMO- code is sent with the SNOMED CT system. The real value set is "KSA Drug Allergy". */
 export function buildAllergy(a: AllergyIn, id: string, patientId: string): Json {
   return {
     resourceType: "AllergyIntolerance",
     id,
     meta: meta(PROFILE.allergy),
-    code: cc(SYS.allergyCode, `TST-ALG-${a.text.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 8)}`, a.text),
+    code: cc(SYS.snomed, `${DEMO_PREFIX}ALG-${a.text.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 8)}`, a.text),
     category: ["medication"],
     criticality: a.severity === "SV" ? "high" : "low",
     patient: { reference: ref("Patient", patientId) },
@@ -314,14 +362,14 @@ export function buildAllergy(a: AllergyIn, id: string, patientId: string): Json 
   };
 }
 
-export function buildMessageHeader(id: string, org: OrgIn, practitionerNpi: string, focusSystem: string, focusValues: string[]): Json {
+export function buildMessageHeader(id: string, org: OrgIn, providerId: string, focusSystem: string, focusValues: string[]): Json {
   return {
     resourceType: "MessageHeader",
     id,
     meta: meta(PROFILE.messageHeader),
     eventCoding: { system: SYS.eventCoding, code: "submit" },
     sender: { identifier: ident(SYS.organization, org.id) },
-    author: { identifier: ident(SYS.provider, practitionerNpi) },
+    author: { identifier: ident(SYS.provider, providerId) },
     focus: focusValues.map((v) => ({ identifier: ident(focusSystem, v) })),
   };
 }
@@ -351,7 +399,7 @@ export function buildMedicationKnowledge(drug: Drug): Json {
     resourceType: "MedicationKnowledge",
     id: "medicationknowledge",
     meta: meta(PROFILE.medicationKnowledge),
-    packaging: { type: cc(SYS.packForm, drug.pack.type, drug.pack.type), quantity: { value: drug.pack.size, unit: drug.unit } },
+    packaging: { type: cc(SYS.packForm, `${DEMO_PREFIX}PACK-${drug.pack.type.toUpperCase()}`, drug.pack.type), quantity: { value: drug.pack.size, unit: drug.unit } },
   };
 }
 
@@ -369,20 +417,25 @@ export function buildMedicationDispensed(drug: Drug, line: DispenseLine): Json {
   };
 }
 
-/** Dosage Instructions General plus (always for Raqeeb) Normal Dosing. Only variant 1 is built. */
-export function buildDosage(drug: Drug, item: RxItem): Json[] {
+/**
+ * Dosage Instructions General plus one structured Normal Dosing instruction (variant 1, page 118129183).
+ * Raqeeb items carry the frequency as a code in timing.code, and frequency, period and periodUnit are not allowed.
+ * Other items carry frequency, period and periodUnit, and timing.code is not allowed.
+ * `days` is the duration to state. On a dispense it is the days supplied, so it equals daysSupply.
+ */
+export function buildDosage(drug: Drug, item: RxItem, raqeeb: boolean, days: number = item.durationDays): Json[] {
   const f = freqOf(item.frequencyId);
   const general: Json = {
-    text: dosageNarrative(drug, item),
+    text: dosageNarrative(drug, item, days),
     ...(item.patientInstruction ? { patientInstruction: item.patientInstruction } : {}),
-    timing: { repeat: { boundsDuration: dayDuration(item.durationDays) } },
-    route: cc(SYS.route, item.route, ROUTE_LABEL[item.route] ?? item.route),
+    timing: { repeat: { boundsDuration: dayDuration(days) } },
+    route: routeConcept(item.route),
     asNeededBoolean: item.asNeeded,
   };
   const structured: Json = {
-    sequence: 1,
-    timing: { repeat: { frequency: f.frequency, period: f.period, periodUnit: f.periodUnit, ...(f.when ? { when: [f.when] } : {}) } },
-    asNeededBoolean: item.asNeeded,
+    timing: raqeeb
+      ? { code: cc(SYS.snomed, `${DEMO_PREFIX}FREQ-${f.id}`, f.label) }
+      : { repeat: { frequency: f.frequency, period: f.period, periodUnit: f.periodUnit } },
     doseAndRate: [{ doseQuantity: { value: item.dose, unit: drug.unit } }],
   };
   return [general, structured];
@@ -395,6 +448,8 @@ export function buildMedicationRequest(
   ctx: { id: string; patientId: string; roleId: string; encounterId: string; group: Json; authoredAt: Date; patient: PatientIn; encounter: EncounterIn; usage: UsageSetting; supportIds: string[] },
 ): Json {
   const { item, drug } = it;
+  const type = PRESCRIPTION_TYPE[drug.controlClass];
+  const raqeeb = drug.controlClass !== "U" && ctx.usage !== "inpatient";
   const start = ksaDate(ctx.authoredAt);
   const end = addDays(start, Math.max(1, item.durationDays) * (item.refills + 1) + 7);
   return {
@@ -408,7 +463,7 @@ export function buildMedicationRequest(
     groupIdentifier: ctx.group,
     authoredOn: ksaTimestamp(ctx.authoredAt),
     category: [
-      cc(SYS.rxType, PRESCRIPTION_TYPE[drug.controlClass], PRESCRIPTION_TYPE[drug.controlClass]),
+      cc(SYS.rxType, type.code, type.display),
       cc(SYS.usage, ctx.usage, USAGE_TEXT[ctx.usage]),
     ],
     text: xhtml(itemNarrative(drug, item)),
@@ -416,7 +471,7 @@ export function buildMedicationRequest(
     requester: { reference: ref("PractitionerRole", ctx.roleId) },
     encounter: { reference: ref("Encounter", ctx.encounterId), identifier: ident(SYS.encounter, ctx.encounter.visitNumber) },
     medicationReference: { reference: "#medicationprescribed" },
-    dosageInstruction: buildDosage(drug, item),
+    dosageInstruction: buildDosage(drug, item, raqeeb),
     ...(item.fulfillmentNote ? { note: [{ text: item.fulfillmentNote }] } : {}),
     dispenseRequest: {
       validityPeriod: { start, end },
@@ -437,7 +492,7 @@ export function buildPrescriptionBundle(input: PrescriptionIn, opts: BuildOpts =
   const entries: { fullUrl: string; resource: Json }[] = [];
   const add = (r: Json) => entries.push({ fullUrl: `urn:uuid:${r.id as string}`, resource: r });
 
-  const group = ident(input.groupIsRaqeeb ? SYS.raqeeb : SYS.rxGroup, input.groupId);
+  const group = ident(input.groupFromNphies ? SYS.nationalRef : SYS.rxGroup, input.groupId);
 
   // Supporting information: height, weight, age and allergies
   const support: string[] = [];
@@ -473,9 +528,9 @@ export function buildPrescriptionBundle(input: PrescriptionIn, opts: BuildOpts =
     }),
   );
 
-  add(buildMessageHeader(ids.header, input.org, input.practitioner.npi, SYS.rxItem, input.items.map((i) => i.item.identifier)));
+  add(buildMessageHeader(ids.header, input.org, input.practitioner.providerId, SYS.rxItem, input.items.map((i) => i.item.identifier)));
   add(buildPatient(input.patient, ids.patient, raqeeb));
-  add(buildPractitioner(input.practitioner, ids.practitioner));
+  add(buildPractitioner(input.practitioner, ids.practitioner, raqeeb));
   add(buildPractitionerRole(input.practitioner, ids.role, ids.practitioner, ids.org, input.org));
   add(buildOrganization(input.org, ids.org));
   add(buildEncounter(input.encounter, ids.enc));
@@ -504,11 +559,11 @@ export function buildMedicationDispense(
   const tag: Json[] = [];
   if (input.raqeebScope && input.secure) {
     if (input.secure.mode === "authenticated") {
-      tag.push({ ...coding(SYS.secureCode, "Code-Authenticated", "Code Authenticated"), extension: [{ url: `${EXT}SecureCode-verification`, valueString: input.secure.value ?? "" }] });
+      tag.push({ ...coding(SYS.secureCode, "Code-Authenticated", "Secure Code Authenticated"), extension: [{ url: `${EXT}SecureCode-verification`, valueString: input.secure.value ?? "" }] });
     } else {
       tag.push({
-        ...coding(SYS.secureCode, "Code-Override", "Code Override"),
-        extension: [{ url: `${EXT}Override-SecureCode-Justification`, valueCodeableConcept: cc(SYS.override, "override", input.secure.justification ?? "") }],
+        ...coding(SYS.secureCode, "Code-Override", "Secure Code Override"),
+        extension: [{ url: `${EXT}Override-SecureCode-Justification`, valueCodeableConcept: cc(SYS.override, input.secure.justification ?? "", OVERRIDE_LABEL[input.secure.justification ?? ""] ?? "") }],
       });
     }
   }
@@ -531,9 +586,9 @@ export function buildMedicationDispense(
     quantity: { value: line.quantity, unit: drug.unit },
     daysSupply: dayDuration(line.daysSupply),
     whenHandedOver: ksaTimestamp(input.handedOverAt),
-    text: xhtml(`${drug.brand} (${drug.generic} ${drug.strengthValue} ${drug.strengthUnit}) quantity ${line.quantity} ${drug.unit}. ${dosageNarrative(drug, item)}. Dispense type ${line.type}. Status ${line.status}.`),
+    text: xhtml(`${drug.brand} (${drug.generic} ${drug.strengthValue} ${drug.strengthUnit}) quantity ${line.quantity} ${drug.unit}. ${dosageNarrative(drug, item, line.daysSupply)}. Dispense type ${line.type}. Status ${line.status}.`),
     ...(override ? { receiver: [{ identifier: ident(SYS.healthId, input.patient.healthId) }] } : {}),
-    dosageInstruction: buildDosage(drug, item),
+    dosageInstruction: buildDosage(drug, item, input.raqeebScope && l.controlled, line.daysSupply),
   };
 }
 
@@ -549,9 +604,9 @@ export function buildDispenseBundle(input: DispenseIn, opts: BuildOpts = {}): Fh
   const add = (r: Json) => entries.push({ fullUrl: `urn:uuid:${r.id as string}`, resource: r });
   const dispenses = input.lines.map((l) => buildMedicationDispense(l, { id: gen(), patientId: ids.patient, roleId: ids.role, encounterId: ids.enc, input }));
 
-  add(buildMessageHeader(ids.header, input.org, input.dispenser.npi, SYS.dispenseItem, input.lines.map((l) => l.line.identifier)));
+  add(buildMessageHeader(ids.header, input.org, input.dispenser.providerId, SYS.dispenseItem, input.lines.map((l) => l.line.identifier)));
   add(buildPatient(input.patient, ids.patient, input.raqeebScope));
-  add(buildPractitioner(input.dispenser, ids.practitioner));
+  add(buildPractitioner(input.dispenser, ids.practitioner, input.raqeebScope));
   add(buildPractitionerRole(input.dispenser, ids.role, ids.practitioner, ids.org, input.org));
   add(buildOrganization(input.org, ids.org));
   add(buildEncounter(input.encounter, ids.enc));

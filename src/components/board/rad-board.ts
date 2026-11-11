@@ -31,7 +31,7 @@ export const RAD_LANES: (BoardLane & { id: RadLaneId })[] = [
   { id: "other", label: "Other", tone: "muted", hint: "Mammography and bone density" },
 ];
 
-const MODALITY_LANE: Record<string, RadLaneId> = { CR: "xray", CT: "ct", MR: "mri", US: "us" };
+const MODALITY_LANE: Record<string, RadLaneId> = { DX: "xray", CR: "xray", CT: "ct", MR: "mri", US: "us" };
 
 export const radLaneOf = (o: Pick<RadOrder, "procCode">): RadLaneId => MODALITY_LANE[procByCode(o.procCode)?.modality ?? ""] ?? "other";
 
@@ -96,10 +96,10 @@ export function radClock(o: RadOrder, stage: string): ClockSpec | null {
 
 /* ---------- labels ---------- */
 
-export const MODALITY_SHORT: Record<string, string> = { CR: "X-Ray", CT: "CT", MR: "MRI", US: "Ultrasound", MG: "Mammography", BMD: "Bone Density" };
+export const MODALITY_SHORT: Record<string, string> = { DX: "X-Ray", CR: "X-Ray", CT: "CT", MR: "MRI", US: "Ultrasound", MG: "Mammography", BMD: "Bone Density" };
 
 export const REGION_SHORT: Record<string, string> = {
-  chest: "Chest", abdomen: "Abdomen", head: "Head", brain: "Brain", pelvis: "Pelvis", breast: "Breast", knee: "Knee", lspine: "Lumbar Spine", whole: "Whole Body",
+  chest: "Chest", abdomen: "Abdomen", head: "Head", pelvis: "Pelvis", breast: "Breast", spine: "Spine", lower: "Lower Limb", whole: "Whole Body",
 };
 
 export type ChipTone = "neutral" | "ok" | "warn" | "danger";
