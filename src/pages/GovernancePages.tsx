@@ -161,7 +161,9 @@ export function RegistrationPage() {
     <div>
       <PageHeader
         title={cls === "E" ? "Emergency Registration" : "Patient Registration"}
-        subtitle="Enter the ID number first. The HIS looks the patient up, and you can retrieve the insurance card and the ID card. NPHIES has no message for a patient alone, so the details go inside the A04 message."
+        subtitle={cls === "E"
+          ? "Register at the door with a few answers, then triage. The full details can be completed later."
+          : "Enter the ID number first. The HIS looks the patient up, and you can retrieve the insurance card and the ID card."}
       />
       <RegistrationForm key={cls} cls={cls} />
       <Card className="mt-8">
