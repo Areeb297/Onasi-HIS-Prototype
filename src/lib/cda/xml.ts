@@ -61,7 +61,8 @@ export function narrative(blocks: Block[]): string {
       return `<list>${b.items.map((i) => `<item>${i.id ? `<content ID="${esc(i.id)}">${esc(i.text)}</content>` : esc(i.text)}</item>`).join("")}</list>`;
     }
     const head = `<thead><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>`;
-    const body = `<tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    const cell = (c: string, id?: string) => `<td>${id ? `<content ID="${esc(id)}">${esc(c)}</content>` : esc(c)}</td>`;
+    const body = `<tbody>${b.rows.map((r, n) => `<tr>${r.map((c, k) => cell(c, b.ids?.[n]?.[k])).join("")}</tr>`).join("")}</tbody>`;
     return `<table>${head}${body}</table>`;
   });
   return `<text>${parts.join("")}</text>`;

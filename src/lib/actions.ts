@@ -1,5 +1,5 @@
 import type { Dx, LogEntry, ScenarioForm } from "./model";
-import { DISPOSITIONS, DOCTORS, SERVICES } from "./reference-data";
+import { DISPOSITIONS, DOCTORS, SERVICES, defaultAdmissionMethod } from "./reference-data";
 import { EVENT_BY_ID, eventLabel, type EventId } from "./spec";
 import { pushToast } from "./toast";
 import {
@@ -73,7 +73,7 @@ export function quickSend(eventId: EventId, visit: string, patch?: (f: ScenarioF
 export function dischargeWith(visit: string, dx: Dx[], disposition: string): Outcome {
   // Save the chosen diagnoses on the visit first so the EMR and the message agree.
   updateEncounter(visit, (e) => {
-    for (const d of dx) if (!e.dx.some((x) => x.code === d.code)) e.dx.push({ ...d, type: "F" });
+    for (const d of dx) if (!e.dx.some((x) => x.code === d.code)) e.dx.push({ ...d, type: "F", at: nowLocal() });
   });
   return quickSend("A03", visit, (f) => {
     f.dx = getState().encounters.find((e) => e.visitNumber === visit)!.dx.map((d) => ({ ...d }));
@@ -89,6 +89,12 @@ export interface CreateParams {
   reason: string;
   referring?: string;
   cls?: "O" | "E";
+  /** A01 and A05: the class of the stay. Inpatient when empty. A01 as outpatient needs no bed. */
+  admitClass?: "I" | "O";
+  /** PV1-4, from CS-Adm-AdmissionMethod. The default for the class when empty. */
+  admissionMethod?: string;
+  /** PV1-9. */
+  consulting?: string;
   bedId?: string;
   expectedAdmitAt?: string;
 }
@@ -115,11 +121,14 @@ export function quickCreate(kind: "A04" | "A01" | "A05", p: CreateParams): Outco
       form.cls = "I";
       form.expectedAdmitAt = "";
     }
-    form.bedId = p.bedId ?? "";
+    form.cls = p.admitClass ?? "I";
+    form.bedId = form.cls === "I" ? p.bedId ?? "" : "";
     form.admitAt = nowLocal();
   }
-  if (kind === "A05") form.expectedAdmitAt = p.expectedAdmitAt ?? "";
+  if (kind === "A05") { form.expectedAdmitAt = p.expectedAdmitAt ?? ""; form.cls = p.admitClass ?? "I"; }
   if (kind === "A04") form.cls = p.cls ?? "O";
+  form.admissionMethod = p.admissionMethod || defaultAdmissionMethod(form.cls);
+  if (p.consulting) form.consulting = p.consulting;
   const problem = formProblem(state, kind, form);
   if (problem) return fail(problem);
   const entry = send(kind, form, { source: "user" });

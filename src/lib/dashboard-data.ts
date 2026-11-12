@@ -2,7 +2,7 @@ import { clockOf, stageOf } from "./ed";
 import { RCM } from "./masters/rcm";
 import type { HisState } from "./model";
 import { buildOutbox, STATE_LABEL, type SendState } from "./nphies-outbox";
-import { BEDS, WARDS } from "./reference-data";
+import { BEDS, WARDS, countryLabel } from "./reference-data";
 import { getState } from "./store";
 
 /**
@@ -96,7 +96,7 @@ export function patientMix(s: HisState = getState()) {
   return {
     total: s.patients.length,
     gender: count((p) => (p.sex === "M" ? "Male" : "Female")),
-    nationality: count((p) => COUNTRY[p.nationality] ?? (p.nationality || "Not recorded")).slice(0, 6),
+    nationality: count((p) => COUNTRY[p.nationality] ?? (countryLabel(p.nationality) || p.nationality || "Not recorded")).slice(0, 6),
   };
 }
 

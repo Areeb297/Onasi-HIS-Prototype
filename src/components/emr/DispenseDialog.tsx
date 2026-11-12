@@ -6,6 +6,7 @@ import { Badge, Button, Field, Input, Select, Table, Td, Th } from "@/components
 import { useDevMode } from "@/lib/devmode";
 import type { Patient } from "@/lib/model";
 import { fillOf, getDrug, openItems, useRx } from "@/lib/rx";
+import { OVERRIDE_REASONS } from "@/lib/rx-catalogue";
 import { classifyDispense, isRaqeebScope } from "@/lib/rx-logic";
 import { allergyMatch } from "@/lib/rx-safety";
 import { planDispense, sendDispense } from "@/lib/rx-send";
@@ -24,8 +25,6 @@ const TYPE_TEXT: Record<FillType, string> = {
   RFP: "Part Of A Refill",
   RFC: "Completes A Refill",
 };
-
-const OVERRIDE_REASONS = ["Patient has no phone with them", "Code message not received", "Patient is a minor, guardian collects", "System unavailable"];
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -48,7 +47,7 @@ export function DispenseDialog({ rx, onClose }: { rx: Prescription; onClose: () 
   const [skipReason, setSkipReason] = React.useState("");
   const [secureMode, setSecureMode] = React.useState<"authenticated" | "override">("authenticated");
   const [otp, setOtp] = React.useState("");
-  const [justify, setJustify] = React.useState(OVERRIDE_REASONS[0]);
+  const [justify, setJustify] = React.useState(OVERRIDE_REASONS[0].code);
   const [problems, setProblems] = React.useState<string[]>([]);
 
   const patientOk = !!patient && (same(patientScan, patient.mrn) || same(patientScan, patient.healthId));
@@ -198,7 +197,7 @@ export function DispenseDialog({ rx, onClose }: { rx: Prescription; onClose: () 
                 <Input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Code from the patient (any 4 or more digits in this demo)" aria-label="Secure code" />
               ) : (
                 <Select value={justify} onChange={(e) => setJustify(e.target.value)} aria-label="Override reason">
-                  {OVERRIDE_REASONS.map((r) => <option key={r}>{r}</option>)}
+                  {OVERRIDE_REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
                 </Select>
               )}
             </div>

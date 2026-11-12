@@ -255,7 +255,7 @@ export function TriageSheet({ enc, onClose }: { enc: Encounter; onClose: () => v
           <section aria-labelledby="tri-details" className="grid gap-3 sm:grid-cols-2">
             <h3 id="tri-details" className="text-sm font-semibold sm:col-span-2">5. Visit details</h3>
             <Field label="Arrival mode" hl7="ZPV1-18">
-              <Select value={mode} onChange={(e) => setMode(e.target.value as EdData["arrivalMode"])}>{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>
+              <Select value={mode} onChange={(e) => setMode(e.target.value as EdData["arrivalMode"])}>{!ARRIVAL_MODES.includes(mode) && <option>{mode}</option>}{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>
             </Field>
             <Field label="Area">
               <Select value={area} onChange={(e) => setArea(e.target.value as NonNullable<EdData["area"]>)}>{AREAS.map((x) => <option key={x}>{x}</option>)}</Select>

@@ -39,10 +39,18 @@ export const CTAS: CtasInfo[] = CTAS_LEVELS.map((l) => ({ ...l, ...STYLE[l.level
 
 export const ctasInfo = (l: CtasLevel): CtasInfo => CTAS[l - 1];
 
-export const ARRIVAL_MODES: EdData["arrivalMode"][] = ["Walk-in", "Ambulance", "Referral", "Police", "Other"];
+/**
+ * Arrival modes offered on the screens: "Walk-in" plus the published CS-Adm-EDArrivalMode list (ZPV1-18).
+ * The codes are in ED_ARRIVAL_CODE in hl7.ts.
+ */
+export const ARRIVAL_MODES: EdData["arrivalMode"][] = [
+  "Walk-in", "Personal Vehicle", "Ground EMS Ambulance", "Ground MOH Ambulance", "Ground Civil Defense Ambulance", "Ground Military Ambulance",
+  "Ground Private Ambulance", "EMS Air Ambulance", "Air Civil Defense Ambulance", "Air Military Ambulance", "Police Vehicle",
+  "Other Government Vehicles", "Other", "Not Stated",
+];
 export const AREAS: NonNullable<EdData["area"]>[] = ["Triage", "Resus", "Acute", "Fast Track", "Observation"];
 export const DISPOSITIONS: NonNullable<EdData["disposition"]>[] = [
-  "Discharged", "Admitted", "Transferred", "Left Without Being Seen", "Left Against Advice", "Died",
+  "Discharged", "Admitted", "Transferred", "Left Without Being Seen", "Left Against Advice", "Died", "Dead On Arrival",
 ];
 
 export type EdStage = "waiting-triage" | "waiting-doctor" | "treatment" | "results" | "ready";
@@ -145,16 +153,21 @@ export const DISPOSITION_EVENT: Record<NonNullable<EdData["disposition"]>, "A03"
   "Left Without Being Seen": "A03",
   "Left Against Advice": "A03",
   Died: "A03",
+  "Dead On Arrival": "A03",
 };
 
-/** PV1-36 discharge disposition code for the A03 that follows. These are our app's codes. */
+/**
+ * PV1-36 discharge disposition for the A03 that follows. SNOMED CT codes from CS-Adm-DischargeDisposition,
+ * limited to the nine the A08 discharge update accepts. The ED disposition itself goes in ZPV1-20 (see hl7.ts).
+ */
 export const DISPOSITION_CODE: Record<NonNullable<EdData["disposition"]>, string> = {
-  Discharged: "01",
-  Admitted: "01",
-  Transferred: "02",
-  "Left Without Being Seen": "07",
-  "Left Against Advice": "07",
-  Died: "20",
+  Discharged: "306689006",
+  Admitted: "306689006",
+  Transferred: "306699001",
+  "Left Without Being Seen": "306689006",
+  "Left Against Advice": "225928004",
+  Died: "79779006",
+  "Dead On Arrival": "79779006",
 };
 
 /* ---------- actions (ED data only, no ADT message) ---------- */

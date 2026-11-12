@@ -6,7 +6,10 @@ import { PatientBanner } from "@/components/PatientBanner";
 import { useDevMode } from "@/lib/devmode";
 import { Badge, Button, Card, CardHeader, Field, Input, Select } from "@/components/ui/primitives";
 import type { Allergy, Dx, Encounter, HisState, Pr, ScenarioForm } from "@/lib/model";
-import { ALLERGY_SAMPLES, DISPOSITIONS, DOCTORS, DX_SAMPLES, PR_SAMPLES, SERVICES } from "@/lib/reference-data";
+import {
+  ADMISSION_METHODS, ALLERGY_SAMPLES, ALLERGY_SEVERITIES, ALLERGY_TYPES, DISPOSITIONS, DOCTORS, DX_SAMPLES, DX_TYPES, PR_SAMPLES, PR_SYSTEMS, PR_TYPES, SERVICES,
+  defaultAdmissionMethod,
+} from "@/lib/reference-data";
 import { navigate, useRoute } from "@/lib/router";
 import { EVENT_BY_ID, eventLabel, type EventId, type SegId } from "@/lib/spec";
 import {
@@ -246,7 +249,28 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
                     </Select>
                   </Field>
                 )}
-                {needsBed && (
+                {eventId === "A01" && (
+                  <Field label="Patient Class" hl7="PV1-2" hint="An admission is normally inpatient. Outpatient activates the visit without a bed.">
+                    <Select value={form.cls} onChange={(e) => setForm((f) => ({ ...f, cls: e.target.value as ScenarioForm["cls"], bedId: e.target.value === "O" ? "" : f.bedId }))}>
+                      <option value="I">Inpatient</option>
+                      <option value="O">Outpatient</option>
+                    </Select>
+                  </Field>
+                )}
+                {eventId === "A05" && (
+                  <Field label="Patient Class" hl7="PV1-2" hint="The class the patient will have when admitted.">
+                    <Select value={form.cls} onChange={(e) => set("cls", e.target.value as ScenarioForm["cls"])}>
+                      <option value="I">Inpatient</option>
+                      <option value="O">Outpatient</option>
+                    </Select>
+                  </Field>
+                )}
+                <Field label="Admission Method" hl7="PV1-4" hint={eventId === "A08-CNHI" ? "The discharge update sends this as Elective or Emergency only." : undefined}>
+                  <Select value={form.admissionMethod || defaultAdmissionMethod(form.cls)} onChange={(e) => set("admissionMethod", e.target.value)} aria-label="Admission method">
+                    {ADMISSION_METHODS.map((m) => <option key={m.code} value={m.code}>{m.label}</option>)}
+                  </Select>
+                </Field>
+                {needsBed && !(eventId === "A01" && form.cls === "O") && (
                   <Field label="Bed" hl7="PV1-3" hint={eventId === "A13" ? "The bed held before discharge is chosen if it is free." : undefined}>
                     <Select value={form.bedId} onChange={(e) => set("bedId", e.target.value)} aria-label="Bed">
                       <option value="">Select a bed</option>
@@ -281,13 +305,22 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
                     </Select>
                   </Field>
                 )}
+                <Field label="Consulting Doctor" hl7="PV1-9">
+                  <Select value={form.consulting} onChange={(e) => set("consulting", e.target.value)} aria-label="Consulting doctor">
+                    <option value="">None</option>
+                    {DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}
+                  </Select>
+                </Field>
                 <Field label="Hospital Service" hl7="PV1-10">
                   <Select value={form.service} onChange={(e) => set("service", e.target.value)}>
                     {SERVICES.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
                   </Select>
                 </Field>
-                <Field label="Reason for Visit" hl7="PV2-3">
+                <Field label="Reason for Visit" hl7={form.reasonCode ? "PV2-3" : "PV2-12"}>
                   <Input value={form.reason} onChange={(e) => set("reason", e.target.value)} placeholder="For example: chest pain" />
+                </Field>
+                <Field label="Reason Diagnosis Code" hl7="PV2-3" hint="Optional. With an ICD-10-AM code the reason is sent as a coded admit reason. Without one it is sent as a visit description.">
+                  <Input className="font-mono" value={form.reasonCode} onChange={(e) => set("reasonCode", e.target.value.trim())} placeholder="ICD-10-AM" aria-label="Reason diagnosis code" />
                 </Field>
                 {eventId === "A05" && (
                   <>
@@ -301,7 +334,7 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
                 {showDischarge && (
                   <Field label="Discharge Date and Time" hl7="PV1-45"><Input type="datetime-local" value={form.dischargeAt} onChange={(e) => set("dischargeAt", e.target.value)} /></Field>
                 )}
-                {eventId === "A03" && (
+                {(eventId === "A03" || eventId === "A08-CNHI") && (
                   <Field label="Discharge Disposition" hl7="PV1-36">
                     <Select value={form.disposition} onChange={(e) => set("disposition", e.target.value)}>
                       {DISPOSITIONS.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
@@ -313,9 +346,9 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
           )}
 
           <Card>
-            <CardHeader title="Event Time" subtitle="When this event happened. Goes in MSH-7, EVN-2 and EVN-6." />
+            <CardHeader title="Event Time" subtitle={dev ? "When this event happened. Goes in EVN-2 and EVN-6. MSH-7 is the time the message is created." : "When this event happened."} />
             <div className="p-4">
-              <Field label="Event Date and Time" hl7="MSH-7, EVN-2">
+              <Field label="Event Date and Time" hl7="EVN-2, EVN-6">
                 <Input type="datetime-local" value={form.eventAt} onChange={(e) => set("eventAt", e.target.value)} />
               </Field>
             </div>
@@ -327,8 +360,8 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
                 <ListCard
                   title={segs.DG1 === "R" ? "Diagnoses (Required)" : "Diagnoses"}
                   tag="DG1" addLabel="Add Diagnosis"
-                  onAdd={() => set("dx", [...form.dx, { ...DX_SAMPLES[form.dx.length % DX_SAMPLES.length] }])}
-                  onAddBlank={() => set("dx", [...form.dx, { code: "", text: "", type: "W" }])}
+                  onAdd={() => set("dx", [...form.dx, { ...DX_SAMPLES[form.dx.length % DX_SAMPLES.length], at: nowLocal() }])}
+                  onAddBlank={() => set("dx", [...form.dx, { code: "", text: "", type: "W", at: nowLocal() }])}
                   empty="No diagnoses yet."
                 >
                   {form.dx.map((d, i) => (
@@ -340,8 +373,8 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
                 <ListCard
                   title="Procedures"
                   tag="PR1" addLabel="Add Procedure"
-                  onAdd={() => set("pr", [...form.pr, { ...PR_SAMPLES[form.pr.length % PR_SAMPLES.length] }])}
-                  onAddBlank={() => set("pr", [...form.pr, { code: "", text: "" }])}
+                  onAdd={() => set("pr", [...form.pr, { ...PR_SAMPLES[form.pr.length % PR_SAMPLES.length], at: form.dischargeAt || nowLocal() }])}
+                  onAddBlank={() => set("pr", [...form.pr, { code: "", text: "", system: "ACHI", at: form.dischargeAt || nowLocal() }])}
                   empty="No procedures yet."
                 >
                   {form.pr.map((r, i) => (
@@ -354,7 +387,7 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
                   title="Allergies"
                   tag="AL1" addLabel="Add Allergy"
                   onAdd={() => set("allergies", [...form.allergies, { ...ALLERGY_SAMPLES[form.allergies.length % ALLERGY_SAMPLES.length] }])}
-                  onAddBlank={() => set("allergies", [...form.allergies, { text: "", severity: "MI", reaction: "" }])}
+                  onAddBlank={() => set("allergies", [...form.allergies, { text: "", severity: "MI", reaction: "", type: "DALG" }])}
                   empty="No allergies recorded."
                 >
                   {form.allergies.map((a, i) => (
@@ -365,22 +398,15 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
             </>
           )}
 
-          {eventId === "A08-CNHI" && (
+          {eventId === "A08-CNHI" && dev && (
             <Card>
-              <CardHeader title="Z-Segment Fields (Placeholders)" subtitle="The field lists for ZPV1, ZDG1 and ZPR1 have not been supplied. These three fields per segment are stand-ins." />
-              <div className="grid gap-3 p-4 sm:grid-cols-3">
-                {(["ZPV1", "ZDG1", "ZPR1"] as const).map((z) =>
-                  form.z[z].map((v, i) => (
-                    <Field key={`${z}${i}`} label={`${z}-${i + 2}`}>
-                      <Input
-                        value={v}
-                        placeholder="Placeholder value"
-                        onChange={(e) => set("z", { ...form.z, [z]: form.z[z].map((x, j) => (j === i ? e.target.value : x)) })}
-                      />
-                    </Field>
-                  )),
-                )}
-              </div>
+              <CardHeader title="Discharge Update Fields" subtitle="Filled from the chart. Nothing is typed here." />
+              <ul className="space-y-1 p-4 text-sm text-muted-foreground">
+                <li>ZPV1-8 is always UPDATE.</li>
+                <li>ZPV1-16 (BMI) comes from the height and weight on the chart, for inpatient and outpatient visits.</li>
+                <li>ZPV1-17 to 22 come from the emergency record: arrival, arrival mode, doctor start, disposition, triage time and triage level.</li>
+                <li>DG1-15 marks the first diagnosis as primary. PV1-4 is sent as Elective or Emergency.</li>
+              </ul>
             </Card>
           )}
 
@@ -484,9 +510,7 @@ function DxRow({ d, onChange, onRemove }: { d: Dx; onChange: (d: Dx) => void; on
       <Input className="w-28 font-mono" placeholder="ICD-10-AM" value={d.code} onChange={(e) => onChange({ ...d, code: e.target.value })} aria-label="Diagnosis code" />
       <Input placeholder="Description" value={d.text} onChange={(e) => onChange({ ...d, text: e.target.value })} aria-label="Diagnosis description" />
       <Select className="w-28" value={d.type} onChange={(e) => onChange({ ...d, type: e.target.value as Dx["type"] })} aria-label="Diagnosis type">
-        <option value="A">Admitting</option>
-        <option value="W">Working</option>
-        <option value="F">Final</option>
+        {DX_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
       </Select>
       <RemoveBtn onClick={onRemove} />
     </div>
@@ -495,10 +519,26 @@ function DxRow({ d, onChange, onRemove }: { d: Dx; onChange: (d: Dx) => void; on
 
 function PrRow({ r, onChange, onRemove }: { r: Pr; onChange: (r: Pr) => void; onRemove: () => void }) {
   return (
-    <div className="flex items-center gap-2">
-      <Input className="w-28 font-mono" placeholder="Code" value={r.code} onChange={(e) => onChange({ ...r, code: e.target.value })} aria-label="Procedure code" />
-      <Input placeholder="Description" value={r.text} onChange={(e) => onChange({ ...r, text: e.target.value })} aria-label="Procedure description" />
-      <RemoveBtn onClick={onRemove} />
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Input className="w-28 font-mono" placeholder="Code" value={r.code} onChange={(e) => onChange({ ...r, code: e.target.value })} aria-label="Procedure code" />
+        <Input placeholder="Description" value={r.text} onChange={(e) => onChange({ ...r, text: e.target.value })} aria-label="Procedure description" />
+        <RemoveBtn onClick={onRemove} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select className="w-32" value={r.system ?? "ACHI"} onChange={(e) => onChange({ ...r, system: e.target.value as Pr["system"] })} aria-label="Code list">
+          {PR_SYSTEMS.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
+        </Select>
+        <Input className="w-52" type="datetime-local" value={r.at ?? ""} onChange={(e) => onChange({ ...r, at: e.target.value })} aria-label="Procedure start date and time" />
+        <Select className="w-36" value={r.type ?? ""} onChange={(e) => onChange({ ...r, type: (e.target.value || undefined) as Pr["type"] })} aria-label="Procedure type">
+          <option value="">Type not set</option>
+          {PR_TYPES.map((t) => <option key={t.code} value={t.code}>{t.short}</option>)}
+        </Select>
+        <Select className="w-48" value={r.surgeon ?? ""} onChange={(e) => onChange({ ...r, surgeon: e.target.value || undefined })} aria-label="Surgeon">
+          <option value="">No surgeon</option>
+          {DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}
+        </Select>
+      </div>
     </div>
   );
 }
@@ -506,11 +546,13 @@ function PrRow({ r, onChange, onRemove }: { r: Pr; onChange: (r: Pr) => void; on
 function AlRow({ a, onChange, onRemove }: { a: Allergy; onChange: (a: Allergy) => void; onRemove: () => void }) {
   return (
     <div className="flex items-center gap-2">
+      <Select className="w-24" value={a.type ?? "DALG"} onChange={(e) => onChange({ ...a, type: e.target.value as Allergy["type"] })} aria-label="Allergy type">
+        {ALLERGY_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+      </Select>
       <Input placeholder="Allergen" value={a.text} onChange={(e) => onChange({ ...a, text: e.target.value })} aria-label="Allergen" />
+      <Input className="w-32 font-mono" placeholder="SNOMED code" value={a.code ?? ""} onChange={(e) => onChange({ ...a, code: e.target.value.trim() || undefined })} aria-label="Allergen code, leave empty for free text" />
       <Select className="w-28" value={a.severity} onChange={(e) => onChange({ ...a, severity: e.target.value as Allergy["severity"] })} aria-label="Severity">
-        <option value="MI">Mild</option>
-        <option value="MO">Moderate</option>
-        <option value="SV">Severe</option>
+        {ALLERGY_SEVERITIES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
       </Select>
       <Input placeholder="Reaction" value={a.reaction} onChange={(e) => onChange({ ...a, reaction: e.target.value })} aria-label="Reaction" />
       <RemoveBtn onClick={onRemove} />

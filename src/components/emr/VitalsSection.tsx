@@ -249,7 +249,7 @@ export function VitalsSection({ enc }: { enc: Encounter }) {
             ))}
           </ul>
           <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-            Assumptions: the value sets for OBR-25, OBX-11 and the abnormal flags could not be opened, so F, C, X, D, W and H, L, HH, LL are taken from the workflow text and HL7 practice. Temperature absence reasons were not readable, so two codes are assumed. Units follow the ORU value set (temperature "cel") in the message and the claim rules ("Cel") in claims. Flags and ranges are adult demo values, not clinical policy.
+            Assumptions: the value sets for OBR-25, OBX-11 and the abnormal flags could not be opened, so F, C, X, D, W and H, L, HH, LL are taken from the workflow text and HL7 practice. Temperature absence reasons are 88 and 99, read from the financial guide. OBR-24 is the fixed value 29274-8. Units follow the ORU value set (temperature "cel") in the message and the claim rules ("Cel") in claims. Flags and ranges are adult demo values, not clinical policy.
           </p>
         </Card>
       )}

@@ -53,7 +53,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
     mode === "ipd" ? ["Admitted", "Pre-Admit", "Discharged", "Cancelled"] : ["Arrived", "Checked In", "Discharged", "Cancelled"];
 
   const rows = state.encounters
-    .filter((e) => (mode === "opd" ? e.cls === "O" : mode === "er" ? e.cls === "E" : e.cls === "I" || e.cls === "P"))
+    .filter((e) => (mode === "opd" ? e.cls === "O" : mode === "er" ? e.cls === "E" : e.cls === "I"))
     .filter((e) => {
       const d = dateOf(e).slice(0, 10);
       return !d || (d >= start && d <= end);

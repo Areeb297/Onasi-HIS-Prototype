@@ -175,13 +175,14 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             {rx.controlled && <Badge tone="danger">Narcotic, Controlled Or Restricted</Badge>}
             {rx.raqeebRef && <Badge tone="merge">Raqeeb Reference {rx.raqeebRef}</Badge>}
+            {!rx.raqeebRef && rx.nationalRef && <Badge tone="neutral">NPHIES Reference {rx.nationalRef}</Badge>}
             <Badge tone={state.tone}>{state.label}</Badge>
           </div>
         }
       />
       {rx.controlled && !rx.raqeebRef && (
         <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">
-          {raqeeb ? "A Raqeeb reference id is given when nphies accepts this prescription. You need it to cancel or change it." : "Inpatient use is outside the Raqeeb scope. No Raqeeb reference id is given."}
+          {raqeeb ? "A Raqeeb reference id is given when nphies accepts this prescription. You need it to cancel or change it." : "Inpatient use is outside the Raqeeb scope. It gets a normal NPHIES reference id, not a Raqeeb one."}
         </p>
       )}
       <Table>
@@ -290,7 +291,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
         {confirm && (
           <div className="space-y-3 text-sm">
             <p>{ACTION_TEXT[confirm.key].help}</p>
-            {rx.raqeebRef && <p className="text-xs text-muted-foreground">Sent with Raqeeb reference id {rx.raqeebRef}.</p>}
+            {(rx.raqeebRef ?? rx.nationalRef) && <p className="text-xs text-muted-foreground">Sent with {rx.raqeebRef ? "Raqeeb" : "NPHIES"} reference id {rx.raqeebRef ?? rx.nationalRef}.</p>}
             <Field label="Reason (Optional)">
               <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: patient changed treatment" />
             </Field>

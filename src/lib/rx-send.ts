@@ -7,7 +7,7 @@ import {
   makeNationalRef, simulateResponse, validateDispenseBundle, validateDispenseInput, validatePrescriptionBundle, validatePrescriptionInput,
 } from "./fhir/medication-validate";
 import type { Encounter, Patient } from "./model";
-import { DOCTORS, FACILITY, FACILITY_NAME } from "./reference-data";
+import { DOCTORS, FACILITY_NAME, ORG_ID } from "./reference-data";
 import { addSendRecord, dispenseNumber, getDrug, getRx, linesFor, newId, refreshStatuses, setRx } from "./rx";
 import {
   classifyDispense, dispenseSteps, fillState, isControlled, isRaqeebScope, prescriptionSteps, refillsRemainingAfter, validateDispenseQty,
@@ -83,7 +83,8 @@ export function encounterIn(e: Encounter) {
   return { visitNumber: e.visitNumber, cls: e.cls, startAt: start, endAt: e.dischargeAt, facilityName: FACILITY_NAME };
 }
 
-export const orgIn = () => ({ id: FACILITY, name: FACILITY_NAME });
+/** The organisation id is ORG_ID, the same value the ADT messages send in MSH-4 and the clinical documents send as custodian. */
+export const orgIn = () => ({ id: ORG_ID, name: FACILITY_NAME });
 
 export function ageOf(dob: string): number {
   return Math.max(0, Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86_400_000)));
@@ -152,7 +153,7 @@ export function planPrescription(s: RxState, rx: Prescription, change?: { itemId
     heightCm: m.heightCm,
     weightKg: m.weightKg,
     ageYears: ageOf(patient.dob),
-    allergies: enc.allergies.map((a) => ({ text: a.text, severity: a.severity, reaction: a.reaction })),
+    allergies: enc.allergies.map((a) => ({ code: a.code, text: a.text, severity: a.severity, reaction: a.reaction })),
     items,
   };
   const bundle = buildPrescriptionBundle(input, { uuid: stable ? seededUuid(`${rx.id}:${rx.items.map((i) => i.version + i.status).join()}:${change?.status ?? ""}`) : uuid });

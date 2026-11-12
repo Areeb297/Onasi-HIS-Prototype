@@ -2,10 +2,13 @@ import { useSyncExternalStore } from "react";
 import { audit } from "./audit";
 import { assemble, buildSegments, countChecks, messageToString, segmentStatuses, validate, type BuiltMessage } from "./hl7";
 import type { Encounter, HisState, LogEntry, LogSource, Patient, ScenarioForm } from "./model";
-import { ALLERGY_SAMPLES, BEDS, BED_BY_ID, DOCTORS, DX_SAMPLES, PR_SAMPLES, SEED_PATIENTS } from "./reference-data";
+import {
+  ALLERGY_SAMPLES, BEDS, BED_BY_ID, DEFAULT_DISPOSITION, DISPOSITIONS, DOCTORS, DX_SAMPLES, PR_SAMPLES, SEED_PATIENTS, countryCode, defaultAdmissionMethod,
+} from "./reference-data";
 import { EVENT_BY_ID, STANDARD_SEGMENTS, Z_SEGMENTS, type EventId, type SegId } from "./spec";
 
-const KEY = "nphies-adt-proto-v2";
+/** v3: nationality, discharge disposition, arrival mode and patient class moved to the published NPHIES value sets. Older saved data is not read. */
+const KEY = "onasi-his-adt-v3";
 
 /* ---------- time helpers ---------- */
 
@@ -78,19 +81,24 @@ export function emptyForm(state: HisState, eventId: EventId): ScenarioForm {
     patientId: "",
     encounterId: "",
     visitNumber: nextVisitNumber(state),
-    cls: eventId === "A04" ? "O" : eventId === "A05" ? "P" : "I",
+    // A pre-admission (A05) is for a planned inpatient stay. "Pre-admit" is the visit status, not a class.
+    cls: eventId === "A04" ? "O" : "I",
     bedId: "",
     attending: DOCTORS[0].id,
     admitting: DOCTORS[0].id,
     referring: "",
+    consulting: "",
+    // Empty means "the usual method for the class": 15 (Emergency) for an emergency visit, 14 (Elective) otherwise.
+    admissionMethod: "",
     service: "MED",
     reason: "",
+    reasonCode: "",
     eventAt: now,
     admitAt: now,
     dischargeAt: "",
     expectedAdmitAt: "",
     expectedDischargeAt: "",
-    disposition: "01",
+    disposition: DEFAULT_DISPOSITION,
     dx: [],
     pr: [],
     allergies: [],
@@ -101,7 +109,6 @@ export function emptyForm(state: HisState, eventId: EventId): ScenarioForm {
     correctPatientId: "",
     newVisitNumber: "",
     oldPatientId: "",
-    z: { ZPV1: ["", "", ""], ZDG1: ["", "", ""], ZPR1: ["", "", ""] },
   };
 }
 
@@ -115,13 +122,16 @@ export function formFromEncounter(state: HisState, eventId: EventId, enc: Encoun
   f.bedId = enc.bedId ?? "";
   f.attending = enc.attending;
   f.admitting = enc.admitting;
+  f.consulting = enc.consulting ?? "";
+  f.admissionMethod = enc.admissionMethod ?? defaultAdmissionMethod(enc.cls);
   f.service = enc.service;
   f.reason = enc.reason;
+  f.reasonCode = enc.reasonCode ?? "";
   f.admitAt = enc.admitAt ?? "";
   f.dischargeAt = enc.dischargeAt ?? "";
   f.expectedAdmitAt = enc.expectedAdmitAt ?? "";
   f.expectedDischargeAt = enc.expectedDischargeAt ?? "";
-  f.disposition = enc.disposition ?? "01";
+  f.disposition = DISPOSITIONS.some((d) => d.code === enc.disposition) ? enc.disposition! : DEFAULT_DISPOSITION;
   f.dx = enc.dx.map((d) => ({ ...d }));
   f.pr = enc.pr.map((p) => ({ ...p }));
   f.allergies = enc.allergies.map((a) => ({ ...a }));
@@ -133,10 +143,12 @@ export function formFromEncounter(state: HisState, eventId: EventId, enc: Encoun
   }
   switch (eventId) {
     case "A03":
+      // The discharge diagnosis comes from the chart. Nothing is filled in for the user: A03 cannot be sent without one.
       f.dischargeAt = nowLocal();
-      if (f.dx.length === 0) f.dx = [{ ...DX_SAMPLES[0], type: "F" }];
       break;
     case "A06":
+      // 02: emergency admission from the hospital ER. 03: emergency admission from hospital outpatient.
+      f.admissionMethod = enc.cls === "E" ? "02" : "03";
       f.cls = "I";
       f.bedId = "";
       f.admitAt = nowLocal();
@@ -186,8 +198,11 @@ export function applyEvent(state: HisState, eventId: EventId, form: ScenarioForm
   const copyClinical = (e: Encounter) => {
     e.attending = form.attending;
     e.admitting = form.admitting;
+    e.consulting = form.consulting || undefined;
+    e.admissionMethod = form.admissionMethod || undefined;
     e.service = form.service;
     e.reason = form.reason;
+    e.reasonCode = form.reasonCode || undefined;
     e.dx = form.dx.map((d) => ({ ...d }));
     e.pr = form.pr.map((p) => ({ ...p }));
     e.allergies = form.allergies.map((a) => ({ ...a }));
@@ -205,9 +220,10 @@ export function applyEvent(state: HisState, eventId: EventId, form: ScenarioForm
         next.encounters.push(e);
         next.counters.visit += 1;
       }
-      e.cls = "I";
+      // A01 normally starts an inpatient stay. It can also activate a visit as outpatient (the class picked on the form).
+      e.cls = form.cls === "O" ? "O" : "I";
       e.status = "active";
-      e.bedId = form.bedId || undefined;
+      e.bedId = e.cls === "I" ? form.bedId || undefined : undefined;
       e.admitAt = form.admitAt || form.eventAt;
       e.expectedAdmitAt = undefined;
       copyClinical(e);
@@ -217,6 +233,7 @@ export function applyEvent(state: HisState, eventId: EventId, form: ScenarioForm
       next.encounters.push({
         visitNumber: form.visitNumber, patientId: form.patientId, cls: form.cls === "E" ? "E" : "O", status: "active",
         transfers: [], attending: form.attending, admitting: form.admitting, service: form.service, reason: form.reason,
+        reasonCode: form.reasonCode || undefined, consulting: form.consulting || undefined, admissionMethod: form.admissionMethod || undefined,
         admitAt: form.admitAt || form.eventAt, dx: form.dx.map((d) => ({ ...d })), pr: form.pr.map((p) => ({ ...p })),
         allergies: form.allergies.map((a) => ({ ...a })), complaints: form.reason ? [{ code: "", text: form.reason }] : [], notes: [],
       });
@@ -225,8 +242,9 @@ export function applyEvent(state: HisState, eventId: EventId, form: ScenarioForm
     }
     case "A05": {
       next.encounters.push({
-        visitNumber: form.visitNumber, patientId: form.patientId, cls: "P", status: "preadmit", transfers: [],
+        visitNumber: form.visitNumber, patientId: form.patientId, cls: "I", status: "preadmit", transfers: [],
         attending: form.attending, admitting: form.admitting, service: form.service, reason: form.reason,
+        reasonCode: form.reasonCode || undefined, consulting: form.consulting || undefined, admissionMethod: form.admissionMethod || undefined,
         expectedAdmitAt: form.expectedAdmitAt, expectedDischargeAt: form.expectedDischargeAt,
         dx: form.dx.map((d) => ({ ...d })), pr: form.pr.map((p) => ({ ...p })), allergies: form.allergies.map((a) => ({ ...a })),
         complaints: form.reason ? [{ code: "", text: form.reason }] : [], notes: [],
@@ -347,10 +365,10 @@ export function applyEvent(state: HisState, eventId: EventId, form: ScenarioForm
 
 export type Include = Record<SegId, boolean>;
 
-export function planMessage(state: HisState, eventId: EventId, form: ScenarioForm, overrides: Partial<Include> = {}) {
+export function planMessage(state: HisState, eventId: EventId, form: ScenarioForm, overrides: Partial<Include> = {}, messageAt?: string) {
   const event = EVENT_BY_ID[eventId];
   const controlId = `HIS${String(state.counters.seq + 1).padStart(6, "0")}`;
-  const built: BuiltMessage = buildSegments({ state, event, form, controlId });
+  const built: BuiltMessage = buildSegments({ state, event, form, controlId, messageAt });
   const include = { ...built.defaults, ...overrides } as Include;
   const segs = assemble(built, include);
   const checks = validate(event, segs);
@@ -368,9 +386,11 @@ export function formProblem(state: HisState, eventId: EventId, form: ScenarioFor
     if (form.newVisitNumber === form.encounterId) return "The new visit number must be different.";
     if (state.encounters.some((e) => e.visitNumber === form.newVisitNumber)) return "That visit number is already in use.";
   }
-  if ((eventId === "A01" && !form.bedId) || (eventId === "A06" && !form.bedId) || (eventId === "A02" && !form.bedId)) {
+  if ((eventId === "A01" && form.cls === "I" && !form.bedId) || (eventId === "A06" && !form.bedId) || (eventId === "A02" && !form.bedId)) {
     return "Pick a bed.";
   }
+  if (eventId === "A03" && !form.dx.some((d) => d.code)) return "Add a discharge diagnosis first.";
+  if (form.pr.some((p) => p.code && !p.at)) return "Enter when each procedure started.";
   if (eventId === "A02") {
     const enc = state.encounters.find((e) => e.visitNumber === form.encounterId);
     if (enc && enc.bedId === form.bedId) return "Pick a different bed from the current one.";
@@ -424,7 +444,7 @@ export interface SendOptions {
 
 /** Pure version of send. Returns the new state and the log entry. */
 export function sendOn(state: HisState, eventId: EventId, form: ScenarioForm, opts: SendOptions = {}): { state: HisState; entry: LogEntry } {
-  const plan = planMessage(state, eventId, form, opts.overrides);
+  const plan = planMessage(state, eventId, form, opts.overrides, opts.sentAt ? toLocalInput(new Date(opts.sentAt)) : undefined);
   const patient = state.patients.find((p) => p.id === (eventId === "A45" ? form.correctPatientId : form.patientId));
   const { errors, warnings } = countChecks(plan.checks);
   const visit = eventId === "A50" ? form.newVisitNumber : form.encounterId || form.visitNumber;
@@ -513,6 +533,8 @@ export function registerPatient(input: NewPatient): Patient {
     mrn: `MRN${String(100 + n).padStart(7, "0")}`,
     nationalId: String(1000000000 + n * 7),
     ...input,
+    // Stored as a CS-Adm-Country code. Older numeric codes (for example from the registry lookup) are converted here.
+    nationality: countryCode(input.nationality),
   };
   current = { ...s, patients: [...s.patients, p], counters: { ...s.counters, patient: n } };
   emit();
@@ -529,7 +551,7 @@ export function addPatient(): Patient {
     given: EXTRA_GIVEN[i],
     dob: `${1960 + (n % 40)}-0${1 + (n % 9)}-1${n % 9}`,
     sex: n % 2 ? "M" : "F",
-    nationality: "682",
+    nationality: "SAU",
     maritalStatus: "SMDW"[n % 4],
     address: `RHAD${String(4000 + n)}`,
   });
@@ -584,14 +606,14 @@ export function seedState(): HisState {
   step("A04", (f) => { f.patientId = "P004"; f.cls = "O"; f.attending = "D1004"; f.admitting = "D1004"; f.service = "RAD"; f.reason = "Chest X-ray"; }, 120);
   // P005: pre-admit for tomorrow
   step("A05", (f) => {
-    f.patientId = "P005"; f.cls = "P"; f.attending = "D1002"; f.admitting = "D1002"; f.service = "SUR";
+    f.patientId = "P005"; f.cls = "I"; f.attending = "D1002"; f.admitting = "D1002"; f.service = "SUR";
     f.reason = "Planned appendectomy"; f.dx = [{ ...DX_SAMPLES[2], type: "W" }];
     f.expectedAdmitAt = toLocalInput(new Date(Date.now() + 20 * 3600_000));
   }, 300);
   // P006: admitted, moved, discharged
   step("A01", (f) => { f.patientId = "P006"; f.bedId = "401-A"; f.attending = "D1005"; f.admitting = "D1005"; f.service = "ORT"; f.dx = [{ ...DX_SAMPLES[3] }]; f.reason = "Hip pain after fall"; }, 4300);
   step("A02", (f) => { f.bedId = "401-B"; }, 3000, byPatient("P006"));
-  step("A03", (f) => { f.dischargeAt = toLocalInput(minutesAgo(1500)); f.dx = [{ ...DX_SAMPLES[3], type: "F" }]; f.pr = [{ ...PR_SAMPLES[3] }]; }, 1500, byPatient("P006"));
+  step("A03", (f) => { f.dischargeAt = toLocalInput(minutesAgo(1500)); f.dx = [{ ...DX_SAMPLES[3], type: "F" }]; f.pr = [{ ...PR_SAMPLES[3], at: toLocalInput(minutesAgo(3600)), surgeon: "D1005" }]; }, 1500, byPatient("P006"));
   // More outpatients for the OPD worklist
   step("A04", (f) => { f.patientId = "P007"; f.cls = "O"; f.attending = "D1001"; f.admitting = "D1001"; f.service = "MED"; f.reason = "Fever"; }, 45);
   step("A04", (f) => { f.patientId = "P008"; f.cls = "E"; f.attending = "D1003"; f.admitting = "D1003"; f.service = "ER"; f.reason = "Chest pain"; }, 20);
@@ -631,7 +653,7 @@ export function seedState(): HisState {
     e.vitals = vit("100/64", "88", "36.7", "99", "18", "38");
   });
   emr("P014", (e) => {
-    e.ed = { arrivalAt: at(9), arrivalMode: "Ambulance", triageAt: at(8), ctas: 1, complaint: "Chest pain and sweating", area: "Resus", seenAt: at(7), stage: "treatment", triageNurse: "Huda Alotaibi, RN", gcs: 15, pain: 9 };
+    e.ed = { arrivalAt: at(9), arrivalMode: "Ground EMS Ambulance", triageAt: at(8), ctas: 1, complaint: "Chest pain and sweating", area: "Resus", seenAt: at(7), stage: "treatment", triageNurse: "Huda Alotaibi, RN", gcs: 15, pain: 9 };
     e.vitals = vit("84/50", "128", "36.9", "89", "28", "88");
   });
   return state;

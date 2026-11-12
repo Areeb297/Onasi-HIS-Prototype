@@ -1,4 +1,4 @@
-import { OID } from "../reference-data";
+import { OID, ORG_OID } from "../reference-data";
 import { FREQ_BY_ID, OVERRIDE_LABEL, ROUTE_BY_CODE, ROUTE_LABEL } from "../rx-catalogue";
 import { addDays } from "../rx-logic";
 import type { ControlClass, Drug, DispenseLine, Frequency, ItemStatus, RxItem, UsageSetting } from "../rx-types";
@@ -50,10 +50,10 @@ export const DEMO_PREFIX = "DEMO-";
 
 /**
  * One root OID for every identifier this system hands out (prescription items, prescriptions, dispenses, visits).
- * It is the same participant OID the ADT messages use for the visit number (PV1-19), so nphies can link them.
- * The real OID is assigned at onboarding.
+ * It is ORG_OID from reference-data, the same organisation OID the ADT messages use as the assigning authority of the
+ * visit number (PV1-19), so nphies can link them. The real OID is assigned at onboarding.
  */
-const LOCAL_ROOT = `urn:oid:${OID.participant}`;
+const LOCAL_ROOT = `urn:oid:${ORG_OID}`;
 
 export const SYS = {
   healthId: `urn:oid:${OID.healthId}`,
@@ -91,7 +91,7 @@ export const SYS = {
   dispenseItem: LOCAL_ROOT,
   encounter: LOCAL_ROOT,
   /** Demo value. The reference id nphies returns sits in an OID range the guide does not publish (page 118162249). */
-  nationalRef: `urn:oid:${OID.participant}.90`,
+  nationalRef: `urn:oid:${ORG_OID}.90`,
 } as const;
 
 /** Real provider type codes from the official samples (KSA Individual Provider Type). */
@@ -110,7 +110,7 @@ export const ASSUMPTIONS: string[] = [
   "Frequency code for Raqeeb items (page 118129183, Frequency Code value set): DEMO-FREQ codes are sent in timing.code.",
   "Specialty (page 118063485, Healthcare Specialty Identifier): Pharmacy is the real code from the samples. Doctor specialties use DEMO-SPEC codes.",
   "Override reason (page 117965118, Override-SecureCode-Justification): code 3 is real. The other reasons use DEMO-OVR codes.",
-  "Drug allergy (page 117965377, KSA Drug Allergy): the chart holds allergy text only, so a DEMO-ALG code is sent with the SNOMED CT system.",
+  "Drug allergy (page 117965377, KSA Drug Allergy): the SNOMED CT code from the chart is sent. An allergy typed as free text gets a DEMO-ALG code.",
   "Quantity units (KSA Medication Quantity Unit, page 118128831) and the age unit (KSA Time Units, page 118063524) are plain words, not the IS0200 values.",
   "Organization id, provider ids and the root OID for identifiers are demo values. Real ones come from the KSA-wide provider directory and from onboarding.",
   "The reference id nphies returns after the first submission is simulated (RQB or NRX plus 8 digits) and its OID is a demo value.",
@@ -158,6 +158,8 @@ export interface EncounterIn {
   facilityName: string;
 }
 export interface AllergyIn {
+  /** SNOMED CT code of the allergen, when the chart holds one. */
+  code?: string;
   text: string;
   severity: "SV" | "MO" | "MI";
   reaction: string;
@@ -348,13 +350,13 @@ export function buildAdditionalInfo(kind: "height" | "weight" | "age", value: nu
   };
 }
 
-/** The chart holds allergy text only, so a DEMO- code is sent with the SNOMED CT system. The real value set is "KSA Drug Allergy". */
+/** The SNOMED CT code from the chart is sent. An allergy typed as free text gets a DEMO- code. The real value set is "KSA Drug Allergy". */
 export function buildAllergy(a: AllergyIn, id: string, patientId: string): Json {
   return {
     resourceType: "AllergyIntolerance",
     id,
     meta: meta(PROFILE.allergy),
-    code: cc(SYS.snomed, `${DEMO_PREFIX}ALG-${a.text.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 8)}`, a.text),
+    code: cc(SYS.snomed, a.code || `${DEMO_PREFIX}ALG-${a.text.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 8)}`, a.text),
     category: ["medication"],
     criticality: a.severity === "SV" ? "high" : "low",
     patient: { reference: ref("Patient", patientId) },

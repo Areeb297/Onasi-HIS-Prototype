@@ -64,7 +64,7 @@ const FLOWS: Flow[] = [
       { event: "A05", note: "Staff enter pre-admission data with an expected admit date.", build: newVisit("A05", (f) => { f.expectedAdmitAt = nowLocal(60 * 24); f.reason = "Planned surgery"; f.dx = [{ ...DX_SAMPLES[2], type: "W" }]; }), after: remember },
       { event: "A01", note: "The patient arrives. Admission starts from the pre-admit and a bed is assigned.", build: onVisit("A01", (f, s) => { f.cls = "I"; f.bedId = firstFreeBed(s); f.admitAt = nowLocal(); f.expectedAdmitAt = ""; }) },
       { event: "A02", note: "The patient moves to another bed.", build: onVisit("A02", (f, s) => { f.bedId = firstFreeBed(s, f.bedId); }) },
-      { event: "A03", note: "The physician enters the discharge order. DG1 is required.", build: onVisit("A03", (f) => { f.pr = [{ ...PR_SAMPLES[0] }]; }) },
+      { event: "A03", note: "The physician enters the discharge order. DG1 is required.", build: onVisit("A03", (f) => { f.dx = f.dx.map((d) => ({ ...d, type: "F" as const })); f.pr = [{ ...PR_SAMPLES[0], at: f.admitAt || nowLocal(), surgeon: f.attending }]; }) },
       { event: "A13", note: "The discharge was a mistake. It is reversed and the patient is an inpatient again.", build: onVisit("A13", (f, s) => { f.bedId = firstFreeBed(s); }) },
       { event: "A03", note: "The patient is discharged again, correctly this time.", build: onVisit("A03") },
     ],
@@ -119,11 +119,11 @@ const FLOWS: Flow[] = [
     summary: "Admit, update data, change identity, discharge, then send the CNHI A08.",
     patients: 1,
     steps: [
-      { event: "A01", note: "An admission is sent.", build: newVisit("A01", (f, s) => { f.bedId = firstFreeBed(s); }), after: remember },
-      { event: "A08", note: "Staff add a diagnosis and a procedure.", build: onVisit("A08", (f) => { f.dx = [{ ...DX_SAMPLES[3] }]; f.pr = [{ ...PR_SAMPLES[3] }]; }) },
+      { event: "A01", note: "An admission is sent.", build: newVisit("A01", (f, s) => { f.bedId = firstFreeBed(s); f.dx = [{ ...DX_SAMPLES[3] }]; }), after: remember },
+      { event: "A08", note: "Staff add a diagnosis and a procedure.", build: onVisit("A08", (f) => { f.dx = [{ ...DX_SAMPLES[3] }]; f.pr = [{ ...PR_SAMPLES[3], at: f.admitAt || nowLocal(), surgeon: f.attending }]; }) },
       { event: "A31", note: "The master record changes the family name.", build: onVisit("A31", (f) => { f.family = `${f.family}-Updated`; }) },
       { event: "A03", note: "The patient is discharged.", build: onVisit("A03") },
-      { event: "A08-CNHI", note: "After discharge, the customised A08 with the Z-segments is sent for CNHI reporting.", build: onVisit("A08-CNHI", (f) => { f.z = { ZPV1: ["CNHI_1", "", ""], ZDG1: ["CNHI_2", "", ""], ZPR1: ["CNHI_3", "", ""] }; }) },
+      { event: "A08-CNHI", note: "After discharge, the customised A08 with the Z-segments is sent for CNHI reporting.", build: onVisit("A08-CNHI") },
     ],
   },
   {

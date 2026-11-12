@@ -25,6 +25,15 @@ export function medsForVisit(visit: string): MedLine[] {
           dose: d ? `${it.dose} ${d.unit}` : String(it.dose),
           route: ROUTE_LABEL[it.route] ?? it.route,
           frequency: it.asNeeded ? "As needed" : FREQ_BY_ID[it.frequencyId]?.label ?? it.frequencyId,
+          // Same drug and dose form codes as the prescription message (demo codes, see the assumption notes).
+          code: d?.code,
+          codeSystem: d ? "2.16.840.1.113883.3.3731.1.205.1" : undefined,
+          formCode: d?.formCode,
+          formName: d?.form,
+          // The strength goes in as one number and unit. Combined strengths such as "mg/5 mL" stay in the name only.
+          strengthValue: d && /^[A-Za-z]+$/.test(d.strengthUnit) ? d.strengthValue : undefined,
+          strengthUnit: d && /^[A-Za-z]+$/.test(d.strengthUnit) ? d.strengthUnit : undefined,
+          instruction: it.patientInstruction,
         };
       });
   } catch {

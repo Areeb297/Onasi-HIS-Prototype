@@ -6,7 +6,7 @@ import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
 import type { EdData, PatientExtra } from "@/lib/model";
 import { ARRIVAL_MODES, startEd } from "@/lib/ed";
-import { ADDRESS_PATTERN, COMPLAINT_SAMPLES, DOCTORS, MARITAL, NATIONALITIES, SERVICES } from "@/lib/reference-data";
+import { ADDRESS_PATTERN, COMPLAINT_SAMPLES, DOCTORS, MARITAL, NATIONALITIES, SERVICES, countryCode as nationalityCode, countryLabel } from "@/lib/reference-data";
 import { hijri, isExpired, lookupById, retrieveIdCard, retrieveInsurance, REGISTRY, type IdCard as IdCardData, type InsuranceCard } from "@/lib/registry";
 import { navigate } from "@/lib/router";
 import { nextHealthId, nowLocal, registerPatient, getState } from "@/lib/store";
@@ -71,7 +71,7 @@ function FullRegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
   const [regDate, setRegDate] = React.useState(today);
   const [payType, setPayType] = React.useState<"Cash" | "Insurance">("Cash");
   // Demographics
-  const [nationality, setNationality] = React.useState("682");
+  const [nationality, setNationality] = React.useState("SAU");
   const [sex, setSex] = React.useState<"M" | "F">("M");
   const [marital, setMarital] = React.useState("S");
   const [religion, setReligion] = React.useState("Islam");
@@ -130,7 +130,7 @@ function FullRegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
     setIdType(p.idType);
     setFirst(p.first); setSecond(p.second); setThird(p.third); setFamily(p.family);
     setFirstAr(p.firstAr); setSecondAr(p.secondAr); setThirdAr(p.thirdAr); setFamilyAr(p.familyAr);
-    setDob(p.dob); setSex(p.sex); setNationality(p.nationality); setMarital(p.maritalStatus);
+    setDob(p.dob); setSex(p.sex); setNationality(nationalityCode(p.nationality) || "999"); setMarital(p.maritalStatus);
     setReligion(p.religion); setBlood(p.bloodGroup); setHealthId(p.healthId); setMobile(p.mobile);
     setShortCode(p.address); setOccupation(p.occupation); setBirthPlace(p.idCard.placeOfBirth);
     audit("view", "National registry lookup", { detail: `ID ${id.slice(0, 3)}*******` });
@@ -263,7 +263,7 @@ function FullRegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
       <Sec title={t("Demographic Details", "بيانات تفصيلية")}>
         <Grid>
           <Field label={t("Nationality", "الجنسية")} hl7={tag("PID-28")}>
-            <Select value={nationality} onChange={(e) => setNationality(e.target.value)}>{NATIONALITIES.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</Select>
+            <Select value={nationality} onChange={(e) => setNationality(e.target.value)}>{!NATIONALITIES.some((x) => x.code === nationality) && <option value={nationality}>{countryLabel(nationality) || nationality}</option>}{NATIONALITIES.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</Select>
           </Field>
           <Field label={t("Gender", "النوع")} hl7={tag("PID-8")}>
             <Select value={sex} onChange={(e) => setSex(e.target.value as "M" | "F")}><option value="M">{t("Male", "ذكر")}</option><option value="F">{t("Female", "أنثى")}</option></Select>
@@ -380,7 +380,7 @@ function FullRegistrationForm({ cls = "O" }: { cls?: "O" | "E" }) {
           <Field label={t("Doctor", "الطبيب")} hl7={tag("PV1-7")}><Select value={attending} onChange={(e) => setAttending(e.target.value)}>{DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}</Select></Field>
           <Field label={t("Department", "القسم")} hl7={tag("PV1-10")}><Select value={service} onChange={(e) => setService(e.target.value)}>{SERVICES.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}</Select></Field>
           <Field label={t("Referring Doctor", "الطبيب المحول")} hl7={tag("PV1-8")}><Select value={referring} onChange={(e) => setReferring(e.target.value)}><option value="">{t("None", "لا يوجد")}</option>{DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}</Select></Field>
-          <Field label={t("Reason for Visit", "سبب الزيارة")} hl7={tag("PV2-3")}><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+          <Field label={t("Reason for Visit", "سبب الزيارة")} hl7={tag("PV2-12")}><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           {cls === "E" && (
             <Field label={t("Arrival Mode", "وسيلة الوصول")} hl7={tag("ZPV1-18")}>
               <Select value={arrival} onChange={(e) => setArrival(e.target.value as EdData["arrivalMode"])}>{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>

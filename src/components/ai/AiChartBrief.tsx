@@ -93,7 +93,7 @@ function Loading({ step }: { step: number }) {
   );
 }
 
-export function AiChartBrief({ enc, patient }: { enc: Encounter; patient: Patient }) {
+export function AiChartBrief({ enc, patient, onGo, inModal = false }: { enc: Encounter; patient: Patient; onGo?: () => void; inModal?: boolean }) {
   const reduce = useReducedMotion();
   const key = enc.visitNumber;
   const [step, setStep] = React.useState(() => (briefed.has(key) ? STEPS.length : 0));
@@ -111,33 +111,33 @@ export function AiChartBrief({ enc, patient }: { enc: Encounter; patient: Patien
   React.useEffect(() => {
     if (!ready || briefed.has(key)) return;
     briefed.add(key);
-    audit("ai-suggest", `Patient brief for visit ${key}`, { patient: fullName(patient), detail: "Written when the chart was opened." });
+    audit("ai-suggest", `Patient summary for visit ${key}`, { patient: fullName(patient), detail: "Written when the chart was opened." });
   }, [ready, key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!can("ai.use")) return null;
   const brief = ready ? buildBrief(enc, patient) : null;
-  const go = (s: string) => navigate("/chart", { visit: key, s });
+  const go = (s: string) => { onGo?.(); navigate("/chart", { visit: key, s }); };
   const again = () => { briefed.delete(key); setVote(null); setStep(0); setOpen(true); };
   const rate = (v: "up" | "down") => {
     setVote(v);
-    audit(v === "up" ? "ai-accept" : "ai-reject", `Patient brief for visit ${key}`, { patient: fullName(patient), detail: v === "up" ? "Marked useful." : "Marked not useful." });
+    audit(v === "up" ? "ai-accept" : "ai-reject", `Patient summary for visit ${key}`, { patient: fullName(patient), detail: v === "up" ? "Marked useful." : "Marked not useful." });
   };
   const line = (i: number) => (reduce ? {} : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.08 * i, duration: 0.28 } });
 
   return (
-    <section aria-label={`Patient brief by ${ASSISTANT_NAME}`} className="overflow-hidden rounded-xl bg-[var(--brand-deep)] text-white shadow-sm">
+    <section aria-label={`Patient summary by ${ASSISTANT_NAME}`} className="overflow-hidden rounded-xl bg-[var(--brand-deep)] text-white shadow-sm">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/10 px-5 py-2.5">
         <OnasiAiMark size={18} thinking={!ready} className="text-[var(--brand-mint)]" />
-        <h2 className="text-sm font-semibold">Patient brief by {ASSISTANT_NAME}</h2>
+        <h2 className="text-sm font-semibold">Patient summary by {ASSISTANT_NAME}</h2>
         <span className="rounded border border-dashed border-white/40 px-1.5 py-0.5 text-xs text-white/80">Simulated</span>
         {ready && (
-          <div className="ms-auto flex items-center gap-1">
+          <div className={cn("ms-auto flex items-center gap-1", inModal && "me-8")}>
             <button type="button" onClick={again} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
               <RotateCw className="size-3.5" aria-hidden="true" /> Write Again
             </button>
-            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
+            {!inModal && <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
               {open ? "Hide" : "Show"} <ChevronDown className={cn("size-3.5 transition-transform", !open && "-rotate-90")} aria-hidden="true" />
-            </button>
+            </button>}
           </div>
         )}
       </header>

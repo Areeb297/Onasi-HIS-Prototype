@@ -38,6 +38,8 @@ export const OT_FORMS: FormDef[] = [
       ...section("Preparation", text("implants", "Implants or special equipment", { placeholder: "Mesh, C-arm" }), num("bloodUnits", "Blood units to cross match", { min: 0 }),
         radio("icuBed", "Post-operative ICU bed needed", YES_NO), radio("consent", "Written consent obtained", YES_NO, { required: true }),
         area("instructions", "Special instructions")),
+      ...section("After the operation", dt("operationStart", "Operation started", { hl7: "encompassingEncounter/effectiveTime/low", hint: "Needed for the Operative Note." }),
+        dt("operationEnd", "Operation ended", { hl7: "encompassingEncounter/effectiveTime/high" })),
     ],
   },
   {

@@ -1,7 +1,7 @@
 import type { Bed, Doctor, Dx, Pr, Allergy, Patient } from "./model";
 import { VS, VS_ADMISSION_METHOD, VS_COUNTRY, vsLabel } from "./nphies-valuesets";
 
-export const FACILITY = "DEMO-HOSP-01";
+
 
 /**
  * The organisation as NPHIES knows it. One id and one OID for every HL7 message (ADT and vital signs ORU).
@@ -13,6 +13,8 @@ export const FACILITY = "DEMO-HOSP-01";
  */
 export const ORG_ID = "15000000999999";
 export const ORG_OID = `2.16.840.1.113883.3.3731.5.1.${ORG_ID}`;
+/** The organisation id under its older name. One value for ADT, vital signs, FHIR and documents. */
+export const FACILITY = ORG_ID;
 export const ADT_APP_OID = `${ORG_OID}.1`;
 
 /** OIDs from the NPHIES-CS integration guide, except participant and nationalOrg, which are made-up demo values. */
@@ -20,8 +22,8 @@ export const OID = {
   healthId: "2.16.840.1.113883.3.3731.1.1.100.1",
   provider: "2.16.840.1.113883.3.3731.1.2.1",
   nphiesApp: "2.16.840.1.113883.3.3731.1.2.2",
-  /** Older demo root still used by the FHIR and CDA builders. HL7 v2 messages use ORG_OID. */
-  participant: "2.16.840.1.113883.3.3731.9999.1",
+  /** Same value as ORG_OID, kept under its older name for the FHIR builders. */
+  participant: ORG_OID,
   /** Same value as ORG_OID. */
   nationalOrg: ORG_OID,
   /** ICD-10-AM, for DG1-3, PV2-3 and PR1-15. */

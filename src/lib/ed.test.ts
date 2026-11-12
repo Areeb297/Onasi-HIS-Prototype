@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CTAS, clockOf, ctasInfo, doorToDoctor, fractiles, reassessOf, stageOf } from "./ed";
+import { CTAS, DISPOSITION_CODE, clockOf, ctasInfo, doorToDoctor, fractiles, reassessOf, stageOf } from "./ed";
 import type { EdData } from "./model";
 import { emptyForm, formFromEncounter, planMessage, seedState, sendOn } from "./store";
 
@@ -85,11 +85,13 @@ describe("ED fields in the CNHI discharge update", () => {
     const f = formFromEncounter(state, "A08-CNHI", done);
     const plan = planMessage(state, "A08-CNHI", f);
     const z = plan.message.split("\r").find((l) => l.startsWith("ZPV1|"))!.split("|");
-    expect(z[17]).toMatch(/^\d{14}\+0300$/); // arrival
-    expect(z[18]).toBe("2"); // ambulance, assumed code
-    expect(z[19]).toMatch(/^\d{14}\+0300$/); // doctor started
-    expect(z[21]).toMatch(/^\d{14}\+0300$/); // triage time
-    expect(z[22]).toBe("1"); // CTAS 1
+    expect(z[8]).toBe("UPDATE");
+    expect(z[17]).toMatch(/^\d{14}[+-]\d{4}$/); // arrival
+    expect(z[18]).toBe("1"); // Ground EMS Ambulance in CS-Adm-EDArrivalMode
+    expect(z[19]).toMatch(/^\d{14}[+-]\d{4}$/); // doctor started
+    expect(z[21]).toMatch(/^\d{14}[+-]\d{4}$/); // triage time
+    expect(z[22]).toBe("1"); // CTAS 1 is triage category 1, Immediate resuscitation
+    expect(plan.checks.filter((c) => c.level === "error")).toEqual([]);
     // the validator reminds us that ZPV1-20 (disposition) is missing
     expect(plan.checks.some((c) => c.level === "warn" && c.text.includes("ZPV1-20"))).toBe(true);
   });
@@ -101,6 +103,27 @@ describe("ED fields in the CNHI discharge update", () => {
     const plan = planMessage(state, "A08-CNHI", { ...f, encounterId: enc.visitNumber });
     const z = plan.message.split("\r").find((l) => l.startsWith("ZPV1|"))!.split("|");
     expect(z[22]).toBeUndefined();
+  });
+
+  it("sends the disposition with the published codes", () => {
+    let state = seedState();
+    const enc = state.encounters.find((e) => e.patientId === "P012")!;
+    const withEd = (d: NonNullable<EdData["disposition"]>) => {
+      const s = { ...state, encounters: state.encounters.map((e) => (e.visitNumber === enc.visitNumber ? { ...e, status: "discharged" as const, dischargeAt: mins(0), dx: [{ code: "R10.4", text: "Abdominal pain", type: "F" as const }], ed: { ...e.ed!, disposition: d } } : e)) };
+      const e2 = s.encounters.find((e) => e.visitNumber === enc.visitNumber)!;
+      const f = formFromEncounter(s, "A08-CNHI", e2);
+      f.disposition = DISPOSITION_CODE[d];
+      const plan = planMessage(s, "A08-CNHI", f);
+      expect(plan.checks.filter((c) => c.level === "error")).toEqual([]);
+      return { z: plan.message.split("\r").find((l) => l.startsWith("ZPV1|"))!.split("|"), pv1: plan.message.split("\r").find((l) => l.startsWith("PV1|"))!.split("|") };
+    };
+    expect(withEd("Discharged").z[20]).toBe("2");
+    expect(withEd("Transferred").z[20]).toBe("5");
+    expect(withEd("Left Without Being Seen").z[20]).toBe("3");
+    const lama = withEd("Left Against Advice");
+    expect(lama.z[20] ?? "").toBe(""); // no published ED code, so nothing is invented
+    expect(lama.pv1[36]).toBe("225928004");
+    state = seedState();
   });
 });
 

@@ -15,7 +15,8 @@ export type Usage = "R" | "R2" | "O";
 export type Block =
   | { kind: "p"; text: string }
   | { kind: "list"; items: { id?: string; text: string }[] }
-  | { kind: "table"; head: string[]; rows: string[][] };
+  /** `ids` gives a content ID to a cell (same shape as rows), so coded entries can point at the text. */
+  | { kind: "table"; head: string[]; rows: string[][]; ids?: (string | undefined)[][] };
 
 /** One section, after it has been filled from the chart. */
 export interface SectionOut {
@@ -40,6 +41,15 @@ export interface MedLine {
   dose?: string;
   route?: string;
   frequency?: string;
+  /** Drug code and its value set OID. Empty for a medicine typed as free text. */
+  code?: string;
+  codeSystem?: string;
+  formCode?: string;
+  formName?: string;
+  strengthValue?: number;
+  strengthUnit?: string;
+  /** Instructions for the patient. */
+  instruction?: string;
 }
 
 export interface SoapLite {
@@ -113,7 +123,7 @@ export interface Iti41Metadata {
     availabilityStatus: "Approved" | "Deprecated";
     intendedRecipient: string;
   };
-  /** Present on an amendment: the new document replaces the old one. */
+  /** Present on an amendment: the new document replaces the old one. Source and target are the entryUUIDs of the two document entries. */
   association?: { type: "RPLC"; source: string; target: string };
 }
 
@@ -142,12 +152,16 @@ export interface BuiltDoc {
   facts: {
     hasEncounterStart: boolean;
     hasEncounterEnd: boolean;
-    encounterFallback: boolean;
+    /** Operative note without the operation start or end time. */
+    operationTimesMissing: boolean;
     dxCount: number;
     procCount: number;
     stillbirth: boolean;
     died: boolean;
-    newbornTempId: boolean;
+    /** Newborn summary without the baby's own Health ID. */
+    newbornIdMissing: boolean;
+    /** Live birth recorded (false for a stillbirth or when there is no delivery record). */
+    liveBirth: boolean;
   };
 }
 

@@ -58,12 +58,12 @@ export function ConformancePanel({ steps }: { steps: Step[] }) {
 export function AssumptionList() {
   return (
     <Card>
-      <CardHeader title="Assumptions" subtitle="Where the snapshot is silent, the app assumes the following. Check them before real use." />
+      <CardHeader title="Assumptions" subtitle="Where the guide and the official samples are silent, the app assumes the following. Check them before real use." />
       <ul className="list-disc space-y-1 px-8 py-3 text-sm">
         {ASSUMPTIONS.map((a) => (
           <li key={a}>{a}</li>
         ))}
-        <li>ICD-10-AM diagnosis codes are written with the ICD-10 OID (2.16.840.1.113883.6.3). Procedure codes use a made-up demo OID.</li>
+        <li>Diagnosis codes use the ICD-10-AM code system (2.16.840.1.113883.6.135) and procedure codes the ACHI code system (2.16.840.1.113883.3.3731.50.2), as in the official sample documents.</li>
       </ul>
     </Card>
   );

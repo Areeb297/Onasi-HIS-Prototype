@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { audit } from "./audit";
 import { buildDocument } from "./cda/build";
+import { isDeathDisposition } from "./cda/chartdata";
 import { DOC_CODE, gatherInput } from "./cda/gather";
 import { renderRequest, simulateResponse } from "./cda/iti41";
 import type { BuiltDoc, DocType, SimResponse } from "./cda/types";
@@ -57,9 +58,11 @@ interface State {
   seq: number;
 }
 
-const KEY = "onasi-emr-docs-v1";
+/** v2: the document XML, code systems and metadata changed. Documents saved by the older version are dropped. */
+const KEY = "onasi-emr-docs-v2";
 let state: State = { docs: [], events: [], deaths: {}, seq: 1 };
 try {
+  localStorage.removeItem("onasi-emr-docs-v1");
   const raw = localStorage.getItem(KEY);
   if (raw) state = { ...state, ...(JSON.parse(raw) as Partial<State>) };
 } catch {
@@ -121,7 +124,7 @@ export function generateDoc(enc: Encounter, patient: Patient, type: DocType, opt
   const name = `${patient.given} ${patient.family}`;
   const denied = allowed("emr.write", `Clinical document ${type}`, name);
   if (denied) return { ok: false, message: denied };
-  if (deathRecorded(enc.visitNumber) || enc.disposition === "20") return { ok: false, message: deathMsg };
+  if (deathRecorded(enc.visitNumber) || isDeathDisposition(enc.disposition)) return { ok: false, message: deathMsg };
   if (type === "newborn" && getFormRecords(enc.visitNumber, "delivery-outcomes").some((r) => /^still/i.test(String(r.values.birthStatus ?? "")))) {
     return { ok: false, message: "A stillbirth is recorded. No Newborn Discharge Summary is created. Publish the Maternal Discharge Summary only." };
   }

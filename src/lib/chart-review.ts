@@ -153,7 +153,7 @@ export function attentionFor(enc: Encounter, patient: Patient): Attention[] {
       const late = Math.round((Date.now() - new Date(newest.at).getTime() - ROUTINE_INTERVAL_HOURS * 3_600_000) / 60_000);
       if (late > 0) out.push({ id: "vs-due", level: "medium", section: "vitals", text: `Vital signs are ${late} minutes overdue (policy example: every ${ROUTINE_INTERVAL_HOURS} hours).` });
     }
-  } else if (enc.status === "active" && enc.cls !== "P") {
+  } else if (enc.status === "active") {
     out.push({ id: "vs-none", level: "medium", section: "vitals", text: "No vital signs recorded for this visit." });
   }
 

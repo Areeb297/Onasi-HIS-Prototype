@@ -114,7 +114,7 @@ export const EVENTS: EventSpec[] = [
     workflow:
       "After discharge the HIS sends a customised A08 limited to discharge updates, with CNHI fields and the Z-segments ZPV1, ZDG1, ZPR1.",
     purpose: "Let the receiver tell it apart from a normal A08.",
-    note: "This variant is only in the PDF. The field lists for ZPV1, ZDG1 and ZPR1 are not defined yet, so they are placeholders.",
+    note: "ZPV1-8 is always UPDATE: that is how nphies tells this message from a normal A08. ZPV1 follows PV1, each ZDG1 follows its DG1 and each ZPR1 follows its PR1. The app fills the fields it holds: BMI (ZPV1-16) and, for emergency visits, ZPV1-17 to 22. PV1-4 is limited to 14 or 15 and PV1-36 to nine codes.",
   },
   {
     id: "A11", trigger: "A11", structure: "ADT_A09", name: "Cancel Admit/Visit Notification", group: "Cancels",
@@ -184,14 +184,16 @@ export function segmentOrder(event: EventSpec): SegId[] {
     return ["MSH", "EVN", "PID", "PD1", "MRG", "PV1"];
   }
   const base: SegId[] = ["MSH", "EVN", "PID", "PD1", "PV1", "PV2", "AL1", "DG1", "PR1"];
-  if (event.id === "A08-CNHI") base.push("ZPV1", "ZDG1", "ZPR1");
+  if (event.id === "A08-CNHI") return ["MSH", "EVN", "PID", "PD1", "PV1", "ZPV1", "PV2", "AL1", "DG1", "ZDG1", "PR1", "ZPR1"];
   return base;
 }
 
 export const OPEN_QUESTIONS = [
   "Resolved: the \"I\" for AL1 on A03 means ignored. The Confluence ADT page says the AL1 segment is ignored for A03 messages.",
   "The two sources name A45 and A50 differently. The UI uses the Confluence names. The PDF names are shown in the help text.",
-  "The CNHI A08 variant has field definitions on the Confluence pages ZPV1, ZDG1 and ZPR1. The app still uses three placeholder fields per Z-segment. Replace them with the real fields.",
-  "Value sets for PV1-2 (CS-Adm-PatientClass), PID-8, PID-16 and PID-28 are not in the integration guide pages read so far. The app uses I, O, E, P, M or F, S M D W, and ISO 3166 numeric country codes. Check them against the Mapping Guide.",
+  "The CNHI A08 sends ZPV1-8 (UPDATE), BMI and the emergency fields. The other ZPV1, ZDG1 and ZPR1 fields (Hajj flag, specialty, care type, readmission, morphology, recovery times and more) are not captured by the HIS yet.",
+  "Coded fields use the value sets published in the guide: patient class, admission method, discharge disposition, nationality, marital status, sex, medical unit, allergy type and severity, ED arrival mode, ED disposition and triage category. The match between our hospital services and the published medical units is our own choice and needs confirming.",
+  "The ED arrival mode list has no code for a patient who walks in (sent as 88, Other), and the ED disposition list has no code for leaving against medical advice (ZPV1-20 left empty, PV1-36 says it). Ask NPHIES which codes they expect.",
+  "Diagnosis, procedure and allergen codes are checked for the right coding system only. The code lists themselves are on the NHIC website and are not loaded.",
   "A03 requires DG1. A01, A04 to A08, A13 and A31 have DG1 optional.",
 ];

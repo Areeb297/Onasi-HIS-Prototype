@@ -64,6 +64,8 @@ export const WOMENS_FORMS: FormDef[] = [
       ...section("Baby", sel("birthStatus", "Birth status", ["Live birth", "Stillbirth (fresh)", "Stillbirth (macerated)"], { required: true, hl7: "Delivery Event Outcome Section" }),
         sel("sex", "Sex of baby", ["Female", "Male", "Indeterminate"]), num("birthWeight", "Birth weight", { unit: "g", min: 200, max: 6500 }),
         num("apgar1", "Apgar score at 1 minute", { min: 0, max: 10, hl7: "Apgar Observation Entry" }), num("apgar5", "Apgar score at 5 minutes", { min: 0, max: 10, hl7: "Apgar Observation Entry" }),
+        num("apgar10", "Apgar score at 10 minutes", { min: 0, max: 10, hl7: "Apgar Observation Entry", hint: "NPHIES asks for all three scores." }),
+        text("babyHealthId", "Baby's Health ID", { placeholder: "Temporary or permanent Health ID", hl7: "recordTarget/patientRole/id", hint: "Issued by the national Health ID service. Needed for the Newborn Discharge Summary." }),
         sel("babyDisposition", "Baby went to", ["Mother, rooming in", "Nursery", "NICU", "Transferred to another hospital"])),
       ...section("Mother", multi("complications", "Complications", ["None", "Postpartum hemorrhage", "Perineal tear 3rd or 4th degree", "Retained placenta", "Shoulder dystocia", "Eclampsia", "Infection", "Uterine rupture", "Other"], { hl7: "Section Complications" }),
         num("bloodLoss", "Estimated blood loss", { unit: "mL", min: 0 }), sel("placenta", "Placenta", ["Complete", "Incomplete", "Manual removal"]),

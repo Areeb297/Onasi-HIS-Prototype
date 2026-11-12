@@ -66,8 +66,8 @@ export const VITALS: VitalDef[] = [
     key: "temp", label: "Temperature", loinc: "8310-5", loincText: "Body temperature", unit: "cel", claimUnit: "Cel",
     claimCategory: "temperature", rules: "BV-00766, BV-00775", display: "°C", min: 25, max: 45, step: 0.1,
     range: { low: 36.1, high: 37.8 }, critical: { low: 35, high: 39.5 },
-    // The temperature absence reason codes could not be read from the IG page. These are assumed.
-    absence: [{ code: "999", label: "Unknown", assumed: true }, { code: "888", label: "Not obtained", assumed: true }],
+    // From the Financial Services IG code system temperature-absence-reason: 88 Not Obtained, 99 Unknown.
+    absence: [{ code: "88", label: "Not obtained" }, { code: "99", label: "Unknown" }],
   },
   {
     key: "spo2", label: "Oxygen saturation", loinc: "59408-5", loincText: "Oxygen saturation in Arterial blood by Pulse oximetry", unit: "%", claimUnit: "%",
@@ -99,6 +99,12 @@ export const EXTRA_CODES = {
 export const BP_POSITIONS = ["Sitting", "Standing", "Lying", "Semi-recumbent"];
 
 export const OBR_PANEL_CODE = { code: "85353-1", text: "Vital Signs Panel", system: "2.16.840.1.113883.6.1" } as const;
+/** OBR-24 Diagnostic Service Section ID. Required, fixed value. */
+export const OBR_SECTION_ID = "29274-8";
+/** NTE-4 comment type. Required on every NTE: RE^Remark^2.16.840.1.113883.21.238. */
+export const NTE_COMMENT_TYPE = "RE^Remark^2.16.840.1.113883.21.238";
+/** NTE-3 comment length limit. */
+export const NTE_MAX = 200;
 export const LOINC_SYSTEM = "2.16.840.1.113883.6.1";
 export const UCUM_SYSTEM = "2.16.840.1.113883.6.8";
 
@@ -122,9 +128,14 @@ export const ROUTINE_INTERVAL_HOURS = 4;
 
 export const refRangeText = (d: VitalDef): string => (d.range ? `${d.range.low}-${d.range.high}` : "");
 
+/** The app holds adult ranges only. Under this age no reference range or flag is sent. */
+export const ADULT_RANGE_FROM_AGE = 12;
+/** Reference range for OBX-7, or "" when the app has no range that fits the patient's age. */
+export const refRangeFor = (d: VitalDef, ageYears: number): string => (ageYears < ADULT_RANGE_FROM_AGE ? "" : refRangeText(d));
+
 /** HL7 style abnormal flag for an adult reading. Children are not flagged because the app has adult ranges only. */
 export function flagFor(d: VitalDef, value: number, ageYears: number): "" | "L" | "H" | "LL" | "HH" {
-  if (ageYears < 12 || !d.range) return "";
+  if (ageYears < ADULT_RANGE_FROM_AGE || !d.range) return "";
   if (d.critical?.low !== undefined && value < d.critical.low) return "LL";
   if (d.critical?.high !== undefined && value > d.critical.high) return "HH";
   if (value < d.range.low) return "L";

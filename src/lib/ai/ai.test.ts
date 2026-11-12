@@ -152,9 +152,10 @@ describe("NPHIES error explanation", () => {
     state = sent.state;
     const c = ctx(e, { log: state.log.filter((l) => l.visitNumber === e.visitNumber).sort((a, b) => b.seq - a.seq) });
     const out = await ruleEngine.run({ useCase: "nphies-error", ctx: c });
-    expect(out.text).toContain("WARNING: DG1-3");
+    // A discharge with no diagnosis code is now an error, because DG1-3 is required.
+    expect(out.text).toContain("DG1-3");
     expect(out.text).toContain("Fix:");
-    expect(out.explained?.some((i) => i.level === "warn" && i.fix.includes("ICD-10-AM"))).toBe(true);
+    expect(out.explained?.some((i) => i.fix.includes("ICD-10-AM"))).toBe(true);
     expect(out.sources[0]).toContain("ADT message log");
   });
 

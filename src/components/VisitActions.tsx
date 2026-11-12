@@ -5,7 +5,7 @@ import { Button, Field, Input, Select, cn } from "@/components/ui/primitives";
 import { checkIn, dischargeWith, quickCreate, quickSend } from "@/lib/actions";
 import { useDevMode } from "@/lib/devmode";
 import type { Dx } from "@/lib/model";
-import { COMPLAINT_SAMPLES, DISPOSITIONS, DOCTORS, DX_SAMPLES, SERVICES, WARDS } from "@/lib/reference-data";
+import { ADMISSION_METHODS, COMPLAINT_SAMPLES, DEFAULT_DISPOSITION, DISPOSITIONS, DOCTORS, DX_SAMPLES, SERVICES, WARDS, defaultAdmissionMethod } from "@/lib/reference-data";
 import type { EventId } from "@/lib/spec";
 import { navigate } from "@/lib/router";
 import { freeBeds, getState, nowLocal, patientName, useHis } from "@/lib/store";
@@ -29,7 +29,7 @@ export function useVisitActions() {
     if (eventId === "CHECKIN") return checkIn(visit);
     if (eventId === "A02" || eventId === "A06") return setDlg({ kind: "bed", event: eventId, visit });
     if (eventId === "A01") return setDlg({ kind: "bed", event: "A01", visit, patientId: enc.patientId });
-    if (eventId === "A03" && enc.dx.length === 0) return setDlg({ kind: "discharge", visit });
+    if (eventId === "A03" && !enc.dx.some((d) => d.code)) return setDlg({ kind: "discharge", visit });
     quickSend(eventId, visit);
   }
 
@@ -109,7 +109,7 @@ function BedDialog({ dlg, onClose }: { dlg: BedDlg; onClose: () => void }) {
 function DischargeDialog({ dlg, onClose }: { dlg: DischargeDlg; onClose: () => void }) {
   const dev = useDevMode();
   const [picked, setPicked] = React.useState<Dx[]>([]);
-  const [disp, setDisp] = React.useState("01");
+  const [disp, setDisp] = React.useState(DEFAULT_DISPOSITION);
   const toggle = (d: Dx) => setPicked((p) => (p.some((x) => x.code === d.code) ? p.filter((x) => x.code !== d.code) : [...p, d]));
   return (
     <Dialog
@@ -183,6 +183,8 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
   const [service, setService] = React.useState(dlg.type === "A04" ? "OPD" : "MED");
   const [reason, setReason] = React.useState("");
   const [bedId, setBedId] = React.useState(dlg.bedId ?? "");
+  const [admitClass, setAdmitClass] = React.useState<"I" | "O">("I");
+  const [method, setMethod] = React.useState(defaultAdmissionMethod(dlg.type === "A04" ? "O" : "I"));
   const [expected, setExpected] = React.useState(() => {
     const t = new Date(Date.now() + 86_400_000);
     t.setHours(8, 0, 0, 0);
@@ -196,7 +198,7 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
     A01: "Inpatient admission with a bed. Sends A01.",
     A05: "Planned admission with an expected date. Sends A05.",
   } as const;
-  const needBed = dlg.type === "A01";
+  const needBed = dlg.type === "A01" && admitClass === "I";
   const ready = !!patientId && (!needBed || !!bedId) && (dlg.type !== "A05" || !!expected);
 
   function submit() {
@@ -209,6 +211,8 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
       reason,
       bedId,
       expectedAdmitAt: expected,
+      admitClass: dlg.type === "A04" ? undefined : admitClass,
+      admissionMethod: method,
     });
   }
 
@@ -264,6 +268,23 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
             </Select>
           </Field>
         )}
+        {dlg.type !== "A04" && (
+          <Field label="Patient Class" hl7="PV1-2">
+            <Select value={admitClass} onChange={(e) => setAdmitClass(e.target.value as "I" | "O")} aria-label="Patient class">
+              <option value="I">Inpatient</option>
+              <option value="O">Outpatient</option>
+            </Select>
+          </Field>
+        )}
+        <Field label="Admission Method" hl7="PV1-4">
+          <Select value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Admission method">
+            {ADMISSION_METHODS.map((m) => (
+              <option key={m.code} value={m.code}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
         {needBed && (
           <Field label="Bed" hl7="PV1-3">
             <Select value={bedId} onChange={(e) => setBedId(e.target.value)} aria-label="Bed">
@@ -281,7 +302,7 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
             <Input type="datetime-local" value={expected} onChange={(e) => setExpected(e.target.value)} />
           </Field>
         )}
-        <Field label="Reason for Visit" hl7="PV2-3" className="sm:col-span-2">
+        <Field label="Reason for Visit" hl7="PV2-12" className="sm:col-span-2">
           <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Type a reason, or tap one below" />
           <div className="mt-1 flex flex-wrap gap-1.5">
             {COMPLAINT_SAMPLES.map((c) => (

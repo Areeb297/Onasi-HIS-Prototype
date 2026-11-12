@@ -11,7 +11,7 @@ import { quickSend } from "@/lib/actions";
 import { useDevMode } from "@/lib/devmode";
 import { pretty } from "@/lib/hl7";
 import type { Encounter, Patient, Vitals } from "@/lib/model";
-import { ALLERGY_SAMPLES, COMPLAINT_SAMPLES, DOCTORS, DX_SAMPLES, PR_SAMPLES } from "@/lib/reference-data";
+import { ALLERGY_SAMPLES, ALLERGY_TYPES, COMPLAINT_SAMPLES, DOCTORS, DX_SAMPLES, DX_TYPES, PR_SAMPLES, PR_TYPES } from "@/lib/reference-data";
 import { navigate, useRoute } from "@/lib/router";
 import { EVENT_BY_ID } from "@/lib/spec";
 import { bedLabel, nowLocal, patientName, updateEncounter, useHis } from "@/lib/store";
@@ -20,6 +20,7 @@ import { visitStatus } from "@/pages/WorklistPage";
 import { ChartMenu } from "@/components/ChartMenu";
 import { VitalsSection } from "@/components/emr/VitalsSection";
 import { ChartOverview } from "@/components/emr/ChartOverview";
+import { AiBriefModal } from "@/components/ai/AiBriefModal";
 import { claimReadiness, useVitals } from "@/lib/vitals";
 import { EmrFormPage } from "@/components/EmrFormPage";
 import { ClinicalDocsSection } from "@/components/emr/ClinicalDocsSection";
@@ -117,9 +118,10 @@ export function ChartPage() {
     <div>
       <ChartHeader enc={enc} patient={patient} />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Visit actions</span>
           <RowActions enc={{ ...enc, status: enc.status }} onAct={onAct} />
+          <AiBriefModal enc={enc} patient={patient} />
         </div>
         {enc.dirty && (
           <div className="flex items-center gap-2 rounded-lg border border-warn/50 bg-warn/10 px-3 py-1.5 text-xs">
@@ -397,7 +399,7 @@ function Complaints({ enc }: { enc: Encounter }) {
 function Diagnosis({ enc }: { enc: Encounter }) {
   const add = (code: string) => {
     const d = DX_SAMPLES.find((x) => x.code === code)!;
-    updateEncounter(enc.visitNumber, (e) => { if (!e.dx.some((x) => x.code === code)) e.dx = [...e.dx, { ...d, type: enc.status === "discharged" ? "F" : d.type }]; });
+    updateEncounter(enc.visitNumber, (e) => { if (!e.dx.some((x) => x.code === code)) e.dx = [...e.dx, { ...d, type: enc.status === "discharged" ? "F" : d.type, at: nowLocal() }]; });
   };
   return (
     <SectionCard title="Diagnosis" tag="DG1">
@@ -414,7 +416,7 @@ function Diagnosis({ enc }: { enc: Encounter }) {
               <Td>{d.text}</Td>
               <Td>
                 <Select className="h-8 w-32" value={d.type} aria-label="Diagnosis type" onChange={(ev) => updateEncounter(enc.visitNumber, (e) => { e.dx = e.dx.map((x, j) => (j === i ? { ...x, type: ev.target.value as "A" | "W" | "F" } : x)); })}>
-                  <option value="A">Admitting</option><option value="W">Working</option><option value="F">Final</option>
+                  {DX_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
                 </Select>
               </Td>
               <Td><Badge tone="ok">Active</Badge></Td>
@@ -433,17 +435,32 @@ function Procedures({ enc }: { enc: Encounter }) {
       <AddBar label="Tap a procedure to add it (ACHI)">
         <Chips
           items={PR_SAMPLES.map((p) => ({ key: p.code, label: `${p.code} ${p.text}` }))}
-          onPick={(code) => { const p = PR_SAMPLES.find((x) => x.code === code)!; updateEncounter(enc.visitNumber, (e) => { if (!e.pr.some((x) => x.code === code)) e.pr = [...e.pr, { ...p }]; }); }}
+          onPick={(code) => { const p = PR_SAMPLES.find((x) => x.code === code)!; updateEncounter(enc.visitNumber, (e) => { if (!e.pr.some((x) => x.code === code)) e.pr = [...e.pr, { ...p, at: nowLocal() }]; }); }}
         />
       </AddBar>
       <Table>
-        <thead><tr><Th>Code</Th><Th>Description</Th><Th /></tr></thead>
+        <thead><tr><Th>Code</Th><Th>Description</Th><Th>Started</Th><Th>Type</Th><Th>Surgeon</Th><Th /></tr></thead>
         <tbody>
-          {enc.pr.length === 0 && <tr><Td colSpan={3}><Empty>No procedures yet.</Empty></Td></tr>}
+          {enc.pr.length === 0 && <tr><Td colSpan={6}><Empty>No procedures yet.</Empty></Td></tr>}
           {enc.pr.map((p, i) => (
             <tr key={p.code + i}>
               <Td className="font-mono text-xs font-semibold">{p.code}</Td>
               <Td>{p.text}</Td>
+              <Td>
+                <Input className="h-8 w-48" type="datetime-local" value={p.at ?? ""} aria-label="Procedure start date and time" onChange={(ev) => updateEncounter(enc.visitNumber, (e) => { e.pr = e.pr.map((x, j) => (j === i ? { ...x, at: ev.target.value } : x)); })} />
+              </Td>
+              <Td>
+                <Select className="h-8 w-32" value={p.type ?? ""} aria-label="Procedure type" onChange={(ev) => updateEncounter(enc.visitNumber, (e) => { e.pr = e.pr.map((x, j) => (j === i ? { ...x, type: (ev.target.value || undefined) as typeof x.type } : x)); })}>
+                  <option value="">Not set</option>
+                  {PR_TYPES.map((t) => <option key={t.code} value={t.code}>{t.short}</option>)}
+                </Select>
+              </Td>
+              <Td>
+                <Select className="h-8 w-44" value={p.surgeon ?? ""} aria-label="Surgeon" onChange={(ev) => updateEncounter(enc.visitNumber, (e) => { e.pr = e.pr.map((x, j) => (j === i ? { ...x, surgeon: ev.target.value || undefined } : x)); })}>
+                  <option value="">None</option>
+                  {DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}
+                </Select>
+              </Td>
               <Td className="text-right"><Remove onClick={() => updateEncounter(enc.visitNumber, (e) => { e.pr = e.pr.filter((_, j) => j !== i); })} /></Td>
             </tr>
           ))}
@@ -464,12 +481,17 @@ function Allergies({ enc }: { enc: Encounter }) {
         />
       </AddBar>
       <Table>
-        <thead><tr><Th>Allergen</Th><Th>Severity</Th><Th>Reaction</Th><Th /></tr></thead>
+        <thead><tr><Th>Allergen</Th><Th>Type</Th><Th>Severity</Th><Th>Reaction</Th><Th /></tr></thead>
         <tbody>
-          {enc.allergies.length === 0 && <tr><Td colSpan={4}><Empty>No allergies recorded.</Empty></Td></tr>}
+          {enc.allergies.length === 0 && <tr><Td colSpan={5}><Empty>No allergies recorded.</Empty></Td></tr>}
           {enc.allergies.map((a, i) => (
             <tr key={a.text + i}>
               <Td className="font-medium">{a.text}</Td>
+              <Td>
+                <Select className="h-8 w-24" value={a.type ?? "DALG"} aria-label="Allergy type" onChange={(ev) => updateEncounter(enc.visitNumber, (e) => { e.allergies = e.allergies.map((x, j) => (j === i ? { ...x, type: ev.target.value as typeof x.type } : x)); })}>
+                  {ALLERGY_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+                </Select>
+              </Td>
               <Td><Badge tone={a.severity === "SV" ? "danger" : a.severity === "MO" ? "warn" : "neutral"}>{sev[a.severity]}</Badge></Td>
               <Td>{a.reaction || "None"}</Td>
               <Td className="text-right"><Remove onClick={() => updateEncounter(enc.visitNumber, (e) => { e.allergies = e.allergies.filter((_, j) => j !== i); })} /></Td>

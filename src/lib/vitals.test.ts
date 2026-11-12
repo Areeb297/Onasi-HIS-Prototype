@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { pretty } from "./hl7";
 import { getState } from "./store";
 import {
-  amendPanel, buildOru, cancelPanel, cancelReading, claimReadiness, claimVitalsJson, getVitals, needsSend, panelsOf, resetVitals,
+  amendPanel, buildOru, cancelPanel, cancelReading, claimReadiness, claimVitalsJson, claimVitalsMissing, getVitals, needsSend, panelsOf, resetVitals,
   savePanel, scenarioCoverage, sendHistorical, sendPanel, validateOru, setVitalsRejectNext,
 } from "./vitals";
-import { VITALS, bmiOf, flagFor, news2 } from "./vitals-spec";
+import { VITALS, VITAL_BY_KEY, bmiOf, flagFor, news2 } from "./vitals-spec";
 
 const visitOf = (pid: string) => [...getState().encounters].reverse().find((e) => e.patientId === pid && e.status !== "cancelled")!.visitNumber;
 const ctxOf = (visit: string) => {
@@ -103,7 +103,9 @@ describe("send, amend and cancel", () => {
     const r2 = sendPanel(p.id)!;
     expect(r2.kind).toBe("amend");
     expect(r2.accepted).toBe(true);
-    expect(r2.message).toMatch(/OBR\|1\|[^|]*\|[^|]*\|[^|]*\|\|\|[^|]*\|\|\|\|\|\|\|\|\|[^|]*\|\|\|\|\|\|[^|]*\|\|\|C/);
+    const obr2 = r2.message.split("\r").find((l) => l.startsWith("OBR|"))!.split("|");
+    expect(obr2[24]).toBe("29274-8"); // OBR-24 is required and fixed
+    expect(obr2[25]).toBe("C");
   });
 
   it("cancels a whole panel with OBR-25 X and every OBX D or W", () => {
@@ -170,7 +172,7 @@ describe("claims (CHI)", () => {
     savePanel({ visit, context: "other", values: { sbp: 110, dbp: 70, pulse: 70 } });
     const before = claimReadiness(visit);
     expect(before.lines.find((l) => l.key === "temp")!.state).toBe("missing");
-    savePanel({ visit, context: "other", values: {}, absences: { temp: { code: "888", label: "Not obtained" }, rr: { code: "88", label: "Not obtained" } } });
+    savePanel({ visit, context: "other", values: {}, absences: { temp: { code: "88", label: "Not obtained" }, rr: { code: "88", label: "Not obtained" } } });
     const after = claimReadiness(visit);
     expect(after.lines.find((l) => l.key === "temp")!.state).toBe("absent");
     expect(after.ready).toBeGreaterThan(before.ready);
@@ -225,5 +227,93 @@ describe("scenarios", () => {
     sendPanel(p.id);
     expect(scenarioCoverage(visit).find((s) => s.id === "f")!.done).toBe(true);
     expect(panelsOf(visit).length).toBeGreaterThan(0);
+  });
+});
+
+describe("ORU details from the guide", () => {
+  beforeEach(() => resetVitals());
+
+  it("sends OBR-24, puts the panel note right after the OBR with NTE-4, and uses the organisation OID in PV1-19", () => {
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: FULL, note: "x".repeat(250), recordedBy: "D1001" })!;
+    const rec = sendPanel(p.id)!;
+    expect(rec.accepted).toBe(true);
+    const lines = pretty(rec.message).split("\n");
+    const obrAt = lines.findIndex((l) => l.startsWith("OBR|"));
+    expect(lines[obrAt].split("|")[24]).toBe("29274-8");
+    const nte = lines[obrAt + 1].split("|");
+    expect(nte[0]).toBe("NTE");
+    expect(nte[3].length).toBe(200);
+    expect(nte[4]).toBe("RE^Remark^2.16.840.1.113883.21.238");
+    expect(lines.filter((l) => l.startsWith("NTE|")).length).toBe(1);
+    expect(lines.find((l) => l.startsWith("PV1|"))).toContain("&2.16.840.1.113883.3.3731.5.1.15000000999999&ISO");
+    expect(lines[0]).toContain("|^2.16.840.1.113883.3.3731.5.1.15000000999999^ISO|^15000000999999^ISO|");
+  });
+
+  it("cancels oxygen flow, position and BMI with the panel", () => {
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: FULL, onOxygen: true, o2flow: 2, position: "Sitting" })!;
+    sendPanel(p.id);
+    cancelPanel(p.id, "D");
+    const rec = sendPanel(p.id)!;
+    expect(rec.accepted).toBe(true);
+    const obx = pretty(rec.message).split("\n").filter((l) => l.startsWith("OBX|"));
+    expect(obx.some((l) => l.includes("3151-8"))).toBe(true);
+    for (const l of obx) expect(l.split("|")[11]).toBe("D");
+  });
+
+  it("marks BMI as corrected when the weight is corrected", () => {
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: FULL })!;
+    sendPanel(p.id);
+    amendPanel(p.id, { values: { ...FULL, weight: (FULL.weight ?? 80) + 5 } });
+    const rec = sendPanel(p.id)!;
+    const bmi = pretty(rec.message).split("\n").find((l) => l.includes("39156-5"))!.split("|");
+    expect(bmi[11]).toBe("C");
+  });
+
+  it("names nobody in OBR-16 when the recorder is not known", () => {
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: FULL, recordedBy: "" })!;
+    const rec = sendPanel(p.id)!;
+    expect(pretty(rec.message).split("\n").find((l) => l.startsWith("OBR|"))!.split("|")[16]).toBe("");
+    expect(rec.checks.some((c) => c.level === "warn" && c.text.includes("OBR-16"))).toBe(true);
+  });
+
+  it("sends no adult reference range for a child", () => {
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: FULL })!;
+    const st = getState();
+    const enc = st.encounters.find((e) => e.visitNumber === visit)!;
+    const adult = st.patients.find((x) => x.id === enc.patientId)!;
+    const child = { ...adult, dob: `${new Date().getFullYear() - 5}-01-01` };
+    const panel = getVitals().panels.find((x) => x.id === p.id)!;
+    const obxChild = buildOru([panel], child, enc, "T1").message.split("\r").filter((l) => l.startsWith("OBX|"));
+    for (const l of obxChild) { expect(l.split("|")[7] ?? "").toBe(""); expect(l.split("|")[8] ?? "").toBe(""); }
+    const obxAdult = buildOru([panel], adult, enc, "T2").message.split("\r").filter((l) => l.startsWith("OBX|"));
+    expect(obxAdult[0].split("|")[7]).toBe("90-140");
+  });
+});
+
+describe("claim details from the financial guide", () => {
+  beforeEach(() => resetVitals());
+
+  it("uses the published temperature absence codes and code system", () => {
+    expect(VITAL_BY_KEY.temp.absence.map((a) => a.code)).toEqual(["88", "99"]);
+    const visit = visitOf("P007");
+    savePanel({ visit, context: "other", values: {}, absences: { temp: { code: "88", label: "Not obtained" } } });
+    const json = JSON.stringify(claimVitalsJson(visit));
+    expect(json).toContain("http://nphies.sa/terminology/CodeSystem/temperature-absence-reason");
+    expect(json).not.toContain("tempurature");
+  });
+
+  it("includes the chief complaint and reports what is missing", () => {
+    const visit = visitOf("P007");
+    savePanel({ visit, context: "other", values: { sbp: 120, dbp: 80 } });
+    const json = claimVitalsJson(visit) as { category: { coding: { code: string }[] }; valueString?: string }[];
+    const cc = json.find((j) => j.category.coding[0].code === "chief-complaint");
+    expect(cc?.valueString).toBeTruthy();
+    expect(claimVitalsMissing(visit)).toContain("Temperature");
+    expect(claimVitalsMissing(visit)).not.toContain("Systolic BP");
   });
 });

@@ -6,7 +6,7 @@ import type { Encounter, Patient } from "@/lib/model";
 import { DOCTORS } from "@/lib/reference-data";
 import { can } from "@/lib/session";
 import { nowLocal } from "@/lib/store";
-import { amendPanel, obsValue, savePanel, sendPanel, type VitalPanel } from "@/lib/vitals";
+import { amendPanel, currentRecorder, obsValue, savePanel, sendPanel, type VitalPanel } from "@/lib/vitals";
 import {
   BP_POSITIONS, CONSCIOUSNESS, CONTEXTS, VITALS, bmiOf, flagFor, news2, refRangeText, type Consciousness, type PanelContext, type VitalKey,
 } from "@/lib/vitals-spec";
@@ -44,7 +44,7 @@ export function VitalsSheet({ enc, patient, panel, hasPanels, onClose }: { enc: 
   const [cons, setCons] = React.useState<Consciousness>(panel?.consciousness ?? "Alert");
   const [context, setContext] = React.useState<PanelContext>(panel?.context ?? defaultContext(enc, hasPanels));
   const [at, setAt] = React.useState(panel?.at ?? nowLocal());
-  const [by, setBy] = React.useState(panel?.recordedBy ?? enc.attending);
+  const [by, setBy] = React.useState(panel?.recordedBy ?? currentRecorder());
   const [note, setNote] = React.useState(panel?.note ?? "");
 
   const age = ageOf(patient);
@@ -114,7 +114,7 @@ export function VitalsSheet({ enc, patient, panel, hasPanels, onClose }: { enc: 
                     </label>
                     {absent[v.key] && (
                       <Select className="h-7 flex-1 text-xs" value={absent[v.key]} aria-label={`${v.label} reason`} onChange={(e) => setAbsent((a) => ({ ...a, [v.key]: e.target.value }))}>
-                        {v.absence.map((a) => <option key={a.code} value={a.code}>{a.label} ({a.code}){a.assumed ? " assumed" : ""}</option>)}
+                        {v.absence.map((a) => <option key={a.code} value={a.code}>{a.label}{dev ? ` (${a.code})` : ""}</option>)}
                       </Select>
                     )}
                     {!absent[v.key] && v.range && <span className="ms-auto text-muted-foreground">Normal {refRangeText(v)}</span>}
@@ -140,7 +140,7 @@ export function VitalsSheet({ enc, patient, panel, hasPanels, onClose }: { enc: 
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Why was it taken?"><Select value={context} onChange={(e) => setContext(e.target.value as PanelContext)}>{CONTEXTS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</Select></Field>
               <Field label="Time taken" hl7={dev ? "OBR-7, OBR-22" : undefined}><Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>
-              <Field label="Taken by" hl7={dev ? "OBR-16" : undefined} className="sm:col-span-2"><Select value={by} onChange={(e) => setBy(e.target.value)}>{DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}</Select></Field>
+              <Field label="Taken by" hl7={dev ? "OBR-16" : undefined} className="sm:col-span-2"><Select value={by} onChange={(e) => setBy(e.target.value)}><option value="">Not recorded</option>{by && !DOCTORS.some((d) => d.id === by) && <option value={by}>Signed-in user</option>}{DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}</Select></Field>
             </div>
           )}
           <Field label="Note" hl7={dev ? "OBR-NTE" : undefined}><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" /></Field>

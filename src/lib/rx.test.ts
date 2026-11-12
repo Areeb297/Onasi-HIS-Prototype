@@ -41,9 +41,10 @@ const mkItem = (over: Partial<RxItem> = {}): RxItem => ({
 });
 
 describe("catalogue", () => {
-  it("has about 30 drugs with test codes and all four classes", () => {
+  it("has about 30 drugs with demo codes and all four classes", () => {
     expect(DRUGS.length).toBeGreaterThanOrEqual(30);
-    expect(DRUGS.every((d) => d.code.startsWith("TST-"))).toBe(true);
+    expect(DRUGS.every((d) => d.code.startsWith("DEMO-"))).toBe(true);
+    expect(DRUGS.every((d) => d.formCode === "6401" || d.formCode.startsWith("DEMO-"))).toBe(true);
     expect(new Set(DRUGS.map((d) => d.controlClass))).toEqual(new Set(["U", "N", "C", "R"]));
     expect(searchDrugs("tramad")[0].generic).toBe("Tramadol");
   });
@@ -233,7 +234,11 @@ describe("prescription store and send", () => {
     setHeight(e.visitNumber, e.patientId, 178);
     const ok = sendPrescription(rx.id, "create");
     expect(ok?.ok).toBe(true);
-    expect(ok?.refId).toBeUndefined();
+    // nphies returns a reference id for every medication type. It replaces the local group id.
+    expect(ok?.refId).toMatch(/^NRX\d{8}$/);
+    expect(getRx().prescriptions[0].groupId).toBe(ok?.refId);
+    expect(getRx().prescriptions[0].nationalRef).toBe(ok?.refId);
+    expect(getRx().prescriptions[0].raqeebRef).toBeUndefined();
     expect(getRx().prescriptions[0].sentAt).toBeDefined();
     expect(stepStatus(getRx().sends, "7.1.create")).toBe("done");
 
@@ -271,13 +276,14 @@ describe("prescription store and send", () => {
     expect(stepStatus(getRx().sends, "7.2.cancel-active")).toBe("done");
   });
 
-  it("does not issue a Raqeeb reference id for an inpatient controlled item", () => {
+  it("gives an inpatient controlled item a reference id, but not a Raqeeb one", () => {
     const e = enc();
     setHeight(e.visitNumber, e.patientId, 178);
     const { rx } = addDraftItem(e, newItem("DRG033", { usage: "inpatient" }));
     const sent = sendPrescription(rx.id, "create");
     expect(sent?.ok).toBe(true);
-    expect(sent?.refId).toBeUndefined();
+    expect(sent?.refId).toMatch(/^NRX/);
+    expect(getRx().prescriptions[0].raqeebRef).toBeUndefined();
   });
 
   it("previews a stable bundle for the Developer View", () => {
@@ -418,14 +424,18 @@ describe("prescription store and send", () => {
     expect(r.outcome?.ok).toBe(true);
   });
 
-  it("refuses to cancel an uncontrolled dispense", () => {
+  it("cancels an uncontrolled dispense by sending a new version, without a conformance step", () => {
     const e = enc();
     setHeight(e.visitNumber, e.patientId, 178);
     const { rx, item } = addDraftItem(e, newItem("DRG001"));
     sendPrescription(rx.id, "create");
     sendDispense({ rxId: rx.id, lines: [{ itemId: item.id, quantity: item.quantity }], verification: { patientScan: true, drugScans: [item.id] } });
     const d = getRx().dispenses[0];
-    expect(changeDispenseLine(d.id, d.lines[0].id, "cancel").outcome).toBeNull();
+    const res = changeDispenseLine(d.id, d.lines[0].id, "cancel");
+    expect(res.outcome?.ok).toBe(true);
+    expect(res.outcome?.record.steps).toEqual([]);
+    expect(getRx().dispenses[0].lines[0].status).toBe("cancelled");
+    expect(getRx().prescriptions[0].items[0].status).toBe("active");
   });
 });
 

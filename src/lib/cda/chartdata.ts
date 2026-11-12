@@ -41,7 +41,9 @@ export const doctorName = (id: string): string => {
   return d ? `Dr. ${d.given} ${d.family}` : "Unknown clinician";
 };
 
-export const isDead = (i: DocInput): boolean => i.enc.disposition === "20";
+/** Discharge disposition "Died": SNOMED CT 79779006 in CS-Adm-DischargeDisposition. "20" is the older HL7 code, kept for saved data. */
+export const isDeathDisposition = (code: string | undefined): boolean => code === "79779006" || code === "20";
+export const isDead = (i: DocInput): boolean => isDeathDisposition(i.enc.disposition);
 
 export const isStillbirth = (i: DocInput): boolean =>
   i.forms("delivery-outcomes").some((r) => /^still/i.test(str(r.values.birthStatus)));
@@ -51,14 +53,25 @@ export function dispositionLabel(code?: string): string {
   return d ? d.label : code ? `Code ${code}` : "";
 }
 
-/** Start and end of the encounter in local "YYYY-MM-DDTHH:mm". For an operative note the operation times are used if known. */
-export function encounterTimes(i: DocInput): { start: string; end: string; fallback: boolean } {
+/**
+ * Start and end of the encounter in local "YYYY-MM-DDTHH:mm".
+ * For an operative note they are the operation start and end ("Operative Datetime In" and "Out", CDA Header by Document Type,
+ * page 15925336 row 7), read from the Operation Request form. The visit times are never used in their place.
+ */
+export function encounterTimes(i: DocInput): { start: string; end: string } {
+  if (i.type === "operative") {
+    const r = latest(i, "operation-request");
+    return { start: pick(r, ["operationStart"]), end: pick(r, ["operationEnd"]) };
+  }
   const e = i.enc;
-  const start = e.admitAt ?? e.expectedAdmitAt ?? "";
-  const end = e.dischargeAt ?? "";
-  // The operation request records a date and a duration only, so the operation in and out times are not known exactly.
-  return { start, end, fallback: i.type === "operative" };
+  return { start: e.admitAt ?? e.expectedAdmitAt ?? "", end: e.dischargeAt ?? "" };
 }
+
+/** Time of birth from the delivery record, or the admission time when it is missing. */
+export const deliveredAt = (i: DocInput): string => pick(latest(i, "delivery-outcomes"), ["deliveredAt"]) || i.enc.admitAt || i.enc.expectedAdmitAt || "";
+
+/** True when a nurse ticked "No known allergies" on the Nursing Initial Assessment. */
+export const noKnownAllergies = (i: DocInput): boolean => !!pick(latest(i, "nursing-initial-assessment"), ["noKnownAllergies"]);
 
 /** Date a procedure was done. PR1-5 needs one, and the Pr model has none, so it comes from the operation request or the visit. */
 export function procedureDate(i: Pick<DocInput, "enc" | "forms">): string {
@@ -68,5 +81,8 @@ export function procedureDate(i: Pick<DocInput, "enc" | "forms">): string {
   return (i.enc.dischargeAt ?? i.enc.admitAt ?? "").slice(0, 10);
 }
 
-/** A temporary Health ID for a newborn who has none yet. Made up. */
-export const newbornTempId = (motherHealthId: string): string => `8${motherHealthId.slice(1)}`;
+/**
+ * The baby's own Health ID (temporary or permanent), typed on the Delivery Outcomes form.
+ * It is issued by the national Health ID service (Workflows page 54755960, Exception 2). The app never makes one up.
+ */
+export const babyHealthId = (i: DocInput): string => pick(latest(i, "delivery-outcomes"), ["babyHealthId"]).trim();

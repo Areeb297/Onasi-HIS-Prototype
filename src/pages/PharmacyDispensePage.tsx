@@ -182,11 +182,11 @@ export function PharmacyDispensePage() {
                                       </span>
                                       {l.status === "completed" && (
                                         <span className="flex gap-1.5">
-                                          <span title={!canDispense ? "You do not have permission to dispense" : !ctrl ? "Update is offered for narcotic, controlled and restricted items" : undefined}>
-                                            <Button size="sm" disabled={!canDispense || !ctrl} onClick={() => setLineAction({ mode: "update", d, line: l })}>Update Dispense</Button>
+                                          <span title={!canDispense ? "You do not have permission to dispense" : undefined}>
+                                            <Button size="sm" disabled={!canDispense} onClick={() => setLineAction({ mode: "update", d, line: l })}>Update Dispense</Button>
                                           </span>
-                                          <span title={!canDispense ? "You do not have permission to dispense" : !ctrl ? "Cancel is offered for narcotic, controlled and restricted items" : undefined}>
-                                            <Button size="sm" variant="danger" disabled={!canDispense || !ctrl} onClick={() => setLineAction({ mode: "cancel", d, line: l })}>Cancel Dispense</Button>
+                                          <span title={!canDispense ? "You do not have permission to dispense" : undefined}>
+                                            <Button size="sm" variant="danger" disabled={!canDispense} onClick={() => setLineAction({ mode: "cancel", d, line: l })}>Cancel Dispense</Button>
                                           </span>
                                         </span>
                                       )}

@@ -1,8 +1,8 @@
 import type { Dx } from "../model";
-import { dispositionLabel, dump, humanize, isStillbirth, latest, pick, procedureDate } from "./chartdata";
-import { allergyEntry, DELIVERY_TIDS, problemEntry, simpleObs, surgeryEntry, vitalsEntry, vitalsList } from "./entries";
+import { deliveredAt, dispositionLabel, dump, humanize, isStillbirth, latest, noKnownAllergies, pick, procedureDate } from "./chartdata";
+import { allergyEntry, deliveryModeCode, deliveryProcedureEntry, medicationEntry, noProblemEntry, OBS_TIDS, problemEntry, simpleObs, surgeryEntry, vitalsEntry, vitalsList } from "./entries";
 import { DOC_SPECS, SECTIONS } from "./docspec";
-import type { Block, DocInput, SectionOut, Usage } from "./types";
+import type { Block, DocInput, MedLine, SectionOut, Usage } from "./types";
 
 /** Fills each section from the chart. A section with nothing to say gets hasData = false. */
 
@@ -16,39 +16,48 @@ interface Part {
 const p = (text: string): Block => ({ kind: "p", text });
 const list = (items: (string | { id?: string; text: string })[]): Block => ({ kind: "list", items: items.map((t) => (typeof t === "string" ? { text: t } : t)) });
 const NONE: Part = { blocks: [p("No information available.")], sources: [], has: false };
-const lines = (arr: string[]) => (arr.length ? list(arr) : p("No information available."));
 const text = (t: string, sources: string[]): Part => (t.trim() ? { blocks: [p(t.trim())], sources } : NONE);
 
 const dxLabel = (d: Dx) => `${d.text} (${d.code})`;
 const when = (s?: string) => (s ? s.replace("T", " ") : "");
 
-function dxPart(i: DocInput, dxs: Dx[], prefix: string, sources: string[]): Part {
-  if (!dxs.length) return NONE;
+/** Diagnoses as a list plus one Problem Concern Entry each. */
+function dxPart(i: DocInput, dxs: Dx[], prefix: string, sources: string[], lead?: string): Part {
+  const intro = lead ? [p(lead)] : [];
+  if (!dxs.length) return lead ? { blocks: intro, sources, has: false } : NONE;
   const start = i.enc.admitAt ?? i.enc.expectedAdmitAt;
   const active = i.enc.status === "active";
   return {
-    blocks: [list(dxs.map((d, n) => ({ id: `${prefix}-${n + 1}`, text: dxLabel(d) })))],
-    entries: dxs.map((d, n) => problemEntry(`${i.docId}:${prefix}:${n}`, d, `${prefix}-${n + 1}`, start, active ? undefined : i.enc.dischargeAt, active)),
+    blocks: [...intro, list(dxs.map((d, n) => ({ id: `${prefix}-${n + 1}`, text: dxLabel(d) })))],
+    entries: dxs.map((d, n) => problemEntry(`${i.docId}:${prefix}:${n}`, d, `${prefix}-${n + 1}`, start, i.enc.dischargeAt, active)),
     sources,
   };
 }
 
-function medsPart(i: DocInput): Part {
-  const m = i.medications ?? [];
+/** A medication table with one Medications Entry per row. INT is an open prescription, EVN a medicine that was given. */
+function medsTable(i: DocInput, m: MedLine[], prefix: string, mood: "INT" | "EVN", sources: string[]): Part {
   if (!m.length) return NONE;
+  const id = (n: number, part = "") => `${prefix}-${n + 1}${part}`;
   return {
-    blocks: [{ kind: "table", head: ["Medicine", "Dose", "Route", "Frequency"], rows: m.map((x) => [x.name, x.dose ?? "", x.route ?? "", x.frequency ?? ""]) }],
-    sources: ["Prescriptions for this visit"],
+    blocks: [{
+      kind: "table",
+      head: ["Medicine", "Code", "Dose form", "Dose", "Route", "Frequency", "Instructions"],
+      rows: m.map((x) => [x.name, x.code ?? "Not coded", x.formName ?? "Not recorded", x.dose ?? "", x.route ?? "", x.frequency ?? "", x.instruction || "As directed"]),
+      ids: m.map((_, n) => [id(n), id(n, "-code"), id(n, "-form"), undefined, undefined, undefined, id(n, "-inst")]),
+    }],
+    entries: m.map((x, n) => medicationEntry(`${i.docId}:${prefix}:${n}`, x, mood, { row: id(n), code: id(n, "-code"), form: id(n, "-form"), instruct: id(n, "-inst") })),
+    sources,
   };
 }
+const rxMeds = (prefix: string, mood: "INT" | "EVN") => (i: DocInput): Part => medsTable(i, i.medications ?? [], prefix, mood, ["Prescriptions for this visit"]);
 
-function surgeriesPart(i: DocInput): Part {
+function surgeriesPart(i: DocInput, prefix = "sx"): Part {
   const prs = i.enc.pr;
   if (!prs.length) return NONE;
   const date = procedureDate(i);
   return {
-    blocks: [{ kind: "table", head: ["Procedure", "Code", "Date"], rows: prs.map((x, n) => [x.text, x.code, date]) }],
-    entries: prs.map((x, n) => surgeryEntry(`${i.docId}:sx:${n}`, x, `sx-${n + 1}`, date)),
+    blocks: [{ kind: "table", head: ["Procedure", "Code", "Date"], rows: prs.map((x) => [x.text, x.code, date]), ids: prs.map((_, n) => [`${prefix}-${n + 1}`]) }],
+    entries: prs.map((x, n) => surgeryEntry(`${i.docId}:${prefix}:${n}`, x, `${prefix}-${n + 1}`, date)),
     sources: ["Encounter.pr", "Operation Request date"],
   };
 }
@@ -61,8 +70,9 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
   },
   referral: (i) => {
     const prim = i.enc.dx.slice(0, 1);
-    const part = dxPart(i, prim, "ref", ["Encounter.dx (first)"]);
-    return part.has === false ? text(i.enc.reason, ["Encounter.reason"]) : { ...part, blocks: [p(`Reason for the visit: ${i.enc.reason || "not entered"}.`), ...part.blocks] };
+    // Entries here are "required if known", so a visit with no diagnosis sends the reason as text only.
+    if (!prim.length) return text(i.enc.reason, ["Encounter.reason"]);
+    return dxPart(i, prim, "ref", ["Encounter.dx (first)"], `Reason for the visit: ${i.enc.reason || "not entered"}.`);
   },
   hpi: (i) => text(i.soap?.find((s) => s.subjective)?.subjective ?? i.enc.notes[0]?.text ?? i.enc.reason, ["SOAP subjective", "Progress notes", "Encounter.reason"]),
   admitdx: (i) => {
@@ -72,8 +82,14 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
   problems: (i) => {
     const rest = i.enc.dx.slice(1);
     if (!i.enc.dx.length) return NONE;
-    if (!rest.length) return { blocks: [p("No active problems other than the principal diagnosis.")], sources: ["Encounter.dx"] };
-    return dxPart(i, rest, "prob", ["Encounter.dx (after the first)"]);
+    if (rest.length) return dxPart(i, rest, "prob", ["Encounter.dx (after the first)"]);
+    // The section needs at least one entry. With only a principal diagnosis on the visit, the entry
+    // "No current problems or disability" (SNOMED CT 160245001) is written, as the Problem Entry page says.
+    return {
+      blocks: [list([{ id: "prob-none", text: "No active problems other than the principal diagnosis." }])],
+      entries: [noProblemEntry(`${i.docId}:prob:none`, "prob-none")],
+      sources: ["Encounter.dx"],
+    };
   },
   dcdx: (i) => {
     const f = i.enc.dx.filter((d) => d.type === "F");
@@ -81,19 +97,32 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
   },
   allergies: (i) => {
     const a = i.enc.allergies;
-    if (!a.length) return NONE;
     const start = i.enc.admitAt ?? i.enc.expectedAdmitAt;
+    if (!a.length) {
+      // "None known" is only stated when a nurse ticked it. An empty list alone means nobody recorded the answer.
+      if (!noKnownAllergies(i)) return NONE;
+      return {
+        blocks: [list([{ id: "al-none", text: "No known allergies." }])],
+        entries: [allergyEntry(`${i.docId}:al:none`, null, "al-none", start)],
+        sources: ["Nursing Initial Assessment: no known allergies"],
+      };
+    }
     return {
-      blocks: [{ kind: "table", head: ["Substance", "Severity", "Reaction"], rows: a.map((x) => [x.text, { SV: "Severe", MO: "Moderate", MI: "Mild" }[x.severity], x.reaction]) }],
+      blocks: [{ kind: "table", head: ["Substance", "Severity", "Reaction"], rows: a.map((x) => [x.text, { SV: "Severe", MO: "Moderate", MI: "Mild" }[x.severity], x.reaction]), ids: a.map((_, n) => [`al-${n + 1}`]) }],
       entries: a.map((x, n) => allergyEntry(`${i.docId}:al:${n}`, x, `al-${n + 1}`, start)),
       sources: ["Encounter.allergies"],
     };
   },
-  meds: medsPart,
-  admedhx: () => NONE,
-  medsgiven: medsPart,
-  dcmeds: medsPart,
-  surgeries: surgeriesPart,
+  meds: rxMeds("med", "INT"),
+  admedhx: (i) => {
+    // Medicines the patient was taking before admission. The chart holds them as free text on the pre-anesthesia form.
+    const raw = pick(latest(i, "pre-anesthesia-assessment"), ["medications"]);
+    const lines = raw.split(/[\n;,]+/).map((s) => s.trim()).filter(Boolean);
+    return medsTable(i, lines.map((name) => ({ name })), "medadm", "EVN", ["Pre-Anesthesia Assessment: current medicines"]);
+  },
+  medsgiven: rxMeds("medgiven", "EVN"),
+  dcmeds: rxMeds("meddc", "INT"),
+  surgeries: (i) => surgeriesPart(i),
   drains: () => NONE,
   devices: () => NONE,
   immun: () => NONE,
@@ -103,9 +132,9 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
   vitals: (i) => {
     const v = i.enc.vitals;
     if (!v || !vitalsList(v).length) return NONE;
-    const rows = vitalsList(v).map((x) => [x.name, String(x.value), x.unit]);
+    const vs = vitalsList(v);
     return {
-      blocks: [{ kind: "table", head: ["Measurement", "Value", "Unit"], rows }, p(`Measured ${when(v.at)}.`)],
+      blocks: [{ kind: "table", head: ["Measurement", "Value", "Unit"], rows: vs.map((x) => [x.name, String(x.value), x.unit]), ids: vs.map((x) => [`vs-${x.ref}`]) }, p(`Measured ${when(v.at)}.`)],
       entries: [vitalsEntry(`${i.docId}:vs`, v, v.at)],
       sources: ["Encounter.vitals"],
     };
@@ -130,16 +159,31 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
 
   /* ----- maternal and newborn ----- */
   pregnancy: (i) => {
-    const ga = pick(latest(i, "delivery-outcomes"), ["gestationalAge"]);
-    return ga ? { blocks: [p(`Current pregnancy delivered at ${ga} weeks. Earlier pregnancies are not recorded in the chart.`)], sources: ["Delivery Outcomes: gestationalAge"] } : NONE;
+    const r = latest(i, "delivery-outcomes");
+    if (!r) return NONE;
+    const ga = pick(r, ["gestationalAge"]);
+    // The delivery record describes one baby, so the one pregnancy fact the chart can state in coded form is "not a multiple pregnancy".
+    return {
+      blocks: [
+        p(ga ? `Current pregnancy delivered at ${ga} weeks. Earlier pregnancies are not recorded in the chart.` : "Earlier pregnancies are not recorded in the chart."),
+        list([{ id: "pg-1", text: "Multiple pregnancy: no (one baby recorded for this delivery)." }]),
+      ],
+      entries: [simpleObs(`${i.docId}:pg:1`, OBS_TIDS.pregnancy, "45371-2", "MULTIPLE PREGNANCY", { type: "BL", v: false }, "pg-1", deliveredAt(i))],
+      sources: ["Delivery Outcomes: gestationalAge"],
+    };
   },
   labor: (i) => {
     const r = latest(i, "delivery-outcomes");
     if (!r) return NONE;
-    const rows = (["deliveredAt", "mode", "presentation", "anesthesia", "episiotomy"] as const)
-      .map((k) => [humanize(k), pick(r, [k])])
-      .filter(([, v]) => v);
-    return rows.length ? { blocks: [{ kind: "table", head: ["Item", "Value"], rows }], sources: ["Delivery Outcomes"] } : NONE;
+    const keys = (["deliveredAt", "mode", "presentation", "anesthesia", "episiotomy"] as const).filter((k) => pick(r, [k]));
+    if (!keys.length) return NONE;
+    const mode = pick(r, ["mode"]);
+    return {
+      blocks: [{ kind: "table", head: ["Item", "Value"], rows: keys.map((k) => [humanize(k), pick(r, [k])]), ids: keys.map((k) => (k === "mode" ? [undefined, "ld-mode"] : [])) }],
+      // Exactly one procedure entry records the mode of delivery.
+      entries: mode ? [deliveryProcedureEntry(`${i.docId}:ld`, mode, "ld-mode", deliveredAt(i))] : [],
+      sources: ["Delivery Outcomes"],
+    };
   },
   delivery: (i) => {
     const r = latest(i, "delivery-outcomes");
@@ -147,44 +191,58 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
     const still = isStillbirth(i);
     const status = pick(r, ["birthStatus"]);
     const comp = pick(r, ["complications"]);
+    const at = deliveredAt(i);
+    // Both counts are always sent: one baby per delivery record, so one of them is 1 and the other 0.
     const entries = [
-      still
-        ? simpleObs(`${i.docId}:still`, DELIVERY_TIDS.still, "57062-2", "Stillborn Births", { type: "INT", v: 1 }, "dl-1")
-        : simpleObs(`${i.docId}:live`, DELIVERY_TIDS.live, "11636-8", "Live Births", { type: "INT", v: 1 }, "dl-1"),
+      simpleObs(`${i.docId}:live`, OBS_TIDS.live, "11636-8", "Live Births", { type: "INT", v: still ? 0 : 1 }, "dl-live", at),
+      simpleObs(`${i.docId}:still`, OBS_TIDS.still, "57062-2", "Stillborn Births", { type: "INT", v: still ? 1 : 0 }, "dl-still", at),
     ];
-    const blocks: Block[] = [list([{ id: "dl-1", text: status ? `Birth status: ${status}` : "Birth status not recorded" }]), p(`Mother's complications: ${comp || "none recorded"}.`)];
+    const blocks: Block[] = [
+      p(status ? `Birth status: ${status}.` : "Birth status not recorded."),
+      list([{ id: "dl-live", text: `Live births: ${still ? 0 : 1}` }, { id: "dl-still", text: `Stillbirths: ${still ? 1 : 0}` }]),
+      p(`Mother's complications: ${comp || "none recorded"}.`),
+    ];
     return { blocks, entries, sources: ["Delivery Outcomes: birthStatus, complications"] };
   },
   newbornstatus: (i) => {
     const r = latest(i, "delivery-outcomes");
     if (!r) return NONE;
-    const a1 = pick(r, ["apgar1"]);
-    const a5 = pick(r, ["apgar5"]);
+    const at = deliveredAt(i);
     const ball = latest(i, "newborn-ballard-score");
     const ga = pick(ball, ["estimatedGa"]) || pick(r, ["gestationalAge"]);
-    const rows = [
-      ["Birth weight", pick(r, ["birthWeight"]) && `${pick(r, ["birthWeight"])} g`],
-      ["Sex", pick(r, ["sex"])],
-      ["Apgar at 1 minute", a1],
-      ["Apgar at 5 minutes", a5],
-      ["Gestational age", ga && `${ga} weeks`],
-      ["Baby went to", pick(r, ["babyDisposition"])],
-    ].filter(([, v]) => v) as string[][];
-    const entries: string[] = [];
-    if (a1 !== "" && !Number.isNaN(+a1)) entries.push(simpleObs(`${i.docId}:ap1`, DELIVERY_TIDS.apgar, "9272-6", "1 minute Apgar Score", { type: "INT", v: +a1 }, "nb-ap1", ["1.3.6.1.4.1.19376.1.5.3.1.4.13"]));
-    if (a5 !== "" && !Number.isNaN(+a5)) entries.push(simpleObs(`${i.docId}:ap5`, DELIVERY_TIDS.apgar, "9274-2", "5 minute Apgar Score", { type: "INT", v: +a5 }, "nb-ap5", ["1.3.6.1.4.1.19376.1.5.3.1.4.13"]));
-    if (ga && !Number.isNaN(+ga)) entries.push(simpleObs(`${i.docId}:ga`, DELIVERY_TIDS.ga, "49051-6", "Gestational Age", { type: "PQ", v: +ga, unit: "wk" }, "nb-ga"));
-    return rows.length ? { blocks: [{ kind: "table", head: ["Item", "Value"], rows }], entries, sources: ["Delivery Outcomes", "Newborn Ballard Score"] } : NONE;
+    // Apgar LOINC codes: see the assumption note. 1, 5 and 10 minutes are all asked for.
+    const apgar = [
+      { key: "apgar1", label: "Apgar at 1 minute", code: "9272-6", name: "1 minute Apgar Score", id: "nb-ap1" },
+      { key: "apgar5", label: "Apgar at 5 minutes", code: "9274-2", name: "5 minute Apgar Score", id: "nb-ap5" },
+      { key: "apgar10", label: "Apgar at 10 minutes", code: "9271-8", name: "10 minute Apgar Score", id: "nb-ap10" },
+    ].map((a) => ({ ...a, v: pick(r, [a.key]) })).filter((a) => a.v !== "" && !Number.isNaN(+a.v));
+    const rows: { cells: string[]; id?: string }[] = [];
+    const add = (label: string, v: string | false, id?: string) => { if (v) rows.push({ cells: [label, v], id }); };
+    add("Birth weight", pick(r, ["birthWeight"]) && `${pick(r, ["birthWeight"])} g`);
+    add("Sex", pick(r, ["sex"]));
+    apgar.forEach((a) => add(a.label, a.v, a.id));
+    add("Gestational age", ga && `${ga} weeks`, "nb-ga");
+    add("Baby went to", pick(r, ["babyDisposition"]));
+    if (!rows.length) return NONE;
+    const entries = apgar.map((a) => simpleObs(`${i.docId}:${a.key}`, OBS_TIDS.apgar, a.code, a.name, { type: "INT", v: +a.v }, a.id, at));
+    if (ga && !Number.isNaN(+ga)) entries.push(simpleObs(`${i.docId}:ga`, OBS_TIDS.ga, "49051-6", "Gestational Age", { type: "PQ", v: +ga, unit: "wk" }, "nb-ga", at));
+    return {
+      blocks: [{ kind: "table", head: ["Item", "Value"], rows: rows.map((x) => x.cells), ids: rows.map((x) => [undefined, x.id]) }],
+      entries,
+      sources: ["Delivery Outcomes", "Newborn Ballard Score"],
+    };
   },
 
   /* ----- operative note ----- */
   preop: (i) => {
-    const r = latest(i, "operation-request");
-    const t = pick(r, ["preopDiagnosis"]);
-    if (t) return { blocks: [p(t)], sources: ["Operation Request: preopDiagnosis"] };
-    return dxPart(i, i.enc.dx.slice(0, 1), "pre", ["Encounter.dx (first)"]);
+    const t = pick(latest(i, "operation-request"), ["preopDiagnosis"]);
+    // The surgeon's wording goes in as text; the coded entry is the first diagnosis of the visit.
+    return dxPart(i, i.enc.dx.slice(0, 1), "pre", t ? ["Operation Request: preopDiagnosis", "Encounter.dx (first)"] : ["Encounter.dx (first)"], t || undefined);
   },
-  postproc: (i) => dxPart(i, i.enc.dx.filter((d) => d.type === "F"), "ppd", ["Encounter.dx (final)"]),
+  postproc: (i) => {
+    const f = i.enc.dx.filter((d) => d.type === "F");
+    return f.length ? dxPart(i, f, "ppd", ["Encounter.dx (final)"]) : NONE;
+  },
   postop: (i) => dxPart(i, i.enc.dx, "pod", ["Encounter.dx"]),
   procdone: (i) => {
     const all = i.enc.pr;
@@ -192,8 +250,8 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
     if (!sel.length) return text(pick(latest(i, "operation-request"), ["procedure"]), ["Operation Request: procedure"]);
     const date = procedureDate(i);
     return {
-      blocks: [{ kind: "table", head: ["Procedure", "Code", "Date"], rows: sel.map((x) => [x.text, x.code, date]) }],
-      entries: sel.map((x, n) => surgeryEntry(`${i.docId}:op:${n}`, x, `sx-${n + 1}`, date)),
+      blocks: [{ kind: "table", head: ["Procedure", "Code", "Date"], rows: sel.map((x) => [x.text, x.code, date]), ids: sel.map((_, n) => [`op-${n + 1}`]) }],
+      entries: sel.map((x, n) => surgeryEntry(`${i.docId}:op:${n}`, x, `op-${n + 1}`, date)),
       sources: ["Encounter.pr", "Operation Request date"],
     };
   },
@@ -233,14 +291,13 @@ export function buildSections(i: DocInput): SectionOut[] {
     const s = SECTIONS[key];
     const part = (BUILDERS[key] ?? (() => NONE))(i);
     const has = part.has !== false && part.blocks.length > 0 && !(part.blocks.length === 1 && part.blocks[0].kind === "p" && part.blocks[0].text === "No information available.");
-    out.push({
-      key, templateIds: s.tids, loinc: s.loinc, loincName: s.loincName, title: s.title, usage: usage as Usage,
-      blocks: part.blocks, entries: part.entries ?? [], hasData: has, sources: part.sources,
-    });
+    const entries = part.entries ?? [];
+    // The IHE procedure-list template id on List of Surgeries is only allowed when procedure entries are present (page 15893106).
+    const templateIds = s.tidsWithEntries && !entries.length ? s.tids.filter((t) => !s.tidsWithEntries?.includes(t)) : s.tids;
+    out.push({ key, templateIds, loinc: s.loinc, loincName: s.loincName, title: s.title, usage: usage as Usage, blocks: part.blocks, entries, hasData: has, sources: part.sources });
   }
   return out;
 }
 
 /** R2 and O sections with no data are left out of the document. R sections stay, with "No information available". */
 export const included = (s: SectionOut): boolean => s.hasData || s.usage === "R";
-

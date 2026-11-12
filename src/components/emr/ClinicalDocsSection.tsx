@@ -1,3 +1,4 @@
+import { isDeathDisposition } from "@/lib/cda/chartdata";
 import * as React from "react";
 import { Check as CheckIcon, Copy, Download, FilePlus2, FileX2, Send, Skull, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
@@ -153,7 +154,7 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
   const delivery = forms("delivery-outcomes");
   const stillbirth = delivery.some((r) => /^still/i.test(String(r.values.birthStatus ?? "")));
   const cesarean = delivery.some((r) => /cesarean/i.test(String(r.values.mode ?? "")));
-  const dead = deathRecorded(visit, ds) || enc.disposition === "20";
+  const dead = deathRecorded(visit, ds) || isDeathDisposition(enc.disposition);
   const mayPublish = can("docs.publish");
   const mayWrite = can("emr.write");
 

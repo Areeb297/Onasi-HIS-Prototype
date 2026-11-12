@@ -1,12 +1,14 @@
 import { useSyncExternalStore } from "react";
 import { audit } from "./audit";
 import { comp, doctorXcn, esc, hd, messageToString, pidSegment, ts, visitCx, type Seg } from "./hl7";
+import { VS } from "./nphies-valuesets";
+import { currentUser } from "./session";
 import type { Check, Encounter, HisState, Patient } from "./model";
-import { FACILITY, OID } from "./reference-data";
+import { DOCTORS, OID, ORG_ID, ORG_OID } from "./reference-data";
 import type { SegId } from "./spec";
 import { getState, nowLocal, updateEncounter } from "./store";
 import {
-  CLAIM_ITEMS, EXTRA_CODES, LOINC_SYSTEM, OBR_PANEL_CODE, VITALS, VITAL_BY_KEY, bmiOf, flagFor, refRangeText,
+  CLAIM_ITEMS, EXTRA_CODES, LOINC_SYSTEM, NTE_COMMENT_TYPE, NTE_MAX, OBR_PANEL_CODE, OBR_SECTION_ID, VITALS, VITAL_BY_KEY, bmiOf, flagFor, refRangeFor,
   type Consciousness, type PanelContext, type VitalKey,
 } from "./vitals-spec";
 
@@ -50,7 +52,7 @@ export interface VitalPanel {
   /** Local date-time. OBR-7 and OBR-22. */
   at: string;
   context: PanelContext;
-  /** Doctor id. Becomes the National Provider ID in OBR-16. */
+  /** Provider id of the person who took the reading. Becomes the National Provider ID in OBR-16. Empty when not known. */
   recordedBy: string;
   status: PanelStatus;
   version: number;
@@ -70,7 +72,8 @@ interface State {
   batches: SendRecord[];
 }
 
-const KEY = "onasi-emr-vitals-v1";
+/** v2: goes with the ADT store v3 (new visit data) and the corrected temperature absence codes. */
+const KEY = "onasi-emr-vitals-v2";
 let state: State | null = null;
 const listeners = new Set<() => void>();
 
@@ -116,6 +119,17 @@ const ctx = (visit: string): { enc: Encounter; patient: Patient } | null => {
   const patient = enc && st.patients.find((p) => p.id === enc.patientId);
   return enc && patient ? { enc, patient } : null;
 };
+
+/**
+ * The signed-in person as the recorder of a reading (OBR-16): their doctor id or provider id.
+ * "" when the user has no provider id, so nobody else is named in their place.
+ */
+export function currentRecorder(): string {
+  let user;
+  try { user = currentUser(); } catch { return ""; }
+  const doctor = DOCTORS.find((d) => user.name === `Dr. ${d.given} ${d.family}`);
+  return doctor?.id ?? user.providerId ?? "";
+}
 
 export const obsValue = (p: VitalPanel, k: VitalKey): number | undefined => p.obs.find((o) => o.key === k && o.status !== "D" && o.status !== "W")?.value;
 
@@ -176,7 +190,7 @@ export function savePanel(input: PanelInput): VitalPanel | null {
   const n = s.seq + 1;
   const panel: VitalPanel = {
     id: `VP-${n}`, visit: input.visit, patientId: c.patient.id, businessId: `VSP${String(n).padStart(6, "0")}`,
-    at: input.at ?? nowLocal(), context: input.context, recordedBy: input.recordedBy ?? c.enc.attending,
+    at: input.at ?? nowLocal(), context: input.context, recordedBy: input.recordedBy ?? currentRecorder(),
     status: "F", version: 1, obs: toObs(input), onOxygen: !!input.onOxygen, o2flow: input.o2flow, position: input.position,
     consciousness: input.consciousness ?? "Alert", note: input.note, sends: [],
   };
@@ -244,15 +258,20 @@ const uuidish = (n: number) => `VSO-${Date.now().toString(36).toUpperCase()}-${S
 function obrObx(p: VitalPanel, patient: Patient, setId: number): OruSeg[] {
   const age = ageOf(patient);
   const out: OruSeg[] = [];
-  const bid = `${esc(p.businessId)}^^${OID.nationalOrg}`;
-  out.push({
-    id: "OBR",
-    f: {
-      1: String(setId), 2: bid, 3: bid,
-      4: `${OBR_PANEL_CODE.code}^${OBR_PANEL_CODE.text}^${OBR_PANEL_CODE.system}`,
-      7: ts(p.at), 16: doctorXcn(p.recordedBy), 22: ts(p.at), 25: p.status,
-    },
-  });
+  const bid = `${esc(p.businessId)}^^${ORG_OID}`;
+  const obr: Record<number, string> = {
+    1: String(setId), 2: bid, 3: bid,
+    4: `${OBR_PANEL_CODE.code}^${OBR_PANEL_CODE.text}^${OBR_PANEL_CODE.system}`,
+    7: ts(p.at), 22: ts(p.at), 24: OBR_SECTION_ID, 25: p.status,
+  };
+  if (p.recordedBy) obr[16] = doctorXcn(p.recordedBy);
+  out.push({ id: "OBR", f: obr });
+  // A note about the panel is an OBR-NTE: it comes directly after the OBR, before the first OBX. NTE-4 is required.
+  if (p.note) out.push({ id: "NTE", f: { 1: "1", 3: esc(p.note.slice(0, NTE_MAX)), 4: NTE_COMMENT_TYPE } });
+  // Readings the app derives or adds (BMI, oxygen flow, position) follow the panel: cancelled with it, corrected with their source.
+  const cancelStatus: ObsStatus | undefined = p.status === "X" ? (p.obs.find((o) => o.status === "D" || o.status === "W")?.status ?? "W") : undefined;
+  const statusOf = (...keys: VitalKey[]): ObsStatus =>
+    cancelStatus ?? (keys.some((k) => p.obs.find((o) => o.key === k)?.status === "C") ? "C" : "F");
   let n = 1;
   const push = (code: string, text: string, value: string, unit: string, range: string, flag: string, status: ObsStatus, type = "NM") => {
     const f: Record<number, string> = { 1: String(n++), 2: type, 3: `${code}^${text}^${LOINC_SYSTEM}`, 5: esc(value), 11: status };
@@ -264,15 +283,15 @@ function obrObx(p: VitalPanel, patient: Patient, setId: number): OruSeg[] {
   for (const d of VITALS) {
     const o = p.obs.find((x) => x.key === d.key);
     if (!o || o.value === undefined) continue; // absence reasons are for claims, not for the ORU
-    push(d.loinc, d.loincText, String(o.value), d.unit, refRangeText(d), flagFor(d, o.value, age), o.status);
+    // OBX-7 is sent only when the app has a range that fits the patient's age (adult ranges only).
+    push(d.loinc, d.loincText, String(o.value), d.unit, refRangeFor(d, age), flagFor(d, o.value, age), o.status);
   }
   const w = obsValue(p, "weight");
   const h = obsValue(p, "height");
   const bmi = w !== undefined && h !== undefined ? bmiOf(w, h) : undefined;
-  if (bmi !== undefined) push(EXTRA_CODES.bmi.loinc, EXTRA_CODES.bmi.text, String(bmi), EXTRA_CODES.bmi.unit, "", "", "F");
-  if (p.onOxygen && p.o2flow !== undefined) push(EXTRA_CODES.o2flow.loinc, EXTRA_CODES.o2flow.text, String(p.o2flow), EXTRA_CODES.o2flow.unit, "", "", "F");
-  if (p.position) push("8361-8", "Body position with respect to gravity", p.position, "", "", "", "F", "ST");
-  if (p.note) out.push({ id: "NTE", f: { 1: "1", 3: esc(p.note) } });
+  if (bmi !== undefined) push(EXTRA_CODES.bmi.loinc, EXTRA_CODES.bmi.text, String(bmi), EXTRA_CODES.bmi.unit, "", "", statusOf("weight", "height"));
+  if (p.onOxygen && p.o2flow !== undefined) push(EXTRA_CODES.o2flow.loinc, EXTRA_CODES.o2flow.text, String(p.o2flow), EXTRA_CODES.o2flow.unit, "", "", statusOf());
+  if (p.position) push("8361-8", "Body position with respect to gravity", p.position, "", "", "", statusOf(), "ST");
   return out;
 }
 
@@ -281,7 +300,7 @@ export function buildOru(panels: VitalPanel[], patient: Patient, enc: Encounter,
   const local = `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}T${pad(when.getHours())}:${pad(when.getMinutes())}`;
   const msh: OruSeg = {
     id: "MSH",
-    f: { 2: "^~\\&", 3: hd(OID.nationalOrg), 4: hd(FACILITY), 5: `nphies^${OID.nphiesApp}^ISO`, 7: ts(local), 9: comp("ORU", "R01", "ORU_R01"), 10: controlId, 12: "2.5.1" },
+    f: { 2: "^~\\&", 3: hd(ORG_OID), 4: hd(ORG_ID), 5: `nphies^${OID.nphiesApp}^ISO`, 7: ts(local), 9: comp("ORU", "R01", "ORU_R01"), 10: controlId, 12: "2.5.1" },
   };
   const pid = pidSegment(patient);
   const pv1: OruSeg = { id: "PV1", f: { 1: "1", 2: enc.cls, 19: visitCx(enc.visitNumber) } };
@@ -323,7 +342,9 @@ export function validateOru(segs: Seg[]): Check[] {
   }
   if (!pv1) err("PV1 is required: vital signs attach to a visit."); else {
     if (!pv1.f[2]) err("PV1-2 Patient Class is required.");
+    else if (!VS.patientClass.has(pv1.f[2])) err(`PV1-2 "${pv1.f[2]}" is not a patient class code.`);
     if (!pv1.f[19]) err("PV1-19 Visit Number is required.");
+    else if (!pv1.f[19].includes(`&${ORG_OID}&ISO`)) err("PV1-19 must carry the National Organization OID as assigning authority.");
   }
   const obrs = by("OBR");
   if (obrs.length === 0) err("At least one OBR (Vital Signs Panel) is required.");
@@ -332,6 +353,11 @@ export function validateOru(segs: Seg[]): Check[] {
   const closeGroup = () => { if (grp.cur && grp.count === 0) err(`OBR ${grp.cur.f[1]} has no OBX. A panel needs at least one reading.`); };
   for (const s of segs) {
     const id = s.id as string;
+    if (id === "NTE") {
+      if (!s.f[3]) err("NTE-3 Comment is empty.");
+      else if (s.f[3].length > NTE_MAX) err(`NTE-3 Comment is longer than ${NTE_MAX} characters.`);
+      if (s.f[4] !== NTE_COMMENT_TYPE) err(`NTE-4 must be ${NTE_COMMENT_TYPE}.`);
+    }
     if (id === "OBR") {
       closeGroup(); grp.cur = s; grp.count = 0;
       const n = s.f[1] ?? "?";
@@ -341,6 +367,8 @@ export function validateOru(segs: Seg[]): Check[] {
       if (!s.f[7] || !s.f[22]) err(`OBR ${n}: OBR-7 and OBR-22 (time the vitals were taken) are required.`);
       else if (s.f[7] !== s.f[22]) warn(`OBR ${n}: OBR-7 and OBR-22 should be the same time for vital signs.`);
       if (!s.f[16]) warn(`OBR ${n}: OBR-16 (the provider who took the reading) is required if known.`);
+      else if (!s.f[16].includes(`&${OID.provider}`)) err(`OBR ${n}: OBR-16 needs the National Provider ID with assigning authority ${OID.provider}.`);
+      if (s.f[24] !== OBR_SECTION_ID) err(`OBR ${n}: OBR-24 must be ${OBR_SECTION_ID}.`);
       if (s.f[25] && !["F", "C", "X"].includes(s.f[25])) err(`OBR ${n}: OBR-25 must be F, C or X.`);
     } else if (id === "OBX") {
       grp.count += 1;
@@ -354,6 +382,8 @@ export function validateOru(segs: Seg[]): Check[] {
       else if (s.f[2] === "NM" && Number.isNaN(Number(s.f[5]))) err(`${n}: OBX-5 is not a number.`);
       if (s.f[2] === "NM" && code in CODE_UNITS && (s.f[6] ?? "") !== CODE_UNITS[code]) warn(`${n}: OBX-6 unit should be ${CODE_UNITS[code] || "empty"}.`);
       if (!["F", "C", "D", "W"].includes(s.f[11] ?? "")) err(`${n}: OBX-11 must be F, C, D or W.`);
+      if (s.f[2] !== "NM" && s.f[2] !== "ST") err(`${n}: OBX-2 must be NM or ST.`);
+      if ((s.f[5] ?? "").length > (s.f[2] === "NM" ? 16 : 199)) err(`${n}: OBX-5 is too long.`);
       const def = VITALS.find((v) => v.loinc === code);
       if (def && s.f[5] && !Number.isNaN(Number(s.f[5])) && (Number(s.f[5]) < def.min || Number(s.f[5]) > def.max)) warn(`${n}: ${def.label} ${s.f[5]} is outside the plausible range ${def.min} to ${def.max}.`);
       if (cur.f[25] === "X" && !["D", "W"].includes(s.f[11] ?? "")) err(`${n}: a cancelled panel (OBR-25 X) needs OBX-11 D or W on every reading.`);
@@ -431,7 +461,7 @@ export interface ClaimLine {
 
 const ABSENCE_SYSTEM: Record<VitalKey, string> = {
   sbp: "blood-pressure-absence-reason", dbp: "blood-pressure-absence-reason", pulse: "pulse-absence-reason",
-  rr: "respiratory-rate-absence-reason", temp: "tempurature-absence-reason", spo2: "oxygen-saturation-absence-reason",
+  rr: "respiratory-rate-absence-reason", temp: "temperature-absence-reason", spo2: "oxygen-saturation-absence-reason",
   weight: "weight-absence-reason", height: "height-absence-reason",
 };
 
@@ -455,18 +485,30 @@ export function claimReadiness(visit: string): { lines: ClaimLine[]; ready: numb
   return { lines, ready, total: lines.length };
 }
 
-/** Claim.supportingInfo entries for the vital signs, as the claim rules ask. */
+/** The claim items that have neither a value nor an absence reason. A claim built without them is rejected. */
+export function claimVitalsMissing(visit: string): string[] {
+  return claimReadiness(visit).lines.filter((l) => l.state === "missing").map((l) => l.label);
+}
+
+/**
+ * Claim.supportingInfo entries the claim rules ask for: the eight vital signs and the chief complaint.
+ * An item with no value and no absence reason cannot be written: check claimVitalsMissing first.
+ */
 export function claimVitalsJson(visit: string): unknown[] {
   const { lines } = claimReadiness(visit);
+  const CATEGORY = "http://nphies.sa/terminology/CodeSystem/claim-information-category";
   return lines
-    .filter((l) => l.key !== "complaint" && l.state !== "missing")
+    .filter((l) => l.state !== "missing")
     .map((l, i) => {
+      if (l.key === "complaint") {
+        return { sequence: i + 1, category: { coding: [{ system: CATEGORY, code: "chief-complaint" }] }, valueString: l.value };
+      }
       const d = VITAL_BY_KEY[l.key as VitalKey];
       const panel = panelsOf(visit).filter((p) => p.status !== "X").find((p) => p.obs.some((o) => o.key === d.key && o.status !== "D" && o.status !== "W"));
       const o = panel?.obs.find((x) => x.key === d.key && x.status !== "D" && x.status !== "W");
       const base = {
         sequence: i + 1,
-        category: { coding: [{ system: "http://nphies.sa/terminology/CodeSystem/claim-information-category", code: d.claimCategory }] },
+        category: { coding: [{ system: CATEGORY, code: d.claimCategory }] },
       };
       return o?.value !== undefined
         ? { ...base, valueQuantity: { value: o.value, system: "http://unitsofmeasure.org", code: d.claimUnit } }

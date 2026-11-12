@@ -52,8 +52,8 @@
   --ctas-3: #eab308;
   --ctas-4: #15803d;
   --ctas-5: #64748b;
-  --font-sans: Inter, "IBM Plex Sans Arabic", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --radius: 0.625rem;
   /* Reading preferences. Changed from the Display menu. */
   --ui-scale: 1;
@@ -155,8 +155,8 @@
   --color-ctas-3: var(--ctas-3);
   --color-ctas-4: var(--ctas-4);
   --color-ctas-5: var(--ctas-5);
-  --font-sans: Inter, "IBM Plex Sans Arabic", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 /*

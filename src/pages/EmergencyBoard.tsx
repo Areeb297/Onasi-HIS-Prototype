@@ -244,7 +244,7 @@ export function EmergencyBoard() {
           })}
         </div>
       )}
-      {dev && <p className="mt-4 text-xs text-muted-foreground">Assumptions: CTAS time targets are the standard published ones. The ED codes sent in ZPV1-18, 20 and 22 are placeholders, because the value sets (CS-Adm-EDArrivalMode, CS-Adm-EDDisposition, CS-Adm-TriageCategory) are not in the guide pages read. ZPV1-17 to 22 go out in the CNHI discharge update (A08).</p>}
+      {dev && <p className="mt-4 text-xs text-muted-foreground">Assumptions: CTAS time targets are the standard published ones. The ED codes sent in ZPV1-18, 20 and 22 come from the published value sets (CS-Adm-EDArrivalMode, CS-Adm-EDDisposition, CS-Adm-TriageCategory). ZPV1-17 to 22 go out in the CNHI discharge update (A08).</p>}
       {triageEnc && <TriageSheet key={triageEnc.visitNumber} enc={triageEnc} onClose={() => { setTriage(null); if (fromRoute) navigate("/er"); }} />}
       {disposeEnc && <DispositionDialog enc={disposeEnc} onClose={() => setDispose(null)} onDone={(d) => complete(disposeEnc, d)} />}
       {dialogs}
