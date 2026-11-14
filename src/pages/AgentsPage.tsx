@@ -1,15 +1,15 @@
 import * as React from "react";
-import { IconCopy, IconMessageChatbot, IconPlayerPause, IconPlayerPlay, IconRefresh, IconRobot } from "@tabler/icons-react";
+import { IconCopy, IconMessageChatbot, IconPlayerPause, IconPlayerPlay, IconRefresh } from "@tabler/icons-react";
 import { Check } from "lucide-react";
 import { AgentIcon } from "@/components/ai/AgentIcon";
-import { AssistantChat } from "@/components/ai/AssistantChat";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { TaskRow, timeOf } from "@/components/ai/TaskRow";
 import { Button, Card, Empty, cn } from "@/components/ui/primitives";
 import { checkNow, isPaused, myDoctorId, progressOf, setPaused, tasksOfDoctor, useAgentWork, waitingTasks, type FeedItem } from "@/lib/ai/agent-work";
 import { AGENTS, AGENT_BY_ID, runAgent, type AgentDef } from "@/lib/ai/agents";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
-import { navigate, useRoute } from "@/lib/router";
+import { openAssistant } from "@/lib/ai/launcher";
+import { useRoute } from "@/lib/router";
 import { can, useSession } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
@@ -18,12 +18,6 @@ import { pushToast } from "@/lib/toast";
  * Onasi AI, the starting version: three agents for the ward doctor. They read the record and point at what needs the doctor.
  * They change nothing in the record. Agents At Work shows what each one found. Ask Onasi AI answers the same three questions in a chat.
  */
-
-const TABS = [
-  { id: "work", label: "Agents At Work", icon: IconRobot },
-  { id: "ask", label: `Ask ${ASSISTANT_NAME}`, icon: IconMessageChatbot },
-] as const;
-type TabId = (typeof TABS)[number]["id"];
 
 const FEED_WORD: Record<FeedItem["kind"], string> = { found: "Found", done: "Done", dismissed: "Dismissed", failed: "Failed", resolved: "Closed", setting: "Setting" };
 
@@ -189,8 +183,9 @@ function WorkBoard({ onAsk }: { onAsk: (q: string) => void }) {
 export function AgentsPage() {
   useSession();
   const route = useRoute();
-  const tab: TabId = route.params.get("tab") === "ask" ? "ask" : "work";
   const q = route.params.get("q") ?? undefined;
+  // An old link to the chat tab opens the floating chat instead.
+  React.useEffect(() => { if (route.params.get("tab") === "ask") openAssistant(q); }, [route.params, q]);
 
   if (!can("ai.use")) return <Card><Empty>Your role cannot use {ASSISTANT_NAME}.</Empty></Card>;
 
@@ -199,20 +194,13 @@ export function AgentsPage() {
       <header className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-3">
         <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--brand-deep)] text-[var(--brand-mint)]"><OnasiAiMark size={26} /></span>
         <div className="min-w-0 flex-1 basis-72">
-          <h1 className="text-xl font-semibold tracking-tight">{ASSISTANT_NAME}</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{ASSISTANT_NAME} Agents</h1>
           <p className="mt-0.5 max-w-2xl text-sm text-muted-foreground">Three agents for the ward doctor. They read the record and point at what needs you. They change nothing in the record.</p>
         </div>
-        <div role="tablist" aria-label={`${ASSISTANT_NAME} views`} className="flex rounded-xl border border-border bg-muted p-1">
-          {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => navigate("/agents", t.id === "ask" ? { tab: "ask" } : undefined)}
-              className={cn("inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors", tab === t.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-              <t.icon className="size-[18px]" stroke={1.75} aria-hidden="true" />{t.label}
-            </button>
-          ))}
-        </div>
+        <Button onClick={() => openAssistant()}><IconMessageChatbot className="size-4" aria-hidden="true" />Ask {ASSISTANT_NAME}</Button>
       </header>
 
-      {tab === "work" ? <WorkBoard onAsk={(question) => navigate("/agents", { tab: "ask", q: question })} /> : <AssistantChat firstQuestion={q} />}
+      <WorkBoard onAsk={(question) => openAssistant(question)} />
 
       <p className="mt-6 text-xs text-muted-foreground">The checks follow fixed rules on the hospital's own data. {ASSISTANT_NAME} is not a medical device. Confidential charts stay closed unless you broke the glass.</p>
     </div>

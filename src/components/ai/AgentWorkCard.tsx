@@ -5,6 +5,7 @@ import { Button, Card } from "@/components/ui/primitives";
 import { isPaused, progressOf, useAgentWork, waitingTasks } from "@/lib/ai/agent-work";
 import { AGENTS } from "@/lib/ai/agents";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
+import { openAssistant } from "@/lib/ai/launcher";
 import { navigate } from "@/lib/router";
 
 /** The agents' work at a glance, for the dashboard: what they finished today and the most urgent tasks waiting for a person. */
@@ -27,7 +28,7 @@ export function AgentWorkCard() {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button onClick={() => navigate("/agents", { tab: "ask" })}><IconMessageChatbot className="size-4" aria-hidden="true" />Ask {ASSISTANT_NAME}</Button>
+          <Button onClick={() => openAssistant()}><IconMessageChatbot className="size-4" aria-hidden="true" />Ask {ASSISTANT_NAME}</Button>
           <Button variant="primary" onClick={() => navigate("/agents")}>{waiting.length ? `Review ${waiting.length} ${waiting.length === 1 ? "Task" : "Tasks"}` : "Open Agents"}</Button>
         </div>
       </div>

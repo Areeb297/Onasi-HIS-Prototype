@@ -188,7 +188,7 @@ function Reply({ turn, live, onAsk, onSettled }: { turn: Turn; live: boolean; on
   );
 }
 
-export function AssistantChat({ firstQuestion }: { firstQuestion?: string }) {
+export function AssistantChat({ firstQuestion, compact }: { firstQuestion?: string; compact?: boolean }) {
   const [turns, setTurns] = React.useState<Turn[]>([]);
   const [text, setText] = React.useState("");
   const endRef = React.useRef<HTMLDivElement>(null);
@@ -253,12 +253,12 @@ export function AssistantChat({ firstQuestion }: { firstQuestion?: string }) {
   return (
     <div className="mx-auto flex max-w-3xl flex-col">
       {empty ? (
-        <div className="pb-6 pt-8 text-center sm:pt-14">
-          <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-[var(--brand-deep)] text-[var(--brand-mint)]"><OnasiAiMark size={34} /></span>
-          <h2 className="mt-4 text-2xl font-semibold tracking-tight">Ask about the hospital</h2>
+        <div className={cn("pb-6 text-center", compact ? "pt-3" : "pt-8 sm:pt-14")}>
+          {!compact && <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-[var(--brand-deep)] text-[var(--brand-mint)]"><OnasiAiMark size={34} /></span>}
+          <h2 className={cn("font-semibold tracking-tight", compact ? "text-xl" : "mt-4 text-2xl")}>Ask about the hospital</h2>
           <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">{ASSISTANT_NAME} reads the live record and answers with what it found and where. You can name a patient.</p>
           {composer}
-          <ul className="mt-4 grid gap-2 text-left sm:grid-cols-3">
+          <ul className={cn("mt-4 grid gap-2 text-left", !compact && "sm:grid-cols-3")}>
             {SUGGESTED.map((s) => (
               <li key={s.agent}>
                 <button type="button" onClick={() => ask(s.text)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/50">

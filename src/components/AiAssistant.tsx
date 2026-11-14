@@ -1,14 +1,16 @@
 import * as React from "react";
 import { CornerDownLeft, Trash2 } from "lucide-react";
+import { AssistantChat } from "@/components/ai/AssistantChat";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { OutputCard } from "@/components/ai/OutputCard";
 import { UseCaseIcon } from "@/components/ai/UseCaseIcon";
 import { Button, cn } from "@/components/ui/primitives";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ASSISTANT_NAME, ASSISTANT_NAME_AR, ASSISTANT_ROLE } from "@/lib/ai/brand";
+import { ASSISTANT_NAME, ASSISTANT_NAME_AR } from "@/lib/ai/brand";
 import { runCds } from "@/lib/ai/cds";
 import { fullName, SIM_NOTE } from "@/lib/ai/context";
 import { helpText, ruleEngine, USE_CASES, type AiOutput, type UseCaseId } from "@/lib/ai/engine";
+import { onOpenAssistant } from "@/lib/ai/launcher";
 import { auditSuggest, buildContext, visitFromHash } from "@/lib/ai/live";
 import { audit } from "@/lib/audit";
 import type { Encounter, Patient } from "@/lib/model";
@@ -36,12 +38,15 @@ const SUGGESTIONS = ["Is there a drug allergy problem?", "What orders for chest 
 
 export function AiAssistant() {
   useSession();
-  const route = useRoute(); // re-render when the address changes, so the open chart stays current
+  useRoute(); // re-render when the address changes, so the open chart stays current
   const st = useHis();
   const [open, setOpen] = React.useState(false);
   const [items, setItems] = React.useState<Item[]>([]);
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // Two things live in this panel: the chat about the whole hospital, and the tools for the chart that is open.
+  const [mode, setMode] = React.useState<"hospital" | "chart">("hospital");
+  const [question, setQuestion] = React.useState<string | undefined>(undefined);
   const idRef = React.useRef(1);
   const endRef = React.useRef<HTMLDivElement>(null);
 
@@ -70,6 +75,9 @@ export function AiAssistant() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Another page asked a question: open the chat with it.
+  React.useEffect(() => onOpenAssistant((q) => { setMode("hospital"); setQuestion(q); setOpen(true); }), []);
 
   if (!can("ai.use")) return null;
 
@@ -113,11 +121,10 @@ export function AiAssistant() {
   return (
     <>
       {/* Launcher: a floating button at the bottom right, clear of the tables. The red number is the safety checks waiting on this chart. */}
-      {/* The Onasi AI page has its own chat, so the launcher would only cover it. */}
-      {route.path !== "/agents" && <button
-        onClick={() => setOpen(true)}
-        aria-label={`Open ${ASSISTANT_NAME}, the chart assistant${checks ? `. ${checks} safety checks on this chart.` : ""}`}
-        title={`${ASSISTANT_NAME} (Ctrl+J)`}
+      <button
+        onClick={() => { setMode(enc ? "chart" : "hospital"); setOpen(true); }}
+        aria-label={`Ask ${ASSISTANT_NAME}${checks ? `. ${checks} safety checks on this chart.` : ""}`}
+        title={`Ask ${ASSISTANT_NAME} (Ctrl+J)`}
         className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 rounded-full bg-[var(--brand-deep)] py-2 pl-3 pr-4 text-white shadow-lg ring-1 ring-white/10 transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-primary dark:text-primary-foreground"
       >
         <span className="relative">
@@ -126,13 +133,13 @@ export function AiAssistant() {
             <span className="absolute -right-2 -top-2 flex size-4 items-center justify-center rounded-full bg-destructive text-xs font-bold text-white">{checks}</span>
           )}
         </span>
-        <span className="text-sm font-semibold">{ASSISTANT_NAME}</span>
-      </button>}
+        <span className="text-sm font-semibold">Ask {ASSISTANT_NAME}</span>
+      </button>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full gap-0 sm:max-w-xl" aria-describedby="nabd-desc">
           <SheetHeader className="gap-3 border-b border-border pr-12">
-            <SheetTitle className="sr-only">{ASSISTANT_NAME}, the chart assistant</SheetTitle>
+            <SheetTitle className="sr-only">Ask {ASSISTANT_NAME}</SheetTitle>
             <SheetDescription id="nabd-desc" className="sr-only">{SIM_NOTE}</SheetDescription>
             <div className="flex items-center gap-3">
               <div className="flex size-11 items-center justify-center rounded-xl bg-foreground text-background">
@@ -143,24 +150,40 @@ export function AiAssistant() {
                   <span className="text-lg font-semibold tracking-tight">{ASSISTANT_NAME}</span>
                   <span dir="rtl" lang="ar" className="text-base text-muted-foreground">{ASSISTANT_NAME_AR}</span>
                 </div>
-                <div className="text-xs text-muted-foreground">{ASSISTANT_ROLE}. Ctrl+J opens and closes it.</div>
+                <div className="text-xs text-muted-foreground">Ctrl+J opens and closes it.</div>
               </div>
               <span className="ms-auto rounded-sm border border-dashed border-warn px-1.5 py-0.5 text-xs font-semibold text-warn" title={SIM_NOTE}>Simulated</span>
             </div>
-            <div className={cn("border-s-2 ps-3 text-sm", enc ? "border-admit" : "border-border text-muted-foreground")}>
-              {enc && patient ? (
-                <>
-                  <strong>{restricted ? "Confidential chart" : fullName(patient)}</strong>
-                  <span className="text-muted-foreground"> · visit {enc.visitNumber}</span>
-                  {checks > 0 && <span className="ms-2 rounded bg-destructive/12 px-1.5 py-0.5 text-xs font-medium text-destructive">{checks} safety {checks === 1 ? "check" : "checks"}</span>}
-                </>
-              ) : (
-                "No chart is open. Open a patient chart to use the chart tools."
-              )}
+            <div role="tablist" aria-label="What to ask about" className="flex rounded-lg border border-border bg-muted p-0.5">
+              <button type="button" role="tab" aria-selected={mode === "hospital"} onClick={() => setMode("hospital")} className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", mode === "hospital" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>The Hospital</button>
+              <button type="button" role="tab" aria-selected={mode === "chart"} disabled={!enc} title={enc ? undefined : "Open a patient chart first"} onClick={() => setMode("chart")} className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50", mode === "chart" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                This Chart{checks > 0 && <span className="ms-1.5 rounded-full bg-destructive px-1.5 py-0.5 text-xs font-bold text-white">{checks}</span>}
+              </button>
             </div>
-            <p className="text-xs leading-snug text-muted-foreground">{SIM_NOTE}</p>
+            {mode === "chart" && (
+              <>
+            <div className={cn("border-s-2 ps-3 text-sm", enc ? "border-admit" : "border-border text-muted-foreground")}>
+                {enc && patient ? (
+                  <>
+                    <strong>{restricted ? "Confidential chart" : fullName(patient)}</strong>
+                    <span className="text-muted-foreground"> · visit {enc.visitNumber}</span>
+                    {checks > 0 && <span className="ms-2 rounded bg-destructive/12 px-1.5 py-0.5 text-xs font-medium text-destructive">{checks} safety {checks === 1 ? "check" : "checks"}</span>}
+                  </>
+                ) : (
+                  "No chart is open. Open a patient chart to use the chart tools."
+                )}
+              </div>
+              <p className="text-xs leading-snug text-muted-foreground">{SIM_NOTE}</p>
+              </>
+            )}
           </SheetHeader>
 
+          {mode === "hospital" || !enc ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              <AssistantChat compact firstQuestion={question} />
+            </div>
+          ) : (
+            <>
           {/* Use case tiles */}
           <div className="grid grid-cols-3 gap-2 border-b border-border p-3" role="group" aria-label="What I can do">
             {USE_CASES.map((u) => (
@@ -232,6 +255,8 @@ export function AiAssistant() {
               <Trash2 className="size-4" />
             </Button>
           </form>
+            </>
+          )}
         </SheetContent>
       </Sheet>
     </>
