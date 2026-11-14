@@ -87,3 +87,16 @@ describe("quick emergency registration", () => {
     expect(dobFromAge(undefined, 6, new Date("2026-11-11")).slice(0, 7)).toBe("2026-05");
   });
 });
+
+describe("triage level at registration", () => {
+  it("a CTAS level chosen at the door is saved with its time, area and a triage log line", () => {
+    const r = registerEmergency({ identity: { kind: "unknown", sex: "F", ageYears: 60 }, arrivalMode: "Ambulance", complaint: "Chest pain", ctas: 2 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const ed = getState().encounters.find((e) => e.visitNumber === r.visit)!.ed!;
+    expect(ed.ctas).toBe(2);
+    expect(ed.triageAt).toBeTruthy();
+    expect(ed.area).toBe("Acute");
+    expect(ed.triageLog?.[0]).toMatchObject({ ctas: 2, note: "Quick triage at registration" });
+  });
+});

@@ -2,6 +2,7 @@ import * as React from "react";
 import { IconActivityHeartbeat } from "@tabler/icons-react";
 import { CalendarDays } from "lucide-react";
 import { Money } from "@/components/Money";
+import { AgentWorkCard } from "@/components/ai/AgentWorkCard";
 import { ChartCard, StatTile } from "@/components/charts/ChartCard";
 import { HBars, Lines, Ring, Stacked, VBars } from "@/components/charts/SimpleCharts";
 import { Button, Card, CardHeader, Table, Td, Th, cn } from "@/components/ui/primitives";
@@ -47,11 +48,6 @@ export function DashboardPage() {
             <h1 className="text-xl font-semibold tracking-tight">Operational overview</h1>
             <p className="mt-1 text-sm text-white/80">Good day, {user.name}. Live census, money and activity for the hospital.</p>
           </div>
-          {can("ai.use") && (
-            <button type="button" onClick={() => navigate("/agents")} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--brand-mint)] px-4 text-sm font-semibold text-[var(--brand-deep)] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-              Open Onasi AI Agents
-            </button>
-          )}
         </div>
       </header>
 
@@ -73,6 +69,8 @@ export function DashboardPage() {
           ? <StatTile label="Invoice revenue" value={<Money value={ops.revenue.generated} />} note={`${ops.revenue.invoices} invoices`} />
           : <StatTile label="Ready to send to NPHIES" value={String(c.ready)} note={c.rejected ? `${c.rejected} refused` : "none refused"} tone={c.rejected ? "danger" : undefined} />}
       </div>
+
+      {can("ai.use") && <AgentWorkCard />}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <ChartCard className="xl:col-span-2" title="Visits per day, last 7 days" note="Sample figures." legend={SERIES.map((s) => ({ label: s.key, color: s.color }))} rows={trend} columns={["day", "Outpatient", "Inpatient", "Emergency"]} height={270}>

@@ -8,8 +8,9 @@ import { Badge, Button, Card, Field, Input, RequiredNote, Select, cn } from "@/c
 import { quickCreate, type Outcome } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
-import { ARRIVAL_MODES, startEd } from "@/lib/ed";
-import type { EdData, PatientExtra } from "@/lib/model";
+import { ARRIVAL_MODES, CTAS, ctasInfo, defaultArea, saveTriage, startEd } from "@/lib/ed";
+import type { CtasLevel, EdData, PatientExtra } from "@/lib/model";
+import { currentUser } from "@/lib/session";
 import { COMPLAINT_SAMPLES, DOCTORS, MARITAL, NATIONALITIES, SERVICES, countryCode as nationalityCode, countryLabel } from "@/lib/reference-data";
 import {
   DUPLICATE_REASON_LABEL, INTERPRETER_LANGUAGES, ageLabel, buildFlags, coverageOutcome, findDuplicates, validateRegistration,
@@ -174,6 +175,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   const [service, setService] = React.useState(cls === "E" ? "ER" : "OPD");
   const [reason, setReason] = React.useState("");
   const [arrival, setArrival] = React.useState<EdData["arrivalMode"]>("Walk-in");
+  const [ctas, setCtas] = React.useState<CtasLevel | undefined>(undefined);
   const [bedId, setBedId] = React.useState("");
   // Names
   const [first, setFirst] = React.useState("");
@@ -377,7 +379,10 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   function createVisit(patientId: string): Outcome {
     if (visit === "I") return quickCreate("A01", { patientId, attending, service, reason, referring, bedId, admitClass: "I" });
     const out = quickCreate("A04", { patientId, attending, service: visit === "E" ? "ER" : service, reason, referring, cls: visit === "E" ? "E" : "O" });
-    if (visit === "E" && out.entry) startEd(out.entry.visitNumber, arrival);
+    if (visit === "E" && out.entry) {
+      startEd(out.entry.visitNumber, arrival);
+      if (ctas) saveTriage(out.entry.visitNumber, { ctas, ctasWhy: "Level chosen at registration", arrivalMode: arrival, complaint: reason.trim() || undefined, area: defaultArea(ctas), triageNurse: currentUser().name }, undefined, "Quick triage at registration");
+    }
     return out;
   }
 
@@ -595,6 +600,14 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
               {visit === "E" && (
                 <Field label={t("Arrival Mode", "وسيلة الوصول")} hl7={tag("ZPV1-18")}>
                   <Select value={arrival} onChange={(e) => setArrival(e.target.value as EdData["arrivalMode"])}>{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>
+                </Field>
+              )}
+              {visit === "E" && (
+                <Field label={t("Triage Level (CTAS)", "مستوى الفرز")} hl7={tag("ZPV1-22")} hint={ctas ? ctasInfo(ctas).description : t("Leave it for the triage nurse, or choose it now if it is clear.", "اتركه لممرض الفرز أو اختره الآن.")}>
+                  <Select value={ctas ?? ""} onChange={(e) => setCtas(e.target.value ? (Number(e.target.value) as CtasLevel) : undefined)}>
+                    <option value="">{t("Decide At Triage", "يحدد عند الفرز")}</option>
+                    {CTAS.map((c) => <option key={c.level} value={c.level}>CTAS {c.level}, {c.label} ({c.targetMin === 0 ? "doctor now" : `doctor within ${c.targetMin} min`})</option>)}
+                  </Select>
                 </Field>
               )}
               <Field label={t("Referring Doctor", "الطبيب المحول")} hl7={tag("PV1-8")}>

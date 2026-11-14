@@ -3,9 +3,9 @@ import { Siren, UserRound, UserRoundSearch, UserRoundX } from "lucide-react";
 import { Badge, Button, Card, Field, Input, RequiredNote, Select, cn } from "@/components/ui/primitives";
 import { ageInMonths, ageText } from "@/lib/ctas";
 import { useDevMode } from "@/lib/devmode";
-import { ARRIVAL_MODES } from "@/lib/ed";
+import { ARRIVAL_MODES, CTAS, ctasInfo } from "@/lib/ed";
 import { dobFromAge, existingFileFor, registerEmergency, type ErIdentity } from "@/lib/er-register";
-import type { EdData } from "@/lib/model";
+import type { CtasLevel, EdData } from "@/lib/model";
 import { COMPLAINT_SAMPLES, DOCTORS } from "@/lib/reference-data";
 import { REGISTRY, lookupById, registryNameAr } from "@/lib/registry";
 import { navigate } from "@/lib/router";
@@ -36,6 +36,7 @@ export function ErQuickRegistration() {
   const [complaint, setComplaint] = React.useState("");
   const [doctor, setDoctor] = React.useState(DOCTORS[0].id);
   const [referring, setReferring] = React.useState("");
+  const [ctas, setCtas] = React.useState<CtasLevel | undefined>(undefined);
   const [error, setError] = React.useState("");
 
   const person = kind === "registry" && idNumber.length === 10 ? lookupById(idNumber) : undefined;
@@ -61,7 +62,7 @@ export function ErQuickRegistration() {
   function submit(triageNow: boolean) {
     if (!identity || missing) { setError(missing); return; }
     setError("");
-    const r = registerEmergency({ identity, arrivalMode: mode, complaint, attending: doctor, referring: referring || undefined });
+    const r = registerEmergency({ identity, arrivalMode: mode, complaint, attending: doctor, referring: referring || undefined, ctas });
     if (!r.ok) { setError(r.message); return; }
     navigate("/er", triageNow ? { triage: r.visit } : undefined);
   }
@@ -162,12 +163,40 @@ export function ErQuickRegistration() {
           </div>
         </section>
 
+        {/* Triage level */}
+        <section aria-labelledby="er-ctas">
+          <h2 id="er-ctas" className="mb-1 text-sm font-semibold">4. Triage level (CTAS)</h2>
+          <p className="mb-2 text-xs text-muted-foreground">Choose a level now if it is clear at the door. The full triage assessment can confirm or change it.</p>
+          <div role="radiogroup" aria-label="CTAS triage level" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {CTAS.map((c) => (
+              <button key={c.level} type="button" role="radio" aria-checked={ctas === c.level} onClick={() => setCtas(c.level)}
+                className={cn("flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors", ctas === c.level ? cn(c.ring, "bg-muted/60") : "border-border hover:bg-muted/60")}>
+                <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-base font-bold text-white", c.bg)}>{c.level}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{c.label}</span>
+                  <span className="block text-xs text-muted-foreground">{c.targetMin === 0 ? "Doctor now" : `Doctor within ${c.targetMin} minutes`}</span>
+                </span>
+              </button>
+            ))}
+            <button type="button" role="radio" aria-checked={ctas === undefined} onClick={() => setCtas(undefined)}
+              className={cn("flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors", ctas === undefined ? "border-primary bg-primary/5" : "border-border hover:bg-muted/60")}>
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border text-base font-semibold text-muted-foreground">?</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">Decide At Triage</span>
+                <span className="block text-xs text-muted-foreground">The triage nurse sets the level</span>
+              </span>
+            </button>
+          </div>
+          {ctas && <p className="mt-2 text-sm"><span className="font-semibold">CTAS {ctas}, {ctasInfo(ctas).label}.</span> {ctasInfo(ctas).description}</p>}
+          {dev && <p className="mt-1 text-xs text-muted-foreground">Goes in ZPV1-22 of the discharge update, with the triage time in ZPV1-21.</p>}
+        </section>
+
         <p className="text-sm text-muted-foreground">Consent and insurance are completed after triage. Emergency care does not wait for them.</p>
 
         {error && <p role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">{error}</p>}
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" disabled={!!missing} onClick={() => submit(true)}><Siren className="size-4" />Register And Triage Now</Button>
-          <Button disabled={!!missing} onClick={() => submit(false)}>Register Only</Button>
+          <Button variant="primary" disabled={!!missing} onClick={() => submit(true)}><Siren className="size-4" />{ctas ? "Register And Open Full Triage" : "Register And Triage Now"}</Button>
+          <Button disabled={!!missing} onClick={() => submit(false)}>{ctas ? `Register As CTAS ${ctas}` : "Register Only"}</Button>
           <Button onClick={() => navigate("/er")}>Cancel</Button>
           {missing && <span className="text-xs text-muted-foreground">{missing}</span>}
         </div>
@@ -176,9 +205,11 @@ export function ErQuickRegistration() {
       {/* What the board will show */}
       <aside aria-label="Board card preview" className="lg:sticky lg:top-4 lg:self-start">
         <div className="mb-2 text-xs font-medium text-muted-foreground">What the nurse will see on the board</div>
-        <div className="rounded-lg border border-border border-l-4 border-l-border bg-card p-3 shadow-sm">
+        <div className="rounded-lg border border-border border-l-4 border-l-border bg-card p-3 shadow-sm" style={ctas ? { borderLeftColor: `var(--ctas-${ctas})` } : undefined}>
           <div className="flex items-start gap-2.5">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border text-lg font-semibold text-muted-foreground" title="Not triaged">?</span>
+            {ctas
+              ? <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white", ctasInfo(ctas).bg)} title={`CTAS ${ctas}, ${ctasInfo(ctas).label}`}>{ctas}</span>
+              : <span className="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border text-lg font-semibold text-muted-foreground" title="Not triaged">?</span>}
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">{shownName}</div>
               <div className="text-xs text-muted-foreground">
@@ -189,7 +220,7 @@ export function ErQuickRegistration() {
           </div>
           <p className="mt-2 text-sm">{complaint || "No complaint entered"}</p>
           {kind !== "registry" && <div className="mt-1.5"><Badge tone="info">Temporary ID</Badge></div>}
-          <div className="mt-2 rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">Waiting for triage, target 10 min</div>
+          <div className="mt-2 rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">{ctas ? `CTAS ${ctas}, ${ctasInfo(ctas).label}. ${ctasInfo(ctas).targetMin === 0 ? "Doctor now" : `Doctor within ${ctasInfo(ctas).targetMin} min`}` : "Waiting for triage, target 10 min"}</div>
         </div>
         {months !== undefined && <p className="mt-2 text-xs text-muted-foreground">Triage will use the {months < 216 ? "paediatric" : "adult"} CTAS tables.</p>}
         {dev && kind === "unknown" && ageN !== undefined && <p className="mt-1 text-xs text-muted-foreground">Birth date stored: {dobFromAge(unit === "years" ? ageN : undefined, unit === "months" ? ageN : undefined)}</p>}

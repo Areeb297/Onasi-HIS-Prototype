@@ -27,15 +27,25 @@ export interface AgentDef {
   forWhom: string;
   /** What it may do once a person approves. */
   canDo: string;
+  /** When it checks, in plain words. */
+  watches: string;
+  /** The kind of step it can finish without a person, when set to Automatic. Empty: it only raises tasks for staff. */
+  autoKinds: ProposalAction["kind"][];
+  /** What Automatic means for this agent, in plain words. */
+  autoText?: string;
+  /** Automatic from the start. Only for steps that change nothing in the record. */
+  autoByDefault?: boolean;
+  /** The question a person would ask the assistant to get this agent's answer. */
+  ask: string;
 }
 
 export const AGENTS: AgentDef[] = [
-  { id: "discharge", name: "Discharge Readiness", job: "Finds what still blocks each inpatient from going home.", forWhom: "Ward doctors and bed managers", canDo: "Send the visit update. Open the right chart section." },
-  { id: "critical", name: "Critical Result Chaser", job: "Finds critical lab and imaging results and makes sure the doctor knows.", forWhom: "Lab, radiology and the attending doctor", canDo: "Notify the attending doctor. Open the result." },
-  { id: "ed-flow", name: "Emergency Flow", job: "Watches triage clocks and names who has waited past the CTAS target.", forWhom: "The ED charge nurse", canDo: "Open the emergency board at the patient." },
-  { id: "clearance", name: "NPHIES Clearance", job: "Goes through everything waiting to be sent to NPHIES and prepares one batch.", forWhom: "Health information and integration staff", canDo: "Send each ready item. Open a rejected item." },
-  { id: "claim-guard", name: "Claim Guardian", job: "Checks each visit before the claim goes out, so the payer has no reason to refuse it.", forWhom: "Revenue cycle staff", canDo: "Open the missing data. Open the claim." },
-  { id: "handoff", name: "Shift Handoff", job: "Writes an SBAR handoff for every inpatient, sickest first.", forWhom: "Nurses and doctors at shift change", canDo: "Copy the handoff sheet." },
+  { id: "critical", name: "Critical Result Chaser", job: "Finds critical lab and imaging results and makes sure the doctor knows.", forWhom: "Lab, radiology and the attending doctor", canDo: "Notify the attending doctor. Open the result.", watches: "Every minute, and when a result is released", autoKinds: ["notify"], autoText: "Notifies the attending doctor by itself. It changes nothing in the record.", autoByDefault: true, ask: "Are there critical results the doctor has not seen?" },
+  { id: "discharge", name: "Discharge Readiness", job: "Finds what still blocks each inpatient from going home.", forWhom: "Ward doctors and bed managers", canDo: "Send the visit update. Open the right chart section.", watches: "Every minute, for every admitted patient", autoKinds: ["send-update"], autoText: "Sends the visit update to NPHIES by itself when the chart has changed.", ask: "Who can go home today?" },
+  { id: "ed-flow", name: "Emergency Flow", job: "Watches triage clocks and names who has waited past the CTAS target.", forWhom: "The emergency charge nurse", canDo: "Open the emergency board at the patient.", watches: "Every minute, for every emergency patient", autoKinds: [], ask: "Who has waited too long in emergency?" },
+  { id: "clearance", name: "NPHIES Clearance", job: "Goes through everything waiting to be sent to NPHIES and prepares one batch.", forWhom: "Health information and integration staff", canDo: "Send each ready item. Open a rejected item.", watches: "Every minute, and when an order, result or document is finished", autoKinds: ["send-row"], autoText: "Sends each complete item to NPHIES by itself. Refused items always come to a person.", ask: "What is ready to send to NPHIES?" },
+  { id: "claim-guard", name: "Claim Guardian", job: "Checks each visit before the claim goes out, so the payer has no reason to refuse it.", forWhom: "Revenue cycle staff", canDo: "Open the missing data. Open the claim.", watches: "Every minute, for active and discharged visits", autoKinds: [], ask: "Which claims would be refused?" },
+  { id: "handoff", name: "Shift Handoff", job: "Writes an SBAR handoff for every inpatient, sickest first.", forWhom: "Nurses and doctors at shift change", canDo: "Copy the handoff sheet.", watches: "Keeps the sheet current for the next shift change", autoKinds: [], ask: "Write the shift handoff." },
 ];
 
 export const AGENT_BY_ID = Object.fromEntries(AGENTS.map((a) => [a.id, a])) as Record<AgentId, AgentDef>;

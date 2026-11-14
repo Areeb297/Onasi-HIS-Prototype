@@ -36,7 +36,7 @@ const SUGGESTIONS = ["Is there a drug allergy problem?", "What orders for chest 
 
 export function AiAssistant() {
   useSession();
-  useRoute(); // re-render when the address changes, so the open chart stays current
+  const route = useRoute(); // re-render when the address changes, so the open chart stays current
   const st = useHis();
   const [open, setOpen] = React.useState(false);
   const [items, setItems] = React.useState<Item[]>([]);
@@ -113,7 +113,8 @@ export function AiAssistant() {
   return (
     <>
       {/* Launcher: a floating button at the bottom right, clear of the tables. The red number is the safety checks waiting on this chart. */}
-      <button
+      {/* The Onasi AI page has its own chat, so the launcher would only cover it. */}
+      {route.path !== "/agents" && <button
         onClick={() => setOpen(true)}
         aria-label={`Open ${ASSISTANT_NAME}, the chart assistant${checks ? `. ${checks} safety checks on this chart.` : ""}`}
         title={`${ASSISTANT_NAME} (Ctrl+J)`}
@@ -126,7 +127,7 @@ export function AiAssistant() {
           )}
         </span>
         <span className="text-sm font-semibold">{ASSISTANT_NAME}</span>
-      </button>
+      </button>}
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full gap-0 sm:max-w-xl" aria-describedby="nabd-desc">

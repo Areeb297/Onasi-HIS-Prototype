@@ -1,8 +1,9 @@
 import { quickCreate } from "./actions";
-import { startEd } from "./ed";
-import type { EdData, PatientExtra } from "./model";
+import { defaultArea, saveTriage, startEd } from "./ed";
+import type { CtasLevel, EdData, PatientExtra } from "./model";
 import { DOCTORS } from "./reference-data";
 import { findDuplicates } from "./registration";
+import { currentUser } from "./session";
 import { lookupById } from "./registry";
 import { getState, nextHealthId, nowLocal, registerPatient, updateEncounter } from "./store";
 
@@ -32,6 +33,8 @@ export interface ErRegistration {
   attending?: string;
   /** Doctor who sent the patient, if any. PV1-8. NPHIES expects it on A04 and warns when it is empty. */
   referring?: string;
+  /** CTAS level chosen at the door. The full triage assessment can confirm or change it later. */
+  ctas?: CtasLevel;
 }
 
 export type ErResult = { ok: true; visit: string; patientId: string; temporary: boolean; /** The visit was added to a file the patient already had. */ existing?: boolean } | { ok: false; message: string };
@@ -100,5 +103,8 @@ export function registerEmergency(r: ErRegistration): ErResult {
   updateEncounter(visit, (e) => {
     if (e.ed) e.ed = { ...e.ed, complaint: r.complaint.trim() || undefined, temporaryId: temporary || undefined, arrivalAt: e.ed.arrivalAt ?? nowLocal() };
   }, { touch: false });
+  if (r.ctas) {
+    saveTriage(visit, { ctas: r.ctas, ctasWhy: "Level chosen at registration", arrivalMode: r.arrivalMode, complaint: r.complaint.trim() || undefined, area: defaultArea(r.ctas), triageNurse: currentUser().name }, undefined, "Quick triage at registration");
+  }
   return { ok: true, visit, patientId, temporary, existing: existing || undefined };
 }

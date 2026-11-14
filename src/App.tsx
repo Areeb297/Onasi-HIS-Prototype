@@ -1,3 +1,4 @@
+import { useAgentMonitor } from "@/lib/ai/use-agent-monitor";
 import * as React from "react";
 import { ChevronsUpDown, Lock, Menu, Minus, Plus, Search } from "lucide-react";
 import { EventBadge } from "@/components/badges";
@@ -65,21 +66,6 @@ function Brand() {
       <button type="button" onClick={() => navigate("/dashboard")} aria-label="Onasi, go to the dashboard" title="Go to the dashboard" className="rounded-md focus-visible:outline-2 focus-visible:outline-ring">
         <img src="/brand/onasi-logo.png" alt="" className="h-9 w-auto brightness-0 invert" />
       </button>
-    </div>
-  );
-}
-
-/** The powered-by credit. The logo sits on a white chip so its dark blue text reads in the dark theme too. */
-function PoweredBy() {
-  const { collapsed } = useSidebar();
-  if (collapsed) return null;
-  return (
-    <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-      <span>Powered by</span>
-      <span className="rounded-md bg-white px-1.5 py-1">
-        <img src="/brand/ebttikar-logo.png" alt="Ebttikar, Innovative Business Solutions" className="h-14 w-auto" />
-      </span>
-      <span className="ms-auto">&copy; {new Date().getFullYear()}</span>
     </div>
   );
 }
@@ -315,6 +301,7 @@ export default function App() {
   const dev = useDevMode();
   const { role } = useSession();
   const [navOpen, setNavOpen] = React.useState(false);
+  useAgentMonitor();
   React.useEffect(() => setNavOpen(false), [route.path, route.params]);
 
   return (
@@ -331,7 +318,6 @@ export default function App() {
           <SidebarFooter>
             <div className="flex w-full flex-col gap-2.5">
               <UserFooter />
-              <PoweredBy />
             </div>
           </SidebarFooter>
         </Sidebar>
