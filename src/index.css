@@ -237,3 +237,31 @@ table,
 .nabd-thinking .nabd-caret {
   animation: nabd-blink 1.1s steps(1) infinite;
 }
+
+/* The Onasi logo: on hover it turns once and glows in the brand mint. Works on the logo itself or on the button or tile that holds it. */
+.onasi-mark {
+  transition: transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.35s ease;
+  will-change: transform;
+}
+.onasi-mark-white { filter: brightness(0) invert(1); }
+.onasi-mark:hover,
+:is(button, a, span, label):hover > .onasi-mark,
+:is(button, a):hover > span > .onasi-mark {
+  transform: rotate(360deg);
+  filter: drop-shadow(0 0 5px var(--brand-mint)) drop-shadow(0 0 14px color-mix(in srgb, var(--brand-mint) 55%, transparent));
+}
+.onasi-mark-white:hover,
+:is(button, a, span, label):hover > .onasi-mark-white {
+  filter: brightness(0) invert(1) drop-shadow(0 0 5px var(--brand-mint)) drop-shadow(0 0 14px var(--brand-mint));
+}
+.onasi-wordmark {
+  filter: brightness(0) invert(1);
+  transition: filter 0.35s ease;
+}
+:is(button, a):hover > .onasi-wordmark {
+  filter: brightness(0) invert(1) drop-shadow(0 0 6px var(--brand-mint)) drop-shadow(0 0 16px color-mix(in srgb, var(--brand-mint) 60%, transparent));
+}
+@media (prefers-reduced-motion: reduce) {
+  .onasi-mark { transition: filter 0.35s ease; }
+  .onasi-mark:hover, :is(button, a, span, label):hover > .onasi-mark { transform: none; }
+}

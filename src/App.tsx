@@ -58,13 +58,13 @@ function CountBadge({ children }: { children: React.ReactNode }) {
 function Brand() {
   const { collapsed } = useSidebar();
   if (collapsed) {
-    return <img src="/brand/onasi-icon.png" alt="Onasi" className="h-7 w-auto shrink-0 brightness-0 invert" />;
+    return <img src="/brand/onasi-icon.png" alt="Onasi" className="onasi-mark onasi-mark-white h-7 w-auto shrink-0" />;
   }
   // ps-7 matches the width of the collapse button on the right, so the logo sits in the true centre.
   return (
     <div className="flex min-w-0 flex-1 justify-center ps-7">
       <button type="button" onClick={() => navigate("/dashboard")} aria-label="Onasi, go to the dashboard" title="Go to the dashboard" className="rounded-md focus-visible:outline-2 focus-visible:outline-ring">
-        <img src="/brand/onasi-logo.png" alt="" className="h-9 w-auto brightness-0 invert" />
+        <img src="/brand/onasi-logo.png" alt="" className="onasi-wordmark h-9 w-auto" />
       </button>
     </div>
   );

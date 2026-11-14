@@ -13,7 +13,7 @@ export function OnasiAiMark({ size = 24, thinking = false, className }: { size?:
       width={Math.round(size * 0.92)}
       height={size}
       style={{ height: size, width: "auto" }}
-      className={cn("inline-block shrink-0 select-none", thinking && "animate-pulse motion-reduce:animate-none", className)}
+      className={cn("onasi-mark inline-block shrink-0 select-none", thinking && "animate-pulse motion-reduce:animate-none", className)}
       draggable={false}
     />
   );

@@ -24,6 +24,28 @@ const TOPICS: Topic[] = [
   { agent: "discharge", words: ["discharge", "go home", "going home", "leave", "inpatient", "bed", "blocker", "blocking"] },
 ];
 
+/** The parts of the record each agent reads. Shown under an answer as its sources. */
+export const READS: Record<AgentId, string[]> = {
+  critical: ["Laboratory results", "Radiology reports", "Attending doctors"],
+  discharge: ["Inpatient list", "Diagnoses", "Laboratory orders", "Radiology orders", "Vital signs", "NPHIES send list"],
+  "ed-flow": ["Emergency board", "Triage times", "CTAS targets"],
+  clearance: ["NPHIES send list", "NPHIES responses"],
+  "claim-guard": ["Visits", "Diagnoses", "Claim vital signs", "Prior authorizations"],
+  handoff: ["Inpatient list", "Charts", "Vital signs", "Orders"],
+};
+
+export interface PatientChoice { id: string; name: string; visits: string[] }
+
+/** Patients with an open visit that the signed-in user may read, for the "about" picker. */
+export function patientChoices(): PatientChoice[] {
+  const s = getState();
+  return s.patients
+    .filter((p) => !(p.confidential && !hasGlass(p.id)))
+    .map((p) => ({ id: p.id, name: patientName(p), visits: s.encounters.filter((e) => e.patientId === p.id && e.status === "active").map((e) => e.visitNumber) }))
+    .filter((c) => c.visits.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export interface Answer {
   /** The agent that answered, or null when the question was not understood. */
   agent: AgentId | null;
@@ -36,6 +58,8 @@ export interface Answer {
   patient?: string;
   /** Other questions worth asking next. */
   followUps: string[];
+  /** The parts of the record that were read. */
+  sources: string[];
 }
 
 /** The patient a question names, by family name, given name or visit number. Confidential charts are never matched. */
@@ -65,13 +89,13 @@ export function topicOf(question: string): AgentId | null {
 
 export const SUGGESTED: { agent: AgentId; text: string }[] = AGENTS.map((a) => ({ agent: a.id, text: a.ask }));
 
-export function answer(question: string, now: Date = new Date()): Answer {
-  const patient = patientIn(question);
+export function answer(question: string, now: Date = new Date(), about?: { name: string; visits: string[] }): Answer {
+  const patient = about ?? patientIn(question);
   // A question that only names a patient is about that patient going home: the widest check of one chart.
   const agent = topicOf(question) ?? (patient ? "discharge" : null);
   if (!agent) {
     return {
-      agent: null, items: [], followUps: SUGGESTED.map((s) => s.text),
+      agent: null, items: [], sources: [], followUps: SUGGESTED.map((s) => s.text),
       text: "I can answer questions about discharges, critical results, emergency waiting times, what is waiting to go to NPHIES, claims and the shift handoff. Try one of the questions below.",
     };
   }
@@ -82,7 +106,7 @@ export function answer(question: string, now: Date = new Date()): Answer {
   const text = patient
     ? items.length
       ? open ? `For ${patient.name}: ${open} ${open === 1 ? "item needs" : "items need"} attention.` : `For ${patient.name}: nothing needs attention.`
-      : `I found nothing about ${patient.name} in this check. ${run.headline}`
+      : `${patient.name} is not part of this check. For all patients: ${run.headline}`
     : run.headline;
-  return { agent, run, text, items, patient: patient?.name, followUps: SUGGESTED.filter((s) => s.agent !== agent).slice(0, 3).map((s) => s.text) };
+  return { agent, run, text, items, patient: patient?.name, sources: READS[agent], followUps: SUGGESTED.filter((s) => s.agent !== agent).slice(0, 3).map((s) => s.text) };
 }

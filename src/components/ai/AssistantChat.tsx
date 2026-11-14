@@ -1,5 +1,5 @@
 import * as React from "react";
-import { IconArrowUp, IconChevronDown, IconMessagePlus } from "@tabler/icons-react";
+import { IconArrowUp, IconCheck, IconChevronDown, IconCopy, IconDatabase, IconMessagePlus, IconRefresh, IconThumbDown, IconThumbUp, IconUserSearch } from "@tabler/icons-react";
 import { Check, ChevronRight } from "lucide-react";
 import { AgentIcon } from "@/components/ai/AgentIcon";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -7,7 +7,7 @@ import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { Badge, Button, cn } from "@/components/ui/primitives";
 import { approveTask, checkNow, dismissTask, isShortcut, runAction, useAgentWork } from "@/lib/ai/agent-work";
 import { AGENT_BY_ID, type Proposal } from "@/lib/ai/agents";
-import { SUGGESTED, answer, type Answer } from "@/lib/ai/assistant";
+import { SUGGESTED, answer, patientChoices, type Answer } from "@/lib/ai/assistant";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
 import { audit } from "@/lib/audit";
 
@@ -18,8 +18,40 @@ import { audit } from "@/lib/audit";
 
 interface Turn {
   id: number;
+  at: string;
   question: string;
   answer: Answer;
+}
+
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+/** The answer as plain text, for the Copy button. */
+function plain(t: Turn): string {
+  const a = t.answer;
+  return [`Question: ${t.question}`, a.text, ...a.items.map((p) => `- ${p.patient}${p.visit ? ` (${p.visit})` : ""}: ${p.text} Why: ${p.why}`)].join("\n");
+}
+
+/** The quiet bar under a reply: copy, check again, and whether the answer helped. */
+function ReplyActions({ turn, onAgain }: { turn: Turn; onAgain: () => void }) {
+  const [copied, setCopied] = React.useState(false);
+  const [vote, setVote] = React.useState<"up" | "down" | null>(null);
+  const btn = "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring";
+  function rate(v: "up" | "down") {
+    if (vote === v) return;
+    setVote(v);
+    audit(v === "up" ? "ai-accept" : "ai-reject", `Assistant answer rated ${v === "up" ? "helpful" : "not helpful"}`, { detail: `${turn.question} ${turn.answer.text}` });
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-0.5">
+      <button type="button" className={btn} title="Copy the answer" aria-label="Copy the answer" onClick={() => { void navigator.clipboard?.writeText(plain(turn)).catch(() => undefined); setCopied(true); window.setTimeout(() => setCopied(false), 1600); }}>
+        {copied ? <IconCheck className="size-4 text-ok" aria-hidden="true" /> : <IconCopy className="size-4" aria-hidden="true" />}
+      </button>
+      <button type="button" className={btn} title="Check again" aria-label="Check again" onClick={onAgain}><IconRefresh className="size-4" aria-hidden="true" /></button>
+      <button type="button" className={cn(btn, vote === "up" && "bg-ok/10 text-ok")} title="Helpful" aria-label="Helpful" aria-pressed={vote === "up"} onClick={() => rate("up")}><IconThumbUp className="size-4" aria-hidden="true" /></button>
+      <button type="button" className={cn(btn, vote === "down" && "bg-destructive/10 text-destructive")} title="Not helpful" aria-label="Not helpful" aria-pressed={vote === "down"} onClick={() => rate("down")}><IconThumbDown className="size-4" aria-hidden="true" /></button>
+      <span className="ms-2 text-xs text-muted-foreground">{vote ? "Thank you. Your rating is recorded." : `Answered ${clock(turn.at)} from the live record`}</span>
+    </div>
+  );
 }
 
 const STEP_MS = 380;
@@ -135,6 +167,13 @@ function Reply({ turn, live, onAsk, onSettled }: { turn: Turn; live: boolean; on
                 )}
               </div>
             )}
+            {a.sources.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <IconDatabase className="size-3.5" aria-hidden="true" /><span className="font-medium">Read from</span>
+                {a.sources.map((s) => <span key={s} className="rounded-md border border-border bg-card px-1.5 py-0.5">{s}</span>)}
+              </div>
+            )}
+            <ReplyActions turn={turn} onAgain={() => onAsk(turn.question)} />
             {a.followUps.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {a.followUps.map((q) => (
@@ -155,6 +194,8 @@ export function AssistantChat({ firstQuestion }: { firstQuestion?: string }) {
   const endRef = React.useRef<HTMLDivElement>(null);
   const boxRef = React.useRef<HTMLTextAreaElement>(null);
   const asked = React.useRef("");
+  const [about, setAbout] = React.useState("");
+  const choices = React.useMemo(() => patientChoices(), []);
 
   const scroll = React.useCallback(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), []);
 
@@ -162,12 +203,13 @@ export function AssistantChat({ firstQuestion }: { firstQuestion?: string }) {
     const question = q.trim();
     if (!question) return;
     checkNow(); // so every finding in the answer is a tracked task with its real state
-    const a = answer(question);
+    const who = choices.find((c) => c.id === about);
+    const a = answer(question, new Date(), who ? { name: who.name, visits: who.visits } : undefined);
     audit("ai-suggest", `Assistant question: ${question}`, { detail: a.agent ? `${AGENT_BY_ID[a.agent].name}. ${a.text}` : "Not understood" });
-    setTurns((t) => [...t, { id: Date.now(), question, answer: a }]);
+    setTurns((t) => [...t, { id: Date.now(), at: new Date().toISOString(), question, answer: a }]);
     setText("");
     window.setTimeout(scroll, 60);
-  }, [scroll]);
+  }, [scroll, about, choices]);
 
   // A question passed in from an agent card is asked once.
   React.useEffect(() => {
@@ -194,6 +236,16 @@ export function AssistantChat({ firstQuestion }: { firstQuestion?: string }) {
           <button type="submit" disabled={!text.trim()} aria-label="Send the question" className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-35">
             <IconArrowUp className="size-5" stroke={2.25} aria-hidden="true" />
           </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 px-2 pt-1.5">
+          <label className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-[0.8125rem]">
+            <IconUserSearch className="size-4 text-muted-foreground" aria-hidden="true" />
+            <span className="text-muted-foreground">About</span>
+            <select value={about} onChange={(e) => setAbout(e.target.value)} aria-label="Ask about one patient or all patients" className="max-w-44 truncate bg-transparent font-medium outline-none">
+              <option value="">All patients</option>
+              {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
         </div>
         <p className="px-3 pb-1 pt-1.5 text-xs text-muted-foreground">Asking changes nothing. A step that changes a record waits for your approval and goes to the audit trail.</p>
       </form>
