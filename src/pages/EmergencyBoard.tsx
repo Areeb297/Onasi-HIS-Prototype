@@ -1,3 +1,4 @@
+import { PatientFlagBadges } from "@/components/PatientBanner";
 import * as React from "react";
 import { IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
 import { Clock, FolderOpen, Plus, RefreshCw } from "lucide-react";
@@ -83,6 +84,7 @@ function Card1({ enc, now, onTriage, onDispose, onChart }: { enc: Encounter; now
             </span>
           </div>
           <div className="text-xs text-muted-foreground">{p && !masked ? `${age(p.dob)} y, ${p.sex === "M" ? "Male" : "Female"}` : ""} {ed.arrivalMode !== "Walk-in" && <Badge tone="info">{ed.arrivalMode}</Badge>}</div>
+          <PatientFlagBadges patient={p} className="mt-1" />
         </div>
       </div>
       <p className="mt-2 line-clamp-2 text-sm">{masked ? "Restricted" : ed.complaint || enc.reason || "No complaint entered"}</p>

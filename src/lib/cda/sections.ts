@@ -270,16 +270,23 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
     const asa = pick(r, ["asa"]);
     return asa ? { blocks: [p(`ASA physical status ${asa}.`)], sources: ["Pre-Anesthesia Assessment: asa"] } : NONE;
   },
-  findings: (i) => text(i.enc.notes.filter((n) => /find/i.test(n.text)).map((n) => n.text).join(" "), ["Progress notes"]),
+  findings: (i) => {
+    const t = pick(latest(i, "operation-request"), ["opFindings"]);
+    if (t) return text(t, ["Surgery Case: operative note findings"]);
+    return text(i.enc.notes.filter((n) => /find/i.test(n.text)).map((n) => n.text).join(" "), ["Progress notes"]);
+  },
   procdesc: (i) => {
     const r = latest(i, "operation-request");
     const ins = pick(r, ["instructions"]);
     const notes = i.enc.notes.map((n) => n.text).join(" ");
     return text([ins, notes].filter(Boolean).join(" "), ["Operation Request: instructions", "Progress notes"]);
   },
-  specimens: () => NONE,
-  complications: () => NONE,
-  ebl: () => NONE,
+  specimens: (i) => text(pick(latest(i, "operation-request"), ["specimens"]), ["Surgery Case: operative note specimens"]),
+  complications: (i) => text(pick(latest(i, "operation-request"), ["complications"]), ["Surgery Case: operative note complications"]),
+  ebl: (i) => {
+    const ml = pick(latest(i, "operation-request"), ["bloodLossMl"]);
+    return ml ? text(`${ml} mL`, ["Surgery Case: operative note blood loss"]) : NONE;
+  },
   fluids: () => NONE,
   procdisp: (i) => text(dispositionLabel(i.enc.disposition) || (i.enc.status === "discharged" ? "Discharged" : ""), ["Encounter.disposition"]),
 };

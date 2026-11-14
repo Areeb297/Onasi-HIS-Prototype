@@ -2,6 +2,7 @@ import * as React from "react";
 import { IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
 import { Plus, RotateCcw } from "lucide-react";
 import { ActionLegend, RowActions, type ActionKey } from "@/components/RowActions";
+import { PatientFlagBadges } from "@/components/PatientBanner";
 import { DischargeProgress, useVisitActions } from "@/components/VisitActions";
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th } from "@/components/ui/primitives";
 import { heldBedOf } from "@/lib/beds";
@@ -185,6 +186,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
                           {p?.mrn} · {p ? age(p.dob) : "?"} / {p?.sex === "M" ? "Male" : "Female"}
                           {dev && <span className="ml-2 font-mono">{e.visitNumber}</span>}
                         </div>
+                        <PatientFlagBadges patient={p} className="mt-1" />
                       </div>
                     </div>
                   </Td>

@@ -154,6 +154,8 @@ function syncOperationRequest(c: SurgeryCase): string | undefined {
     preferredDate: c.schedule?.date ?? c.request.plannedDate, surgeon: c.request.surgeon,
     anesthesiaType: c.opNote?.anaesthesia ?? c.assessment?.anaesthesia ?? "", instructions: c.request.notes ?? "",
     operationStart: c.opNote?.start ?? "", operationEnd: c.opNote?.end ?? "",
+    opFindings: c.opNote?.findings ?? "", specimens: c.opNote?.specimens ?? "", complications: c.opNote?.complications ?? "",
+    bloodLossMl: c.opNote?.bloodLossMl ?? "",
   };
   const existing = c.linkedRecordId && getFormRecords(c.visit, "operation-request").find((r) => r.id === c.linkedRecordId);
   if (existing) {

@@ -6,11 +6,14 @@ import { AlertTriangle, CheckCircle2, ChevronRight, Copy, Info } from "lucide-re
 import { Badge, Button, Card, CardHeader, Empty, cn } from "@/components/ui/primitives";
 import { quickSend } from "@/lib/actions";
 import { attentionFor, buildTimeline, sbarFor, sbarText, type Attention, type TimelineItem, type TimelineKind } from "@/lib/chart-review";
+import { useCareRequests } from "@/lib/care-requests";
 import { useDocs } from "@/lib/docs";
+import { useEmar } from "@/lib/emar";
 import { useLab } from "@/lib/lab";
 import type { Encounter, Patient } from "@/lib/model";
 import { useRad } from "@/lib/radiology";
 import { useRx } from "@/lib/rx";
+import { useTheatre } from "@/lib/theatre";
 import { navigate } from "@/lib/router";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
@@ -172,7 +175,7 @@ function Handoff({ enc, patient }: { enc: Encounter; patient: Patient }) {
 
 export function ChartOverview({ enc, patient, children }: { enc: Encounter; patient: Patient; children?: React.ReactNode }) {
   // Re-render when any source store changes.
-  useHis(); useLab(); useRad(); useRx(); useDocs(); useVitals();
+  useHis(); useLab(); useRad(); useRx(); useDocs(); useVitals(); useEmar(); useCareRequests(); useTheatre();
   const go = (s: string) => navigate("/chart", { visit: enc.visitNumber, s });
   const attention = attentionFor(enc, patient);
   const timeline = buildTimeline(enc);

@@ -168,6 +168,10 @@ describe("document builders", () => {
     open.status = "active";
     const early = buildDocument(input("operative", open, { "operation-request": [rec({ procedure: "Hip arthroplasty", operationStart: "2026-02-27T09:10", operationEnd: "2026-02-27T11:25" })] }, { procIndex: 0 }));
     expect(errorsOf(validateDoc(early))).toEqual([]);
+    // The surgery case's operative note fills findings, specimens, complications and blood loss.
+    const full = buildDocument(input("operative", withPr, { "operation-request": [rec({ procedure: "Hip arthroplasty", operationStart: "2026-02-27T09:10", operationEnd: "2026-02-27T11:25", opFindings: "Displaced fracture confirmed", specimens: "Femoral head to histology", complications: "None", bloodLossMl: 350 })] }, { procIndex: 0 }));
+    for (const t of ["Displaced fracture confirmed", "Femoral head to histology", "350 mL"]) expect(full.xml).toContain(t);
+    expect(errorsOf(validateDoc(full))).toEqual([]);
     expect(b.xml).toContain('<templateId root="2.16.840.1.113883.3.3731.1.210.5"/>');
     expect(b.metadata.documentEntry.classCode.code).toBe("REPORT");
     expect(b.xml).toContain("2.16.840.1.113883.3.3731.1.210.100.53"); // surgery entry

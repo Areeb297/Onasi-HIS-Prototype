@@ -105,9 +105,9 @@ function RequestDialog({ enc, onClose, report }: Omit<DialogProps, "c">) {
         <Field label="Urgency" required>
           <Select value={f.urgency} onChange={set("urgency")}>{URGENCIES.map((s) => <option key={s}>{s}</option>)}</Select>
         </Field>
-        <Field label="Planned date" required><Input type="date" value={f.plannedDate} onChange={set("plannedDate")} /></Field>
-        <Field label="Diagnosis before the operation" className="sm:col-span-2"><Input value={f.preopDiagnosis} onChange={set("preopDiagnosis")} /></Field>
-        <Field label="Notes for the theatre team" className="sm:col-span-2"><Textarea rows={2} className={textareaClass} value={f.notes} onChange={set("notes")} placeholder="Implants, special equipment, blood to prepare" /></Field>
+        <Field label="Planned Date" required><Input type="date" value={f.plannedDate} onChange={set("plannedDate")} /></Field>
+        <Field label="Diagnosis Before The Operation" className="sm:col-span-2"><Input value={f.preopDiagnosis} onChange={set("preopDiagnosis")} /></Field>
+        <Field label="Notes For The Theatre Team" className="sm:col-span-2"><Textarea rows={2} className={textareaClass} value={f.notes} onChange={set("notes")} placeholder="Implants, special equipment, blood to prepare" /></Field>
       </div>
     </Dialog>
   );
@@ -130,10 +130,10 @@ function AssessmentDialog({ c, enc, onClose, report }: DialogProps) {
         <Field label="Result" required className="sm:col-span-2" hint="Only Fit and Fit With High Risk let the case be scheduled.">
           <Choice label="Result" value={result} onChange={setResult} options={ASSESSMENT_RESULTS.map((r) => ({ value: r, label: r }))} />
         </Field>
-        <Field label="ASA class" hint="American Society of Anesthesiologists physical status. I is healthy, V is not expected to survive without the operation.">
+        <Field label="ASA Class" hint="American Society of Anesthesiologists physical status. I is healthy, V is not expected to survive without the operation.">
           <Select value={asa} onChange={(e) => setAsa(e.target.value)}><option value="">Select</option>{ASA_CLASSES.map((s) => <option key={s}>{s}</option>)}</Select>
         </Field>
-        <Field label="Planned anaesthesia">
+        <Field label="Planned Anaesthesia">
           <Select value={anaesthesia} onChange={(e) => setAnaesthesia(e.target.value)}><option value="">Select</option>{ANAESTHESIA_TYPES.map((s) => <option key={s}>{s}</option>)}</Select>
         </Field>
         <Field label={result === "Needs More Tests" ? "Tests needed" : result === "Not Fit" ? "Why the patient is not fit" : result === "Fit With High Risk" ? "The high risk" : "Notes"} required={needsNote} className="sm:col-span-2">
@@ -160,12 +160,12 @@ function ScheduleDialog({ c, onClose, report }: DialogProps) {
       <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">
         <Field label="Room" required hint="Two cases cannot be in the same room at the same time."><Select value={f.room} onChange={set("room")}>{pick(THEATRE_ROOMS)}</Select></Field>
         <Field label="Date" required><Input type="date" value={f.date} onChange={set("date")} /></Field>
-        <Field label="Start time" required><Input type="time" value={f.start} onChange={set("start")} /></Field>
-        <Field label="Expected length in minutes" required><Input type="number" min={5} step={5} value={f.durationMin || ""} onChange={set("durationMin")} /></Field>
+        <Field label="Start Time" required><Input type="time" value={f.start} onChange={set("start")} /></Field>
+        <Field label="Expected Length In Minutes" required><Input type="number" min={5} step={5} value={f.durationMin || ""} onChange={set("durationMin")} /></Field>
         <Field label="Anaesthetist" required><Select value={f.anaesthetist} onChange={set("anaesthetist")}>{pick(ANAESTHETISTS)}</Select></Field>
-        <Field label="Assistant surgeon"><Select value={f.assistant} onChange={set("assistant")}>{pick(SURGEONS.filter((x) => x !== c.request.surgeon))}</Select></Field>
-        <Field label="Scrub nurse" required><Select value={f.scrubNurse} onChange={set("scrubNurse")}>{pick(THEATRE_NURSES)}</Select></Field>
-        <Field label="Circulating nurse" required><Select value={f.circulatingNurse} onChange={set("circulatingNurse")}>{pick(THEATRE_NURSES)}</Select></Field>
+        <Field label="Assistant Surgeon"><Select value={f.assistant} onChange={set("assistant")}>{pick(SURGEONS.filter((x) => x !== c.request.surgeon))}</Select></Field>
+        <Field label="Scrub Nurse" required><Select value={f.scrubNurse} onChange={set("scrubNurse")}>{pick(THEATRE_NURSES)}</Select></Field>
+        <Field label="Circulating Nurse" required><Select value={f.circulatingNurse} onChange={set("circulatingNurse")}>{pick(THEATRE_NURSES)}</Select></Field>
       </div>
     </Dialog>
   );
@@ -244,7 +244,7 @@ function PhaseDialog({ c, enc, phase, patient, onClose, report }: DialogProps & 
         ))}
       </ul>
       <div className="mt-4 grid gap-x-4 gap-y-4 border-t border-border pt-4 sm:grid-cols-2">
-        <Field label="Confirmed by (role)" required>
+        <Field label="Confirmed By (Role)" required>
           <Select value={role} onChange={(e) => setRole(e.target.value)}>{def.roles.map((r) => <option key={r}>{r}</option>)}</Select>
         </Field>
         <Field label="Name" hint="From the team on the schedule."><Input readOnly disabled value={team[role] ?? ""} /></Field>
@@ -271,17 +271,17 @@ function OpNoteDialog({ c, onClose, report }: DialogProps) {
       footer={<StepFooter problem={problem} onCancel={onClose} saveLabel="Save Operative Note" onSave={() => report(saveOpNote(c.id, data))} />}>
       <RequiredNote className="mb-3" />
       <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">
-        <Field label="Operation started" required hl7="encompassingEncounter/effectiveTime/low"><Input type="datetime-local" value={f.start} onChange={set("start")} /></Field>
-        <Field label="Operation ended" required hl7="encompassingEncounter/effectiveTime/high"><Input type="datetime-local" value={f.end} onChange={set("end")} /></Field>
-        <Field label="Operation done" required className="sm:col-span-2"><Input value={f.procedureDone} onChange={set("procedureDone")} /></Field>
+        <Field label="Operation Started" required hl7="encompassingEncounter/effectiveTime/low"><Input type="datetime-local" value={f.start} onChange={set("start")} /></Field>
+        <Field label="Operation Ended" required hl7="encompassingEncounter/effectiveTime/high"><Input type="datetime-local" value={f.end} onChange={set("end")} /></Field>
+        <Field label="Operation Done" required className="sm:col-span-2"><Input value={f.procedureDone} onChange={set("procedureDone")} /></Field>
         <Field label="Findings" required className="sm:col-span-2"><Textarea rows={3} className={textareaClass} value={f.findings} onChange={set("findings")} /></Field>
-        <Field label="Anaesthesia given">
+        <Field label="Anaesthesia Given">
           <Select value={f.anaesthesia} onChange={set("anaesthesia")}><option value="">Select</option>{ANAESTHESIA_TYPES.map((s) => <option key={s}>{s}</option>)}</Select>
         </Field>
-        <Field label="Estimated blood loss in mL"><Input type="number" min={0} value={f.bloodLoss} onChange={set("bloodLoss")} /></Field>
-        <Field label="Specimens sent"><Input value={f.specimens} onChange={set("specimens")} placeholder="Gallbladder to histology, or none" /></Field>
+        <Field label="Estimated Blood Loss In mL"><Input type="number" min={0} value={f.bloodLoss} onChange={set("bloodLoss")} /></Field>
+        <Field label="Specimens Sent"><Input value={f.specimens} onChange={set("specimens")} placeholder="Gallbladder to histology, or none" /></Field>
         <Field label="Complications"><Input value={f.complications} onChange={set("complications")} placeholder="None" /></Field>
-        <Field label="Plan after the operation" className="sm:col-span-2"><Textarea rows={2} className={textareaClass} value={f.plan} onChange={set("plan")} /></Field>
+        <Field label="Plan After The Operation" className="sm:col-span-2"><Textarea rows={2} className={textareaClass} value={f.plan} onChange={set("plan")} /></Field>
       </div>
     </Dialog>
   );
@@ -322,13 +322,13 @@ function RecoveryDischargeDialog({ c, onClose, report }: DialogProps) {
       footer={<StepFooter problem={problem} onCancel={onClose} saveLabel={low ? "Override And Discharge" : "Discharge From Recovery"} onSave={() => report(dischargeFromRecovery(c.id, destination, low ? reason : undefined))} />}>
       <RequiredNote className="mb-3" />
       <div className="space-y-4">
-        <Field label="Patient goes to" required>
+        <Field label="Patient Goes To" required>
           <Select value={destination} onChange={(e) => setDestination(e.target.value)}><option value="">Select</option>{RECOVERY_DESTINATIONS.map((d) => <option key={d}>{d}</option>)}</Select>
         </Field>
         {low && (
           <div className="rounded-lg border border-warn/50 bg-warn/10 p-3">
             <p className="mb-3 text-sm">The score is below {ALDRETE_PASS}. Only a doctor can let the patient leave, and must give a reason. The override is recorded with the doctor's name.</p>
-            <Field label="Reason for the doctor override" required hint={doctor ? undefined : "You are not signed in as a doctor, so you cannot override."}>
+            <Field label="Reason For The Doctor Override" required hint={doctor ? undefined : "You are not signed in as a doctor, so you cannot override."}>
               <Textarea rows={2} className={textareaClass} value={reason} disabled={!doctor} onChange={(e) => setReason(e.target.value)} placeholder="Planned transfer to intensive care on a ventilator" />
             </Field>
           </div>

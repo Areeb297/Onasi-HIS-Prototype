@@ -1,4 +1,5 @@
 import { Ban, BedDouble, CalendarClock, CircleCheck, DoorOpen, Sparkles, UserRound } from "lucide-react";
+import { PatientFlagBadges } from "@/components/PatientBanner";
 import { useVisitActions } from "@/components/VisitActions";
 import { Badge, Button, Card, CardHeader, PageHeader, cn } from "@/components/ui/primitives";
 import { markBedReady, returnBedToService } from "@/lib/actions";
@@ -102,6 +103,7 @@ export function BedBoardPage() {
                         <>
                           <div className="mt-2 text-sm font-medium">{nameOf(i)}</div>
                           <div className="text-xs text-muted-foreground">Admitted {niceDate(enc.admitAt)}</div>
+                          <PatientFlagBadges patient={state.patients.find((x) => x.id === enc.patientId)} className="mt-1.5" />
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             <Button size="sm" disabled={!mayAdt} onClick={() => act("A02", enc.visitNumber)}>Transfer</Button>
                             <Button size="sm" disabled={!mayAdt} onClick={() => act("A03", enc.visitNumber)}>Discharge</Button>
