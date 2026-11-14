@@ -58,11 +58,11 @@ const STEP_MS = 380;
 
 /** Questions staff ask before they trust an assistant, answered plainly. */
 const FAQ: { q: string; a: string }[] = [
-  { q: "What can I ask?", a: "Six things today: who can go home, critical results the doctor has not seen, who has waited too long in emergency, what is ready to go to NPHIES, which claims would be refused, and the shift handoff. You can name a patient or a visit number to narrow the answer." },
-  { q: "Does it change anything in the record?", a: "Asking changes nothing. When an answer includes a step that would change a record, such as sending a message to NPHIES, it shows an Approve button and waits. An agent set to Automatic on the Agents At Work view may finish its own listed step, and every such step is logged." },
+  { q: "What can I ask?", a: "Three things for now: are there critical results the doctor has not seen, who can go home today and what still blocks them, and the shift handoff. You can name a patient or choose one in the About box to narrow the answer." },
+  { q: "Does it change anything in the record?", a: "No. It reads the record and points at what needs you. The Critical Result Chaser also notifies the attending doctor by itself, which changes nothing in the record. Where a step would send something, it shows an Approve button and waits." },
   { q: "Where do the answers come from?", a: "From the live record in this system: the visit lists, charts, orders, results and the NPHIES send list. Each answer shows what was read before it shows what was found. It does not use the internet or outside data." },
   { q: "Which patients can it read?", a: "The same ones you can. It works with your role and permissions. Confidential charts stay closed unless you have broken the glass, and it will not match a confidential patient by name." },
-  { q: "Is this a language model?", a: "Not in this version. The checks are fixed rules and the chat matches your words to one of the six topics. When a question is outside them it says so. A language model can be connected later behind the same screens." },
+  { q: "Is this a language model?", a: "Not in this version. The checks are fixed rules and the chat matches your words to one of its topics. When a question is outside them it says so. A language model can be connected later behind the same screens." },
   { q: "Who can see what I asked?", a: "Every question, approval and dismissal is written to the audit trail with your name and the time. Compliance staff can review it on the Audit page." },
   { q: "Can it give a diagnosis or choose a treatment?", a: "No. It finds missing data, waiting results and late steps. Clinical decisions stay with the doctor and the nurse. It is not a medical device." },
 ];
@@ -258,7 +258,7 @@ export function AssistantChat({ firstQuestion }: { firstQuestion?: string }) {
           <h2 className="mt-4 text-2xl font-semibold tracking-tight">Ask about the hospital</h2>
           <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">{ASSISTANT_NAME} reads the live record and answers with what it found and where. You can name a patient.</p>
           {composer}
-          <ul className="mt-4 grid gap-2 text-left sm:grid-cols-2">
+          <ul className="mt-4 grid gap-2 text-left sm:grid-cols-3">
             {SUGGESTED.map((s) => (
               <li key={s.agent}>
                 <button type="button" onClick={() => ask(s.text)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/50">

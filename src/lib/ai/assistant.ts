@@ -80,7 +80,7 @@ export function patientIn(question: string): { name: string; visits: string[] } 
 export function topicOf(question: string): AgentId | null {
   const q = ` ${question.toLowerCase().replace(/[^a-z0-9 ]/g, " ")} `;
   let best: { agent: AgentId; score: number } | null = null;
-  for (const t of TOPICS) {
+  for (const t of TOPICS.filter((x) => AGENTS.some((a) => a.id === x.agent))) {
     const score = t.words.filter((w) => q.includes(w.endsWith(" ") ? ` ${w}` : w)).length;
     if (score && (!best || score > best.score)) best = { agent: t.agent, score };
   }
@@ -96,7 +96,7 @@ export function answer(question: string, now: Date = new Date(), about?: { name:
   if (!agent) {
     return {
       agent: null, items: [], sources: [], followUps: SUGGESTED.map((s) => s.text),
-      text: "I can answer questions about discharges, critical results, emergency waiting times, what is waiting to go to NPHIES, claims and the shift handoff. Try one of the questions below.",
+      text: `I can answer ${AGENTS.length} questions for now: ${AGENTS.map((a) => a.ask.replace(/[?.]$/, "").toLowerCase()).join("; ")}. Try one of the questions below.`,
     };
   }
   const run = runAgent(agent, now);

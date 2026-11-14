@@ -4,9 +4,10 @@ import { audit } from "../audit";
 import { buildOutbox, sendRow } from "../nphies-outbox";
 import { DOCTORS } from "../reference-data";
 import { navigate } from "../router";
-import { can } from "../session";
+import { can, currentUser, roleOf } from "../session";
+import { getState } from "../store";
 import { pushToast } from "../toast";
-import { AGENTS, AGENT_BY_ID, runAgent, type AgentId, type AgentStep, type Proposal, type ProposalAction } from "./agents";
+import { AGENTS, AGENT_BY_ID, STARTER, runAgent, type AgentId, type AgentStep, type Proposal, type ProposalAction } from "./agents";
 
 /**
  * The work the agents do in the background. Each agent checks the live hospital data on a timer. What it finds becomes a task.
@@ -108,7 +109,20 @@ const sameDay = (iso: string | undefined, now: Date) => !!iso && new Date(iso).t
 const RANK = { high: 0, medium: 1 } as const;
 
 export const waitingTasks = (s: State = state): Task[] =>
-  Object.values(s.tasks).filter((t) => t.status === "waiting").sort((a, b) => RANK[a.level] - RANK[b.level] || a.foundAt.localeCompare(b.foundAt));
+  Object.values(s.tasks).filter((t) => t.status === "waiting" && STARTER.includes(t.agent)).sort((a, b) => RANK[a.level] - RANK[b.level] || a.foundAt.localeCompare(b.foundAt));
+
+/** The doctor record of the signed-in user, when that user is a physician. Matched on the name. */
+export function myDoctorId(): string | undefined {
+  const u = currentUser();
+  if (roleOf(u).id !== "physician") return undefined;
+  return DOCTORS.find((d) => u.name.includes(d.given) && u.name.includes(d.family))?.id;
+}
+
+/** The tasks for patients this doctor is attending. */
+export function tasksOfDoctor(tasks: Task[], doctorId: string): Task[] {
+  const mine = new Set(getState().encounters.filter((e) => e.attending === doctorId).map((e) => e.visitNumber));
+  return tasks.filter((t) => mine.has(t.visit));
+}
 
 export interface AgentProgress {
   waiting: number;
@@ -121,7 +135,7 @@ export interface AgentProgress {
 
 /** Today's work for one agent, or for all of them. */
 export function progressOf(id?: AgentId, now: Date = new Date(), s: State = state): AgentProgress {
-  const mine = Object.values(s.tasks).filter((t) => !id || t.agent === id);
+  const mine = Object.values(s.tasks).filter((t) => (id ? t.agent === id : STARTER.includes(t.agent)));
   const waiting = mine.filter((t) => t.status === "waiting").length;
   const today = mine.filter((t) => t.status !== "waiting" && sameDay(t.closedAt, now));
   const doneByAgent = today.filter((t) => t.status === "done-agent").length;
@@ -193,7 +207,8 @@ export function checkNow(now: Date = new Date()): number {
   for (const def of AGENTS) {
     if (isPaused(def.id, s)) continue;
     const run = runAgent(def.id, now);
-    const found = run.proposals.filter((p) => p.level !== "info" && p.action);
+    // A handoff sheet is a document to copy, not a task to close.
+    const found = run.proposals.filter((p) => p.level !== "info" && p.action && p.action.kind !== "copy");
     const tasks = { ...s.tasks };
     // The problem is gone: close the task.
     for (const t of Object.values(tasks)) {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { switchUser } from "../session";
-import { approveTask, checkNow, dismissTask, getAgentWork, isShortcut, modeOf, progressOf, resetAgentWork, setMode, setPaused, waitingTasks } from "./agent-work";
+import { approveTask, checkNow, dismissTask, getAgentWork, modeOf, myDoctorId, progressOf, resetAgentWork, setMode, setPaused, tasksOfDoctor, waitingTasks } from "./agent-work";
 import { AGENTS, runAgent } from "./agents";
 import { answer, patientIn, topicOf } from "./assistant";
 import { getState, patientName } from "../store";
@@ -12,7 +12,7 @@ describe("agents at work", () => {
     checkNow();
     const s = getAgentWork();
     for (const a of AGENTS) expect(s.last[a.id]?.steps.length, a.id).toBeGreaterThan(1);
-    const expected = AGENTS.flatMap((a) => runAgent(a.id).proposals.filter((p) => p.level !== "info" && p.action).map((p) => p.id));
+    const expected = AGENTS.flatMap((a) => runAgent(a.id).proposals.filter((p) => p.level !== "info" && p.action && p.action.kind !== "copy").map((p) => p.id));
     expect(Object.keys(s.tasks).sort()).toEqual([...new Set(expected)].sort());
     // Checking again adds nothing and writes no second "found" line.
     const feed = s.feed.length;
@@ -26,33 +26,48 @@ describe("agents at work", () => {
     expect(Object.values(getAgentWork().tasks).some((t) => t.status === "done-agent")).toBe(false);
   });
 
-  it("only an agent with a step it can finish may be set to Automatic", () => {
-    setMode("ed-flow", "auto");
-    expect(modeOf("ed-flow")).toBe("ask");
-    setMode("clearance", "auto");
-    expect(modeOf("clearance")).toBe("auto");
+  it("the starting set is three agents for the doctor, and none of them can change the record", () => {
+    expect(AGENTS.map((a) => a.id).sort()).toEqual(["critical", "discharge", "handoff"]);
+    // The only step an agent may finish by itself is telling the doctor. Nothing is sent, nothing is edited.
+    for (const a of AGENTS) for (const k of a.autoKinds) expect(k, a.id).toBe("notify");
+    setMode("discharge", "auto");
+    expect(modeOf("discharge")).toBe("ask");
   });
 
-  it("Automatic finishes the allowed steps, logs each one, and leaves the rest waiting", () => {
-    for (const a of AGENTS) if (a.autoKinds.length) setMode(a.id, "ask");
+  it("agents that are not switched on check nothing and raise no task", () => {
     checkNow();
-    const sendable = waitingTasks().filter((t) => t.agent === "clearance" && t.action?.kind === "send-row").length;
-    setMode("clearance", "auto");
-    const done = checkNow();
     const s = getAgentWork();
-    const finished = Object.values(s.tasks).filter((t) => t.agent === "clearance" && t.status === "done-agent");
-    expect(done).toBe(finished.length);
-    expect(finished.length).toBeLessThanOrEqual(sendable);
-    expect(s.feed.filter((f) => f.kind === "done" && f.by === "agent").length).toBe(finished.length);
-    // A step that only opens a page is never finished by an agent.
-    expect(Object.values(s.tasks).some((t) => t.status === "done-agent" && isShortcut(t.action))).toBe(false);
+    for (const id of ["ed-flow", "clearance", "claim-guard"] as const) {
+      expect(s.last[id], id).toBeUndefined();
+      expect(Object.values(s.tasks).some((t) => t.agent === id), id).toBe(false);
+    }
+  });
+
+  it("a handoff sheet is a document to copy, never a task", () => {
+    checkNow();
+    expect(Object.values(getAgentWork().tasks).some((t) => t.agent === "handoff")).toBe(false);
+    expect(getAgentWork().last.handoff?.headline).toBeTruthy();
+  });
+
+  it("a doctor sees the tasks of the patients they are attending", () => {
+    checkNow();
+    const all = waitingTasks();
+    switchUser("U1");
+    const me = myDoctorId();
+    expect(me).toBe("D1001");
+    const mine = tasksOfDoctor(all, me!);
+    const visits = new Set(getState().encounters.filter((e) => e.attending === me).map((e) => e.visitNumber));
+    for (const t of mine) expect(visits.has(t.visit)).toBe(true);
+    expect(mine.length).toBeLessThanOrEqual(all.length);
+    switchUser("U9");
+    expect(myDoctorId()).toBeUndefined();
   });
 
   it("a paused agent checks nothing", () => {
-    setPaused("claim-guard", true);
+    setPaused("discharge", true);
     checkNow();
-    expect(getAgentWork().last["claim-guard"]).toBeUndefined();
-    expect(Object.values(getAgentWork().tasks).some((t) => t.agent === "claim-guard")).toBe(false);
+    expect(getAgentWork().last.discharge).toBeUndefined();
+    expect(Object.values(getAgentWork().tasks).some((t) => t.agent === "discharge")).toBe(false);
   });
 
   it("dismissing closes a task for the day and counts in no one's finished work", () => {
@@ -92,6 +107,8 @@ describe("assistant questions", () => {
     expect(a.agent).toBeNull();
     expect(a.items).toEqual([]);
     expect(a.followUps.length).toBe(AGENTS.length);
+    // A topic that belongs to an agent that is not switched on is not answered.
+    expect(answer("Which claims would be refused?").agent).toBeNull();
   });
 
   it("narrows the answer to the patient named in the question", () => {

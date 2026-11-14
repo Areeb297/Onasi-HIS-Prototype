@@ -39,16 +39,23 @@ export interface AgentDef {
   ask: string;
 }
 
-export const AGENTS: AgentDef[] = [
+export const ALL_AGENTS: AgentDef[] = [
   { id: "critical", name: "Critical Result Chaser", job: "Finds critical lab and imaging results and makes sure the doctor knows.", forWhom: "Lab, radiology and the attending doctor", canDo: "Notify the attending doctor. Open the result.", watches: "Every minute, and when a result is released", autoKinds: ["notify"], autoText: "Notifies the attending doctor by itself. It changes nothing in the record.", autoByDefault: true, ask: "Are there critical results the doctor has not seen?" },
-  { id: "discharge", name: "Discharge Readiness", job: "Finds what still blocks each inpatient from going home.", forWhom: "Ward doctors and bed managers", canDo: "Send the visit update. Open the right chart section.", watches: "Every minute, for every admitted patient", autoKinds: ["send-update"], autoText: "Sends the visit update to NPHIES by itself when the chart has changed.", ask: "Who can go home today?" },
+  { id: "discharge", name: "Discharge Readiness", job: "Finds what still blocks each inpatient from going home.", forWhom: "Ward doctors and bed managers", canDo: "Send the visit update. Open the right chart section.", watches: "Every minute, for every admitted patient", autoKinds: [], ask: "Who can go home today?" },
   { id: "ed-flow", name: "Emergency Flow", job: "Watches triage clocks and names who has waited past the CTAS target.", forWhom: "The emergency charge nurse", canDo: "Open the emergency board at the patient.", watches: "Every minute, for every emergency patient", autoKinds: [], ask: "Who has waited too long in emergency?" },
   { id: "clearance", name: "NPHIES Clearance", job: "Goes through everything waiting to be sent to NPHIES and prepares one batch.", forWhom: "Health information and integration staff", canDo: "Send each ready item. Open a rejected item.", watches: "Every minute, and when an order, result or document is finished", autoKinds: ["send-row"], autoText: "Sends each complete item to NPHIES by itself. Refused items always come to a person.", ask: "What is ready to send to NPHIES?" },
   { id: "claim-guard", name: "Claim Guardian", job: "Checks each visit before the claim goes out, so the payer has no reason to refuse it.", forWhom: "Revenue cycle staff", canDo: "Open the missing data. Open the claim.", watches: "Every minute, for active and discharged visits", autoKinds: [], ask: "Which claims would be refused?" },
   { id: "handoff", name: "Shift Handoff", job: "Writes an SBAR handoff for every inpatient, sickest first.", forWhom: "Nurses and doctors at shift change", canDo: "Copy the handoff sheet.", watches: "Keeps the sheet current for the next shift change", autoKinds: [], ask: "Write the shift handoff." },
 ];
 
-export const AGENT_BY_ID = Object.fromEntries(AGENTS.map((a) => [a.id, a])) as Record<AgentId, AgentDef>;
+/**
+ * The agents that are switched on. The starting version has three, all for the ward doctor, and none of them changes the record.
+ * The other three (Emergency Flow, NPHIES Clearance, Claim Guardian) are built and tested, and are added here when the hospital wants them.
+ */
+export const STARTER: AgentId[] = ["critical", "discharge", "handoff"];
+export const AGENTS: AgentDef[] = ALL_AGENTS.filter((a) => STARTER.includes(a.id));
+
+export const AGENT_BY_ID = Object.fromEntries(ALL_AGENTS.map((a) => [a.id, a])) as Record<AgentId, AgentDef>;
 
 export type ProposalAction =
   | { kind: "send-row"; label: string; rowKey: string }
