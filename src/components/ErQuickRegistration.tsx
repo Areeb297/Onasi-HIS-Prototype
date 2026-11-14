@@ -9,6 +9,7 @@ import type { CtasLevel, EdData } from "@/lib/model";
 import { COMPLAINT_SAMPLES, DOCTORS } from "@/lib/reference-data";
 import { REGISTRY, lookupById, registryNameAr } from "@/lib/registry";
 import { navigate } from "@/lib/router";
+import { canSetTriage, useSession } from "@/lib/session";
 
 type Kind = ErIdentity["kind"];
 
@@ -24,6 +25,7 @@ const KINDS: { id: Kind; label: string; hint: string; icon: React.ReactNode }[] 
  */
 export function ErQuickRegistration() {
   const dev = useDevMode();
+  useSession();
   const [kind, setKind] = React.useState<Kind>("registry");
   const [idNumber, setIdNumber] = React.useState("");
   const [given, setGiven] = React.useState("");
@@ -36,7 +38,10 @@ export function ErQuickRegistration() {
   const [complaint, setComplaint] = React.useState("");
   const [doctor, setDoctor] = React.useState(DOCTORS[0].id);
   const [referring, setReferring] = React.useState("");
-  const [ctas, setCtas] = React.useState<CtasLevel | undefined>(undefined);
+  const [picked, setCtas] = React.useState<CtasLevel | undefined>(undefined);
+  // Only a nurse or a doctor may set the level. For a clerk the choice is not shown and the patient waits for triage.
+  const mayTriage = canSetTriage();
+  const ctas = mayTriage ? picked : undefined;
   const [error, setError] = React.useState("");
 
   const person = kind === "registry" && idNumber.length === 10 ? lookupById(idNumber) : undefined;
@@ -166,27 +171,33 @@ export function ErQuickRegistration() {
         {/* Triage level */}
         <section aria-labelledby="er-ctas">
           <h2 id="er-ctas" className="mb-1 text-sm font-semibold">4. Triage level (CTAS)</h2>
+          {mayTriage ? (
+            <>
           <p className="mb-2 text-xs text-muted-foreground">Choose a level now if it is clear at the door. The full triage assessment can confirm or change it.</p>
-          <div role="radiogroup" aria-label="CTAS triage level" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {CTAS.map((c) => (
-              <button key={c.level} type="button" role="radio" aria-checked={ctas === c.level} onClick={() => setCtas(c.level)}
-                className={cn("flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors", ctas === c.level ? cn(c.ring, "bg-muted/60") : "border-border hover:bg-muted/60")}>
-                <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-base font-bold text-white", c.bg)}>{c.level}</span>
+            <div role="radiogroup" aria-label="CTAS triage level" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {CTAS.map((c) => (
+                <button key={c.level} type="button" role="radio" aria-checked={ctas === c.level} onClick={() => setCtas(c.level)}
+                  className={cn("flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors", ctas === c.level ? cn(c.ring, "bg-muted/60") : "border-border hover:bg-muted/60")}>
+                  <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-base font-bold text-white", c.bg)}>{c.level}</span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{c.label}</span>
+                    <span className="block text-xs text-muted-foreground">{c.targetMin === 0 ? "Doctor now" : `Doctor within ${c.targetMin} minutes`}</span>
+                  </span>
+                </button>
+              ))}
+              <button type="button" role="radio" aria-checked={ctas === undefined} onClick={() => setCtas(undefined)}
+                className={cn("flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors", ctas === undefined ? "border-primary bg-primary/5" : "border-border hover:bg-muted/60")}>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border text-base font-semibold text-muted-foreground">?</span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-semibold">{c.label}</span>
-                  <span className="block text-xs text-muted-foreground">{c.targetMin === 0 ? "Doctor now" : `Doctor within ${c.targetMin} minutes`}</span>
+                  <span className="block text-sm font-semibold">Decide At Triage</span>
+                  <span className="block text-xs text-muted-foreground">The triage nurse sets the level</span>
                 </span>
               </button>
-            ))}
-            <button type="button" role="radio" aria-checked={ctas === undefined} onClick={() => setCtas(undefined)}
-              className={cn("flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors", ctas === undefined ? "border-primary bg-primary/5" : "border-border hover:bg-muted/60")}>
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border text-base font-semibold text-muted-foreground">?</span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">Decide At Triage</span>
-                <span className="block text-xs text-muted-foreground">The triage nurse sets the level</span>
-              </span>
-            </button>
-          </div>
+            </div>
+            </>
+          ) : (
+            <p className="rounded-lg border border-border bg-muted px-3 py-2 text-sm">The triage nurse sets the level. After you register, the patient shows on the Emergency board as waiting for triage.</p>
+          )}
           {ctas && <p className="mt-2 text-sm"><span className="font-semibold">CTAS {ctas}, {ctasInfo(ctas).label}.</span> {ctasInfo(ctas).description}</p>}
           {dev && <p className="mt-1 text-xs text-muted-foreground">Goes in ZPV1-22 of the discharge update, with the triage time in ZPV1-21.</p>}
         </section>

@@ -41,7 +41,6 @@ export const EMR_MENU: EmrItem[] = [
   f("medical-history", "Medical History", "General"),
   f("medical-devices", "Medical Devices", "General"),
   f("treatment-plan", "Treatment Plan", "General"),
-  f("e-and-m", "E&M", "General"),
   f("patient-education", "Patient Education", "General"),
   n("soap", "SOAP Notes"),
   f("refer-patient", "Refer Patient", "General"),

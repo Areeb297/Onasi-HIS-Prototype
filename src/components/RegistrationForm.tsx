@@ -10,7 +10,7 @@ import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
 import { ARRIVAL_MODES, CTAS, ctasInfo, defaultArea, saveTriage, startEd } from "@/lib/ed";
 import type { CtasLevel, EdData, PatientExtra } from "@/lib/model";
-import { currentUser } from "@/lib/session";
+import { canSetTriage, currentUser } from "@/lib/session";
 import { COMPLAINT_SAMPLES, DOCTORS, MARITAL, NATIONALITIES, SERVICES, countryCode as nationalityCode, countryLabel } from "@/lib/reference-data";
 import {
   DUPLICATE_REASON_LABEL, INTERPRETER_LANGUAGES, ageLabel, buildFlags, coverageOutcome, findDuplicates, validateRegistration,
@@ -381,7 +381,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
     const out = quickCreate("A04", { patientId, attending, service: visit === "E" ? "ER" : service, reason, referring, cls: visit === "E" ? "E" : "O" });
     if (visit === "E" && out.entry) {
       startEd(out.entry.visitNumber, arrival);
-      if (ctas) saveTriage(out.entry.visitNumber, { ctas, ctasWhy: "Level chosen at registration", arrivalMode: arrival, complaint: reason.trim() || undefined, area: defaultArea(ctas), triageNurse: currentUser().name }, undefined, "Quick triage at registration");
+      if (ctas && canSetTriage()) saveTriage(out.entry.visitNumber, { ctas, ctasWhy: "Level chosen at registration", arrivalMode: arrival, complaint: reason.trim() || undefined, area: defaultArea(ctas), triageNurse: currentUser().name }, undefined, "Quick triage at registration");
     }
     return out;
   }
@@ -602,7 +602,12 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
                   <Select value={arrival} onChange={(e) => setArrival(e.target.value as EdData["arrivalMode"])}>{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>
                 </Field>
               )}
-              {visit === "E" && (
+              {visit === "E" && !canSetTriage() && (
+                <Field label={t("Triage Level (CTAS)", "مستوى الفرز")}>
+                  <p className="rounded-md border border-border bg-muted px-3 py-2 text-sm">{t("The triage nurse sets the level.", "يحدد ممرض الفرز المستوى.")}</p>
+                </Field>
+              )}
+              {visit === "E" && canSetTriage() && (
                 <Field label={t("Triage Level (CTAS)", "مستوى الفرز")} hl7={tag("ZPV1-22")} hint={ctas ? ctasInfo(ctas).description : t("Leave it for the triage nurse, or choose it now if it is clear.", "اتركه لممرض الفرز أو اختره الآن.")}>
                   <Select value={ctas ?? ""} onChange={(e) => setCtas(e.target.value ? (Number(e.target.value) as CtasLevel) : undefined)}>
                     <option value="">{t("Decide At Triage", "يحدد عند الفرز")}</option>

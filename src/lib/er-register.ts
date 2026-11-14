@@ -3,7 +3,7 @@ import { defaultArea, saveTriage, startEd } from "./ed";
 import type { CtasLevel, EdData, PatientExtra } from "./model";
 import { DOCTORS } from "./reference-data";
 import { findDuplicates } from "./registration";
-import { currentUser } from "./session";
+import { canSetTriage, currentUser } from "./session";
 import { lookupById } from "./registry";
 import { getState, nextHealthId, nowLocal, registerPatient, updateEncounter } from "./store";
 
@@ -103,7 +103,8 @@ export function registerEmergency(r: ErRegistration): ErResult {
   updateEncounter(visit, (e) => {
     if (e.ed) e.ed = { ...e.ed, complaint: r.complaint.trim() || undefined, temporaryId: temporary || undefined, arrivalAt: e.ed.arrivalAt ?? nowLocal() };
   }, { touch: false });
-  if (r.ctas) {
+  // A level sent by someone who may not triage is dropped: the patient waits for the triage nurse.
+  if (r.ctas && canSetTriage()) {
     saveTriage(visit, { ctas: r.ctas, ctasWhy: "Level chosen at registration", arrivalMode: r.arrivalMode, complaint: r.complaint.trim() || undefined, area: defaultArea(r.ctas), triageNurse: currentUser().name }, undefined, "Quick triage at registration");
   }
   return { ok: true, visit, patientId, temporary, existing: existing || undefined };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dobFromAge, registerEmergency } from "./er-register";
+import { switchUser } from "./session";
 import { getState } from "./store";
 
 const last = () => {
@@ -98,5 +99,16 @@ describe("triage level at registration", () => {
     expect(ed.triageAt).toBeTruthy();
     expect(ed.area).toBe("Acute");
     expect(ed.triageLog?.[0]).toMatchObject({ ctas: 2, note: "Quick triage at registration" });
+  });
+
+  it("a registration clerk cannot set the level: the patient waits for the triage nurse", () => {
+    switchUser("U3");
+    const r = registerEmergency({ identity: { kind: "unknown", sex: "M", ageYears: 30 }, arrivalMode: "Walk-in", complaint: "Cut hand", ctas: 4 });
+    switchUser("U1");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const ed = getState().encounters.find((e) => e.visitNumber === r.visit)!.ed!;
+    expect(ed.ctas).toBeUndefined();
+    expect(ed.triageAt).toBeUndefined();
   });
 });

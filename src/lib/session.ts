@@ -33,7 +33,7 @@ const ALL: Permission[] = [
 
 export const ROLES: Role[] = [
   { id: "physician", label: "Physician", permissions: ["patient.read", "adt.send", "emr.read", "emr.write", "order.lab", "order.rad", "rx.write", "docs.publish", "ai.use"] },
-  { id: "nurse", label: "Nurse", permissions: ["patient.read", "adt.send", "emr.read", "emr.write", "ai.use"] },
+  { id: "nurse", label: "Nurse", permissions: ["patient.read", "patient.register", "adt.send", "emr.read", "emr.write", "ai.use"] },
   { id: "registration", label: "Registration Clerk", permissions: ["patient.read", "patient.register", "adt.send"] },
   { id: "pharmacist", label: "Pharmacist", permissions: ["patient.read", "emr.read", "rx.dispense"] },
   { id: "lab", label: "Lab Technologist", permissions: ["patient.read", "lab.result"] },
@@ -132,3 +132,6 @@ export function useSession(): State & { user: DemoUser; role: Role } {
   const user = USERS.find((u) => u.id === s.userId) ?? USERS[0];
   return { ...s, user, role: roleOf(user) };
 }
+
+/** A triage level is a clinical judgement: only a nurse or a doctor may set it. A registration clerk leaves it for triage. */
+export const canSetTriage = (): boolean => can("emr.write");
