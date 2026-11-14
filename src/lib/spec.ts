@@ -193,7 +193,7 @@ export const OPEN_QUESTIONS = [
   "The two sources name A45 and A50 differently. The UI uses the Confluence names. The PDF names are shown in the help text.",
   "The CNHI A08 sends ZPV1-8 (UPDATE), BMI and the emergency fields. The other ZPV1, ZDG1 and ZPR1 fields (Hajj flag, specialty, care type, readmission, morphology, recovery times and more) are not captured by the HIS yet.",
   "Coded fields use the value sets published in the guide: patient class, admission method, discharge disposition, nationality, marital status, sex, medical unit, allergy type and severity, ED arrival mode, ED disposition and triage category. The match between our hospital services and the published medical units is our own choice and needs confirming.",
-  "The ED arrival mode list has no code for a patient who walks in (sent as 88, Other), and the ED disposition list has no code for leaving against medical advice (ZPV1-20 left empty, PV1-36 says it). Ask NPHIES which codes they expect.",
+  "The ED arrival mode list has no code for a patient who walks in (sent as 88, Other), and the ED disposition list has no code for leaving against medical advice (assumed: ZPV1-20 is sent as 2, Discharged, and PV1-36 says it was against advice).",
   "Diagnosis, procedure and allergen codes are checked for the right coding system only. The code lists themselves are on the NHIC website and are not loaded.",
   "A03 requires DG1. A01, A04 to A08, A13 and A31 have DG1 optional.",
 ];

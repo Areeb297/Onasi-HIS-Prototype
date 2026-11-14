@@ -120,7 +120,7 @@ export const ASSUMPTIONS: string[] = [
   "Health ID is checked as 10 digits in the simulator. The real format is not in the integration guide.",
   "Narcotic, controlled and restricted classes in the drug catalogue are for demonstration only.",
   "Validity period end is treatment days times fills plus 7 days. The real rule is not in the guide.",
-  "Cancel on a completed controlled item (Seha step 7.2.5) is allowed. The status definitions say cancelled is for items with no dispense, so a dispense should be cancelled first.",
+  "Assumed: cancel on a completed controlled item is allowed, as Seha step 7.2.5 asks, although the status definitions say cancelled is for items with no dispense.",
   "Controlled items are issued on their own prescription so one Raqeeb reference id covers them.",
   "On a partial dispense, the duration in the dosage is set to the days supplied, so it equals daysSupply as the page asks.",
 ];

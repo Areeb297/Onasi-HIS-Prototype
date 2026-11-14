@@ -127,7 +127,7 @@ export const SEG_SEP = "\r";
 
 /**
  * ZPV1-18, from CS-Adm-EDArrivalMode (Confluence page 526909458).
- * The published list has no code for a patient who walks in, so "Walk-in" is sent as 88 (Other).
+ * The published list has no code for a patient who walks in. Assumed: "Walk-in" is sent as 88 (Other).
  * The older HIS values "Ambulance" and "Referral" do not say which vehicle, so they are sent as 99 (Not stated).
  */
 export const ED_ARRIVAL_CODE: Record<EdData["arrivalMode"], string> = {
@@ -139,10 +139,11 @@ export const ED_ARRIVAL_CODE: Record<EdData["arrivalMode"], string> = {
 
 /**
  * ZPV1-20, from CS-Adm-EDDisposition (Confluence page 527335436).
- * The list has no code for leaving against medical advice, so that field is left empty and PV1-36 carries 225928004.
+ * The list has no code for leaving against medical advice. Assumed: the patient was seen and then left, so it is sent
+ * as 2 (Discharged), and PV1-36 carries 225928004 to say it was against advice.
  */
 export const ED_DISPOSITION_CODE: Record<NonNullable<EdData["disposition"]>, string> = {
-  Admitted: "1", Discharged: "2", "Left Without Being Seen": "3", "Dead On Arrival": "4", Transferred: "5", Died: "6", "Left Against Advice": "",
+  Admitted: "1", Discharged: "2", "Left Without Being Seen": "3", "Dead On Arrival": "4", Transferred: "5", Died: "6", "Left Against Advice": "2",
 };
 
 export function messageToString(segs: Seg[]): string {

@@ -106,7 +106,7 @@ export function AssumptionNote({ items }: { items: string[] }) {
   return (
     <div className="rounded-lg border border-warn/40 bg-warn/8 px-3 py-2 text-xs">
       <button className="flex w-full items-center justify-between gap-2 font-medium text-warn" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <span>Assumption: {all.length} places where the NPHIES snapshot is unclear</span>
+        <span>Assumptions: {all.length} points the NPHIES guide leaves open, and what the app does</span>
         <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
       </button>
       {open && (

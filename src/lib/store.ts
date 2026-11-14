@@ -506,7 +506,7 @@ export function updateEncounter(visit: string, fn: (e: Encounter) => void, opts:
 const EXTRA_GIVEN = ["Ziad", "Lama", "Rakan", "Sara", "Nawaf", "Joud", "Fahad", "Abeer"];
 const EXTRA_FAMILY = ["Alkhaldi", "Alfaisal", "Albishi", "Alsaif", "Alharthi", "Almansour", "Alkhalifa", "Alduwaish"];
 
-/** A made-up Health ID for testing. The real format is not in the integration guide. */
+/** A made-up Health ID for testing. Assumed format: 10 digits (the guide does not state the length). */
 export function nextHealthId(): string {
   return String(1090000000 + (getState().counters.patient + 1) * 17);
 }

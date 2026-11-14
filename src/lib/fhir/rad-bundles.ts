@@ -20,7 +20,7 @@ import type { DocStatus, RadOrder } from "./types";
 
 /**
  * Code system of the "KSA Imaging Procedure" value set, as the official order sample sends it.
- * Open question: the report sample uses ...1.204.15.1 and the value set workbook lists 1.2.840.10008.6.1.1437 for most codes.
+ * Assumed to hold for reports too: the report sample uses ...1.204.15.1 and the value set workbook lists 1.2.840.10008.6.1.1437 for most codes.
  */
 export const IMAGING_PROCEDURE_SYSTEM = "urn:oid:2.16.840.1.113883.3.3731.1.204.15";
 /** DICOM modality code system as an OID (Modalities value set, page id 39780455). */

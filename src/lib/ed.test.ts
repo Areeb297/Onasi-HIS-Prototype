@@ -121,7 +121,7 @@ describe("ED fields in the CNHI discharge update", () => {
     expect(withEd("Transferred").z[20]).toBe("5");
     expect(withEd("Left Without Being Seen").z[20]).toBe("3");
     const lama = withEd("Left Against Advice");
-    expect(lama.z[20] ?? "").toBe(""); // no published ED code, so nothing is invented
+    expect(lama.z[20]).toBe("2"); // no published ED code: sent as Discharged, PV1-36 says against advice
     expect(lama.pv1[36]).toBe("225928004");
     state = seedState();
   });
