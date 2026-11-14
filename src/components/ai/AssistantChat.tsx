@@ -1,7 +1,8 @@
 import * as React from "react";
-import { IconArrowUp, IconChevronDown } from "@tabler/icons-react";
+import { IconArrowUp, IconChevronDown, IconMessagePlus } from "@tabler/icons-react";
 import { Check, ChevronRight } from "lucide-react";
 import { AgentIcon } from "@/components/ai/AgentIcon";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { Badge, Button, cn } from "@/components/ui/primitives";
 import { approveTask, checkNow, dismissTask, isShortcut, runAction, useAgentWork } from "@/lib/ai/agent-work";
@@ -22,6 +23,17 @@ interface Turn {
 }
 
 const STEP_MS = 380;
+
+/** Questions staff ask before they trust an assistant, answered plainly. */
+const FAQ: { q: string; a: string }[] = [
+  { q: "What can I ask?", a: "Six things today: who can go home, critical results the doctor has not seen, who has waited too long in emergency, what is ready to go to NPHIES, which claims would be refused, and the shift handoff. You can name a patient or a visit number to narrow the answer." },
+  { q: "Does it change anything in the record?", a: "Asking changes nothing. When an answer includes a step that would change a record, such as sending a message to NPHIES, it shows an Approve button and waits. An agent set to Automatic on the Agents At Work view may finish its own listed step, and every such step is logged." },
+  { q: "Where do the answers come from?", a: "From the live record in this system: the visit lists, charts, orders, results and the NPHIES send list. Each answer shows what was read before it shows what was found. It does not use the internet or outside data." },
+  { q: "Which patients can it read?", a: "The same ones you can. It works with your role and permissions. Confidential charts stay closed unless you have broken the glass, and it will not match a confidential patient by name." },
+  { q: "Is this a language model?", a: "Not in this version. The checks are fixed rules and the chat matches your words to one of the six topics. When a question is outside them it says so. A language model can be connected later behind the same screens." },
+  { q: "Who can see what I asked?", a: "Every question, approval and dismissal is written to the audit trail with your name and the time. Compliance staff can review it on the Audit page." },
+  { q: "Can it give a diagnosis or choose a treatment?", a: "No. It finds missing data, waiting results and late steps. Clinical decisions stay with the doctor and the nurse. It is not a medical device." },
+];
 
 function Finding({ p }: { p: Proposal }) {
   const work = useAgentWork();
@@ -163,43 +175,10 @@ export function AssistantChat({ firstQuestion }: { firstQuestion?: string }) {
   }, [firstQuestion, ask]);
 
   const empty = turns.length === 0;
-  return (
-    <div className="mx-auto flex max-w-3xl flex-col">
-      {empty ? (
-        <div className="pb-6 pt-8 text-center sm:pt-14">
-          <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-[var(--brand-deep)] text-[var(--brand-mint)]"><OnasiAiMark size={34} /></span>
-          <h2 className="mt-4 text-2xl font-semibold tracking-tight">Ask about the hospital</h2>
-          <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">{ASSISTANT_NAME} reads the live record and answers with what it found and where. You can name a patient.</p>
-          <ul className="mt-7 grid gap-2 text-left sm:grid-cols-2">
-            {SUGGESTED.map((s) => (
-              <li key={s.agent}>
-                <button type="button" onClick={() => ask(s.text)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/50">
-                  <AgentIcon agent={s.agent} />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{s.text}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{AGENT_BY_ID[s.agent].name}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <div className="space-y-6 pb-6 pt-2" aria-live="polite">
-          {turns.map((t, i) => (
-            <div key={t.id} className="space-y-4">
-              <div className="flex justify-end">
-                <p className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[0.9375rem] text-primary-foreground">{t.question}</p>
-              </div>
-              <Reply turn={t} live={i === turns.length - 1} onAsk={ask} onSettled={scroll} />
-            </div>
-          ))}
-        </div>
-      )}
-
+  const composer = (
       <form
         onSubmit={(e) => { e.preventDefault(); ask(text); }}
-        className="sticky bottom-4 rounded-2xl border border-border bg-card p-2 shadow-lg transition-shadow focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-primary/10"
+        className={cn("rounded-2xl text-left", empty ? "mt-6" : "sticky bottom-4", " border border-border bg-card p-2 shadow-lg transition-shadow focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-primary/10")}
       >
         <div className="flex items-end gap-2">
           <textarea
@@ -218,6 +197,58 @@ export function AssistantChat({ firstQuestion }: { firstQuestion?: string }) {
         </div>
         <p className="px-3 pb-1 pt-1.5 text-xs text-muted-foreground">Asking changes nothing. A step that changes a record waits for your approval and goes to the audit trail.</p>
       </form>
+  );
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col">
+      {empty ? (
+        <div className="pb-6 pt-8 text-center sm:pt-14">
+          <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-[var(--brand-deep)] text-[var(--brand-mint)]"><OnasiAiMark size={34} /></span>
+          <h2 className="mt-4 text-2xl font-semibold tracking-tight">Ask about the hospital</h2>
+          <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">{ASSISTANT_NAME} reads the live record and answers with what it found and where. You can name a patient.</p>
+          {composer}
+          <ul className="mt-4 grid gap-2 text-left sm:grid-cols-2">
+            {SUGGESTED.map((s) => (
+              <li key={s.agent}>
+                <button type="button" onClick={() => ask(s.text)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/50">
+                  <AgentIcon agent={s.agent} />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{s.text}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{AGENT_BY_ID[s.agent].name}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <section aria-labelledby="ai-faq" className="mt-8 text-left">
+            <h3 id="ai-faq" className="text-sm font-semibold">Questions and answers</h3>
+            <Accordion type="single" collapsible className="mt-2 rounded-xl border border-border bg-card px-4">
+              {FAQ.map((f) => (
+                <AccordionItem key={f.q} value={f.q}>
+                  <AccordionTrigger className="text-left text-sm font-medium">{f.q}</AccordionTrigger>
+                  <AccordionContent className="text-sm leading-relaxed text-muted-foreground">{f.a}</AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </section>
+        </div>
+      ) : (
+        <div className="space-y-6 pb-6 pt-2" aria-live="polite">
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => { setTurns([]); asked.current = ""; }}><IconMessagePlus className="size-4" aria-hidden="true" />New Chat</Button>
+          </div>
+          {turns.map((t, i) => (
+            <div key={t.id} className="space-y-4">
+              <div className="flex justify-end">
+                <p className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[0.9375rem] text-primary-foreground">{t.question}</p>
+              </div>
+              <Reply turn={t} live={i === turns.length - 1} onAsk={ask} onSettled={scroll} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!empty && composer}
       <div ref={endRef} className="h-4" />
     </div>
   );
