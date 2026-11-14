@@ -1,19 +1,24 @@
 import * as React from "react";
-import { Ban, RotateCcw } from "lucide-react";
+import { Ban, RotateCcw, TriangleAlert } from "lucide-react";
 import { FlagPill, Gate, TestCodeNote } from "@/components/emr/fhir-ui";
-import { shortRange } from "@/components/emr/LabResultsTable";
+import { LabSignOff, shortRange } from "@/components/emr/LabResultsTable";
 import { Badge, Button, Hl7Tag, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
-import { ANTIBIOTICS, ORGANISMS, refTextFor, testByCode, unitText, type Interp, type LabTest } from "@/lib/fhir/lab-catalog";
+import { ANTIBIOTICS, ORGANISMS, critTextFor, rangeProblems, refTextFor, testByCode, unitText, type LabTest } from "@/lib/fhir/lab-catalog";
 import {
-  cancelLabResult, fillSampleResults, isPublished, missingResults, noteResultsSaved, publishLabResult, saveLabResult,
+  awaitingVerification, cancelLabResult, fillSampleResults, isPublished, leafTests, missingResults, noteResultsSaved, publishLabResult,
+  saveLabResult, submitForVerification,
 } from "@/lib/lab";
 import type { Patient } from "@/lib/model";
 import { can } from "@/lib/session";
 import type { LabOrder } from "@/lib/fhir/types";
 
-const INTERPS: Interp[] = ["N", "H", "L", "HH", "LL", "A", "POS", "NEG"];
+const COLS = 7;
 
+const stamp = (iso: string) =>
+  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+
+/** One analyte: value, unit, reference range, critical range and the flag the system works out. */
 function ResultRow({ order, test, sex, editable, indent }: { order: LabOrder; test: LabTest; sex: "M" | "F"; editable: boolean; indent: boolean }) {
   const dev = useDevMode();
   const r = order.results[test.code];
@@ -21,11 +26,15 @@ function ResultRow({ order, test, sex, editable, indent }: { order: LabOrder; te
   const cancelled = r?.status === "cancelled";
   const canCancel = editable && !!r && (published || r.status !== "cancelled");
   const unit = unitText(test);
+  const range = shortRange(test, sex);
+  const crit = critTextFor(test);
+  const critical = (r?.interp === "HH" || r?.interp === "LL") && !cancelled;
+  const filled = !!r && (!!r.value.trim() || !!r.organism);
 
   return (
     <>
-      <tr className={cn((r?.interp === "HH" || r?.interp === "LL") && !cancelled && "bg-destructive/10")}>
-        <Td className={cn(indent && "pl-6")}>
+      <tr className={cn(critical && "bg-destructive/10")}>
+        <Td className={cn("py-1.5", indent && "pl-6", critical && "border-l-2 border-l-destructive")}>
           <div className={cn("font-medium", cancelled && "line-through opacity-60")}>{test.short}</div>
           {dev && (
             <div className="mt-0.5 flex items-center gap-1.5">
@@ -34,10 +43,11 @@ function ResultRow({ order, test, sex, editable, indent }: { order: LabOrder; te
             </div>
           )}
         </Td>
-        <Td>
+        <Td className="py-1.5">
           {test.kind === "organism" ? (
             <Select
               aria-label={`${test.short} organism`}
+              className="h-9 min-w-[150px]"
               value={r?.organism?.code ?? (r?.value === "No growth" ? "none" : "")}
               disabled={!editable}
               onChange={(e) => {
@@ -55,54 +65,42 @@ function ResultRow({ order, test, sex, editable, indent }: { order: LabOrder; te
                 <option key={o.code} value={o.code}>{o.display}</option>
               ))}
             </Select>
+          ) : test.choices ? (
+            <Select
+              aria-label={`${test.short} result`}
+              className="h-9 min-w-[120px]"
+              value={r?.value ?? ""}
+              disabled={!editable}
+              onChange={(e) => saveLabResult(order.id, test.code, { value: e.target.value })}
+            >
+              <option value="">Choose result</option>
+              {test.choices.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+              {r?.value && !test.choices.includes(r.value) && <option value={r.value}>{r.value}</option>}
+            </Select>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <Input
-                aria-label={`${test.short} result`}
-                className="min-w-[90px]"
-                list={test.choices ? `choices-${test.code}` : undefined}
-                value={r?.value ?? ""}
-                disabled={!editable}
-                inputMode={test.choices ? "text" : "decimal"}
-                onChange={(e) => saveLabResult(order.id, test.code, { value: e.target.value })}
-              />
-              {test.choices && (
-                <datalist id={`choices-${test.code}`}>
-                  {test.choices.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
-              )}
-              {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
-            </div>
+            <Input
+              aria-label={`${test.short} result`}
+              aria-required="true"
+              className="h-9 w-[110px] tabular-nums"
+              value={r?.value ?? ""}
+              disabled={!editable}
+              inputMode="decimal"
+              onChange={(e) => saveLabResult(order.id, test.code, { value: e.target.value })}
+            />
           )}
         </Td>
-        <Td className="max-w-[240px] text-xs text-muted-foreground">
-          <span title={refTextFor(test, sex)}>{shortRange(test, sex).length > 60 ? `${shortRange(test, sex).slice(0, 57)}...` : shortRange(test, sex)}</span>
-          {dev && <div className="mt-0.5 font-mono text-xs">{refTextFor(test, sex).length} characters in referenceRange.text</div>}
+        <Td className="py-1.5 text-xs whitespace-nowrap text-foreground">{unit}</Td>
+        <Td className="max-w-[220px] py-1.5 text-xs text-foreground">
+          <span title={refTextFor(test, sex)}>{range.length > 60 ? `${range.slice(0, 57)}...` : range}</span>
+          {dev && <div className="mt-0.5 font-mono text-xs text-muted-foreground">{refTextFor(test, sex).length} characters in referenceRange.text</div>}
         </Td>
-        <Td>
-          {r ? (
-            <div className="flex items-center gap-1.5">
-              <FlagPill interp={r.interp} />
-              {editable && (
-                <Select
-                  aria-label={`${test.short} flag`}
-                  className="h-8 w-[86px] px-1.5 text-xs"
-                  value={r.interp}
-                  onChange={(e) => saveLabResult(order.id, test.code, { interp: e.target.value as Interp })}
-                >
-                  {INTERPS.map((i) => (
-                    <option key={i} value={i}>{i}</option>
-                  ))}
-                </Select>
-              )}
-            </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">Empty</span>
-          )}
+        <Td className="py-1.5 text-xs text-foreground">
+          {crit ? <span className="font-medium text-destructive">{crit}</span> : <span className="text-muted-foreground">None set</span>}
         </Td>
-        <Td>
+        <Td className="py-1.5">{filled && r ? <FlagPill interp={r.interp} /> : <span className="text-xs text-muted-foreground">Empty</span>}</Td>
+        <Td className="py-1.5">
           <div className="flex items-center gap-1.5">
             {r?.status === "corrected" && <Badge tone="update">Corrected</Badge>}
             {cancelled && <Badge tone="neutral">Cancelled</Badge>}
@@ -122,15 +120,15 @@ function ResultRow({ order, test, sex, editable, indent }: { order: LabOrder; te
       </tr>
       {test.kind === "organism" && r?.organism && (
         <tr>
-          <Td colSpan={5} className="bg-muted/30">
+          <Td colSpan={COLS} className="bg-muted/30">
             <div className="grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)]">
-              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+              <label className="flex flex-col gap-1 text-xs font-medium text-foreground">
                 Growth
                 <Input value={r.value} disabled={!editable} onChange={(e) => saveLabResult(order.id, test.code, { value: e.target.value })} />
               </label>
               <div>
-                <div className="mb-1 text-xs font-medium text-muted-foreground">
-                  Sensitivity {dev && <span className="ml-1 font-normal">(LOINC susceptibility codes)</span>}
+                <div className="mb-1 text-xs font-medium text-foreground">
+                  Sensitivity {dev && <span className="ml-1 font-normal text-muted-foreground">(LOINC susceptibility codes)</span>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {ANTIBIOTICS.map((a) => {
@@ -167,29 +165,56 @@ function ResultRow({ order, test, sex, editable, indent }: { order: LabOrder; te
   );
 }
 
-/** Result entry for one order: quantitative, textual and microbiology results, then publish or amend. */
-export function LabResultEntry({ order, patient }: { order: LabOrder; patient: Patient }) {
+/**
+ * Result entry for one order, as one compact table: a row per analyte with the value, unit, reference range,
+ * critical range and flag. The flag comes from the value and the ranges. When every result is in, the technologist
+ * sends the order for verification; a second user verifies and releases it.
+ */
+export function LabResultEntry({ order, patient, onVerify }: { order: LabOrder; patient: Patient; onVerify?: () => void }) {
   const dev = useDevMode();
   const [amendAs, setAmendAs] = React.useState<"amended" | "corrected">("corrected");
   const published = isPublished(order);
+  const waiting = awaitingVerification(order);
   const canEnter = can("lab.result");
-  const editable = canEnter && (order.status === "in-progress" || published);
+  const editable = canEnter && !waiting && (order.status === "in-progress" || published);
   const missing = missingResults(order);
   const sex = patient.sex;
 
   const groups = order.codes.map((c) => testByCode(c)).filter((t): t is LabTest => !!t);
+  const badRanges = dev ? leafTests(order).map((t) => ({ t, problems: rangeProblems(t) })).filter((x) => x.problems.length > 0) : [];
 
   return (
     <div className="space-y-4">
-      {!editable && order.status !== "resulted" && order.status !== "amended" && (
+      {!editable && !waiting && order.status !== "resulted" && order.status !== "amended" && (
         <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
           {canEnter ? "Start processing the specimen before entering results." : "Your role cannot enter laboratory results."}
         </p>
       )}
+      {order.sentBack && !waiting && !published && (
+        <p role="alert" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
+          <span className="font-semibold">Sent back by {order.sentBack.by}, {stamp(order.sentBack.at)}.</span> Reason: {order.sentBack.reason} Check the results, then send them for verification again.
+        </p>
+      )}
+      {waiting && (
+        <p className="rounded-lg border border-update/40 bg-update/10 px-3 py-2 text-sm">
+          <span className="font-semibold">Waiting for verification.</span> The results cannot change now. A second user checks them, then releases them or sends them back.
+        </p>
+      )}
       {published && (
         <p className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
-          This result is published. Changing a value or flag marks it as corrected. Cancel a result to remove it from the report. Then press Publish Amendment to replace the earlier version in NPHIES.
+          This result is released. Changing a value marks it as corrected. Cancel a result to remove it from the report. Then press Publish Amendment to replace the earlier version in NPHIES.
         </p>
+      )}
+      {badRanges.length > 0 && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+          <div>
+            <div className="font-semibold text-destructive">Catalogue range problem</div>
+            {badRanges.map(({ t, problems }) => (
+              <div key={t.code}>{t.short}: {problems.join(" ")}</div>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="rounded-lg border border-border">
@@ -197,8 +222,18 @@ export function LabResultEntry({ order, patient }: { order: LabOrder; patient: P
           <thead>
             <tr>
               <Th>Test</Th>
-              <Th>Result</Th>
-              <Th>Reference</Th>
+              <Th>
+                Result
+                {editable && !published && (
+                  <>
+                    <span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span>
+                    <span className="sr-only"> (required)</span>
+                  </>
+                )}
+              </Th>
+              <Th>Unit</Th>
+              <Th>Reference Range</Th>
+              <Th>Critical Range</Th>
               <Th>Flag</Th>
               <Th>Status</Th>
             </tr>
@@ -208,8 +243,8 @@ export function LabResultEntry({ order, patient }: { order: LabOrder; patient: P
               t.panel
                 ? [
                     <tr key={`h-${t.code}`} className="bg-muted/40">
-                      <Td colSpan={5} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t.short} {dev && <span className="ml-1 font-mono normal-case">Observation panel, LOINC {t.code}, members in hasMember</span>}
+                      <Td colSpan={COLS} className="py-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
+                        {t.short} {dev && <span className="ml-1 font-mono font-normal normal-case text-muted-foreground">Observation panel, LOINC {t.code}, members in hasMember</span>}
                       </Td>
                     </tr>,
                     ...t.panel.map((m) => testByCode(m)).filter((m): m is LabTest => !!m).map((m) => (
@@ -220,19 +255,25 @@ export function LabResultEntry({ order, patient }: { order: LabOrder; patient: P
             )}
           </tbody>
         </Table>
+        <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          The flag is worked out from the value and the ranges. It cannot be picked by hand.
+        </p>
+        <LabSignOff order={order} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {dev && (
+        {dev && !published && (
           <Gate allowed={canEnter} reason="Your role cannot enter laboratory results.">
             <Button disabled={!editable} onClick={() => fillSampleResults(order.id)} title="Fills empty results so the report meets the Seha minimum content (2.1.1) when the order has CBC, CRP, urinalysis and a culture.">
-              Fill Conformance Sample Values
+              Fill Sample Values
             </Button>
           </Gate>
         )}
-        <Gate allowed={canEnter} reason="Your role cannot enter laboratory results.">
-          <Button disabled={!editable} onClick={() => noteResultsSaved(order.id)}>Save Results</Button>
-        </Gate>
+        {!waiting && (
+          <Gate allowed={canEnter} reason="Your role cannot enter laboratory results.">
+            <Button disabled={!editable} onClick={() => noteResultsSaved(order.id)}>Save Results</Button>
+          </Gate>
+        )}
         {published ? (
           <>
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -249,14 +290,24 @@ export function LabResultEntry({ order, patient }: { order: LabOrder; patient: P
             </Gate>
             {!order.resultDirty && <span className="text-xs text-muted-foreground">Change a result to enable the amendment.</span>}
           </>
+        ) : waiting ? (
+          onVerify && (
+            <Gate allowed={canEnter} reason="Your role cannot verify laboratory results.">
+              <Button variant="primary" disabled={!canEnter} onClick={onVerify}>Verify Result</Button>
+            </Gate>
+          )
         ) : (
-          <Gate allowed={canEnter} reason="Your role cannot publish laboratory results.">
-            <Button variant="primary" disabled={!editable || missing.length > 0} onClick={() => publishLabResult(order.id)}>
-              Publish Result
+          <Gate allowed={canEnter} reason="Your role cannot enter laboratory results.">
+            <Button variant="primary" disabled={!editable || missing.length > 0} onClick={() => submitForVerification(order.id)}>
+              Send For Verification
             </Button>
           </Gate>
         )}
-        {missing.length > 0 && editable && <span className="text-xs text-muted-foreground">Still empty: {missing.map((m) => m.short).join(", ")}</span>}
+        {missing.length > 0 && editable && (
+          <span className="text-xs font-medium text-warn" role="status">
+            Still empty: {missing.map((m) => m.short).join(", ")}.{!published && ` Enter ${missing.length === 1 ? "it" : "them"} before you send for verification.`}
+          </span>
+        )}
       </div>
     </div>
   );

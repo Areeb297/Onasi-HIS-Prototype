@@ -1,7 +1,7 @@
 import { quickSend } from "./actions";
 import { publishDoc, getDocsState } from "./docs";
-import { getLab, orderNphiesState, resultNphiesState, publishLabResult, sendLabOrder, missingResults, leafTests, testByCode } from "./lab";
-import { getRad, radOrderNphiesState, radReportNphiesState, publishRadReport, reportMissing, sendRadOrder, procByCode } from "./radiology";
+import { getLab, orderNphiesState, resultNphiesState, publishLabResult, sendLabOrder, labResultSendBlock, testByCode } from "./lab";
+import { getRad, radOrderNphiesState, radReportNphiesState, publishRadReport, radReportSendBlock, sendRadOrder, procByCode } from "./radiology";
 import { getRx, getDrug } from "./rx";
 import { planPrescription, sendPrescription } from "./rx-send";
 import { can, type Permission } from "./session";
@@ -14,7 +14,8 @@ import { getVitals, needsSend, sendPanel } from "./vitals";
  *
  * Assumptions (not stated in the NPHIES guide, chosen to match how the rest of the app works):
  * - A lab order is offered once the specimen is collected (the user's rule). A radiology order is offered once the exam is done.
- * - A result or report is offered once it is complete. Results that are still being typed show why they cannot be sent.
+ * - A result or report is offered once it is released: a lab result after a second user verified it, a radiology report
+ *   after the radiologist signed it. Until then the row says what it is waiting for.
  * - A dispense is sent at the moment of dispensing, so it appears here as Sent and has no send button.
  * - Visit updates (ADT A08) are offered when the chart changed after the last update.
  */
@@ -125,11 +126,11 @@ export function buildOutbox(): OutboxRow[] {
     const resultSent = o.sends.some((s) => s.kind === "lab-result");
     if (o.status === "in-progress" || o.status === "resulted" || o.status === "amended" || resultSent) {
       const res = resultNphiesState(o);
-      const missing = missingResults(o).length;
-      const total = leafTests(o).length;
+      // Sent only after the lab verified and released it. The block text says what is still open.
+      const block = labResultSendBlock(o);
       add({
         key: `lab-result:${o.id}`, type: "lab-result", ref: o.id, patientId: o.patientId, visit: o.visitNumber, item: `Result: ${tests}`,
-        state: fromTone(res.tone), stateDetail: res.label, ready: missing === 0, blocked: `${missing} of ${total} results are still empty.`,
+        state: fromTone(res.tone), stateDetail: res.label, ready: block === null, blocked: block ?? "",
         lastAt: o.sends.filter((s) => s.kind === "lab-result").at(-1)?.at,
       });
     }
@@ -150,10 +151,11 @@ export function buildOutbox(): OutboxRow[] {
     const reportSent = o.sends.some((s) => s.kind === "rad-report");
     if (o.study || reportSent) {
       const st = radReportNphiesState(o);
-      const miss = reportMissing(o);
+      // Sent only after the radiologist signed and the report was released.
+      const block = radReportSendBlock(o);
       add({
         key: `rad-report:${o.id}`, type: "rad-report", ref: o.id, patientId: o.patientId, visit: o.visitNumber, item: `Report: ${proc}`,
-        state: fromTone(st.tone), stateDetail: st.label, ready: miss.length === 0 && !!o.study, blocked: `The report still needs: ${miss.join(", ")}.`,
+        state: fromTone(st.tone), stateDetail: st.label, ready: block === null, blocked: block ?? "",
         lastAt: o.sends.filter((s) => s.kind === "rad-report").at(-1)?.at,
       });
     }

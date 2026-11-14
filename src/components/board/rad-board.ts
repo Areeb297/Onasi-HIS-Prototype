@@ -19,7 +19,7 @@ export const RAD_REPORT_TARGET_MIN: Record<Prio, number> = { stat: 30, urgent: 1
 export const RAD_STAGES: (BoardStage & { id: RadStageId })[] = [
   { id: "ordered", label: "Ordered", tone: "move", hint: "Waiting for the exam", target: "Exam target 15 min to 4 h" },
   { id: "performed", label: "Exam Done", tone: "admit", hint: "Images taken, no report yet", target: "Report target 30 min to 24 h" },
-  { id: "reporting", label: "Reporting", tone: "update", hint: "Radiologist is writing", target: "Report target 30 min to 24 h" },
+  { id: "reporting", label: "Reporting", tone: "update", hint: "Draft, then signed by the radiologist", target: "Report target 30 min to 24 h" },
   { id: "reported", label: "Reported", tone: "ok", hint: "Released to the chart", limit: 4 },
 ];
 
@@ -156,7 +156,7 @@ export function radStats(orders: RadOrder[], now: number): RadStats {
 }
 
 export const RAD_MOVE_HINT: Record<string, string> = {
-  "ordered>performed": "Runs markPerformed. Creates the imaging study (study UID and accession). No NPHIES message.",
+  "ordered>performed": "Opens the exam record. completeExam checks it, then creates the imaging study (study UID and accession). No NPHIES message.",
   "performed>reporting": "Opens the report editor. saveRadReport stores the text. No NPHIES message yet.",
-  "reporting>reported": "Runs releaseRadReport. The report is final in the chart. Nothing is sent: it waits on the NPHIES Clinical page, which sends the report FHIR bundle (3.1).",
+  "reporting>reported": "Runs releaseRadReport, which needs the radiologist signature (signRadReport). The report is final in the chart. Nothing is sent: it waits on the NPHIES Clinical page, which sends the report FHIR bundle (3.1).",
 };

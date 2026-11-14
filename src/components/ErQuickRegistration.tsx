@@ -1,13 +1,13 @@
 import * as React from "react";
 import { Siren, UserRound, UserRoundSearch, UserRoundX } from "lucide-react";
-import { Badge, Button, Card, Field, Input, Select, cn } from "@/components/ui/primitives";
+import { Badge, Button, Card, Field, Input, RequiredNote, Select, cn } from "@/components/ui/primitives";
 import { ageInMonths, ageText } from "@/lib/ctas";
 import { useDevMode } from "@/lib/devmode";
 import { ARRIVAL_MODES } from "@/lib/ed";
-import { dobFromAge, registerEmergency, type ErIdentity } from "@/lib/er-register";
+import { dobFromAge, existingFileFor, registerEmergency, type ErIdentity } from "@/lib/er-register";
 import type { EdData } from "@/lib/model";
 import { COMPLAINT_SAMPLES, DOCTORS } from "@/lib/reference-data";
-import { REGISTRY, lookupById } from "@/lib/registry";
+import { REGISTRY, lookupById, registryNameAr } from "@/lib/registry";
 import { navigate } from "@/lib/router";
 
 type Kind = ErIdentity["kind"];
@@ -39,6 +39,8 @@ export function ErQuickRegistration() {
   const [error, setError] = React.useState("");
 
   const person = kind === "registry" && idNumber.length === 10 ? lookupById(idNumber) : undefined;
+  // A registry patient who already has a file keeps it. The visit is added to that file, so no second file is made.
+  const onFile = person ? existingFileFor(person.idNumber) : undefined;
   const ageN = age.trim() === "" || Number.isNaN(Number(age)) ? undefined : Math.max(0, Math.floor(Number(age)));
 
   const identity: ErIdentity | null =
@@ -86,25 +88,31 @@ export function ErQuickRegistration() {
           <Card className="mt-3 p-4">
             {kind === "registry" && (
               <div className="space-y-2">
-                <Field label="ID (Iqama) number" hl7={dev ? "PID-3 via registry" : undefined}>
+                <Field required label="ID (Iqama) number" hl7={dev ? "PID-3 via registry" : undefined}>
                   <Input className="w-64 font-mono" value={idNumber} onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" placeholder="10 digits" aria-label="ID number" />
                 </Field>
                 <p className="text-xs text-muted-foreground">
                   Test IDs:{" "}
                   {REGISTRY.map((r) => <button key={r.idNumber} type="button" onClick={() => setIdNumber(r.idNumber)} className="me-2 font-mono text-move underline">{r.idNumber}</button>)}
                 </p>
-                {person && <Badge tone="ok">Found in the national registry (simulated): {person.first} {person.family}</Badge>}
+                {person && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="ok" className="whitespace-normal leading-tight">Found in the national registry (simulated): {person.first} {person.family}</Badge>
+                    <span lang="ar" className="text-sm text-muted-foreground"><bdi dir="rtl">{registryNameAr(person)}</bdi></span>
+                  </div>
+                )}
+                {onFile && <p className="text-sm">This patient already has a file here ({onFile.mrn}). The visit will be added to that file.</p>}
               </div>
             )}
             {kind === "known" && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="First name" hl7={dev ? "PID-5.2" : undefined}><Input value={given} onChange={(e) => setGiven(e.target.value)} dir="ltr" /></Field>
-                <Field label="Family name" hl7={dev ? "PID-5.1" : undefined}><Input value={family} onChange={(e) => setFamily(e.target.value)} dir="ltr" /></Field>
+                <Field required label="First name" hl7={dev ? "PID-5.2" : undefined}><Input value={given} onChange={(e) => setGiven(e.target.value)} dir="ltr" /></Field>
+                <Field required label="Family name" hl7={dev ? "PID-5.1" : undefined}><Input value={family} onChange={(e) => setFamily(e.target.value)} dir="ltr" /></Field>
                 <Field label="Sex" hl7={dev ? "PID-8" : undefined}>
                   <Select value={sex} onChange={(e) => setSex(e.target.value as "M" | "F")}><option value="M">Male</option><option value="F">Female</option></Select>
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Date of birth" hl7={dev ? "PID-7" : undefined}><Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} /></Field>
+                  <Field label="Date of birth" hl7={dev ? "PID-7" : undefined} hint="Or enter the age."><Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} /></Field>
                   <Field label="Or age (years)"><Input value={age} onChange={(e) => setAge(e.target.value)} inputMode="numeric" disabled={!!dob} /></Field>
                 </div>
               </div>
@@ -114,10 +122,11 @@ export function ErQuickRegistration() {
                 <Field label="Sex (best guess)" hl7={dev ? "PID-8" : undefined}>
                   <Select value={sex} onChange={(e) => setSex(e.target.value as "M" | "F")}><option value="M">Male</option><option value="F">Female</option></Select>
                 </Field>
-                <Field label="Approximate age"><Input value={age} onChange={(e) => setAge(e.target.value)} inputMode="numeric" aria-label="Approximate age" /></Field>
+                <Field required label="Approximate age"><Input value={age} onChange={(e) => setAge(e.target.value)} inputMode="numeric" aria-label="Approximate age" /></Field>
                 <Field label="In"><Select value={unit} onChange={(e) => setUnit(e.target.value as "years" | "months")}><option value="years">Years</option><option value="months">Months</option></Select></Field>
               </div>
             )}
+            <RequiredNote className="mt-3" />
             {dev && kind !== "registry" && <p className="mt-3 text-xs text-muted-foreground">Assumption: a made-up test Health ID is given, because every ADT message needs one in PID-3. Nationality and marital status are sent as unknown (999 and U).</p>}
           </Card>
         </section>

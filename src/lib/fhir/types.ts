@@ -91,6 +91,32 @@ export interface LabOrder {
   /** Results changed after the last accepted result send. */
   resultDirty: boolean;
   sends: SendRecord[];
+  /** Sign-off trail. All optional, so orders saved before this was added still load. */
+  /** Who sent the results for verification, and when. Cleared when the verifier sends them back. */
+  enteredBy?: StaffStamp;
+  submittedAt?: string;
+  /** Who verified and released the results. */
+  verifiedBy?: StaffStamp;
+  verifiedAt?: string;
+  /** Reason an administrator gave to verify a result they entered themselves. */
+  verifyOverrideReason?: string;
+  /** The last time a verifier returned the results to entry. */
+  sentBack?: { by: string; at: string; reason: string };
+  /** Critical result call-back: who was told, by whom, when, and that they read the value back. */
+  criticalCall?: CriticalCall;
+}
+
+/** An app user at a point in time: user id (for the two-person rule) and the name to show. */
+export interface StaffStamp {
+  userId: string;
+  name: string;
+}
+
+export interface CriticalCall {
+  toldTo: string;
+  toldBy: string;
+  at: string;
+  readBack: boolean;
 }
 
 /* ---------- radiology ---------- */
@@ -108,7 +134,15 @@ export interface RadReport {
   communicated: string;
   reportedAt: string;
   reportedById: string;
+  /** Sign-off by the reporting radiologist. Optional, so reports saved before this was added still load. */
+  signedAt?: string;
+  /** Provider-directory id and name of the radiologist who signed. */
+  signedBy?: { id: string; name: string };
+  /** Notes added after signing. The signed text is never changed. `addendum` holds the same notes as one text for the message. */
+  addenda?: { text: string; at: string; by: string }[];
 }
+
+export type PregnancyCheck = "not-pregnant" | "pregnant" | "unsure";
 
 export interface RadStudy {
   studyUid: string;
@@ -120,6 +154,14 @@ export interface RadStudy {
   images: boolean;
   series: number;
   instances: number;
+  /** Technologist record. Optional, so studies saved before this was added still load. */
+  machine?: string;
+  contrastGiven?: boolean;
+  /** Amount of contrast given, for example "80 mL". */
+  contrastAmount?: string;
+  /** Asked of women aged 12 to 55 before the exam. */
+  pregnancy?: PregnancyCheck;
+  pregnancyNote?: string;
 }
 
 export interface RadOrder {

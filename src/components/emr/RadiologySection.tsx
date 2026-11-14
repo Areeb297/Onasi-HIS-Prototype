@@ -3,6 +3,7 @@ import { ChevronDown, ShieldAlert } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { AssumptionNote, DocViewer, Gate, NphiesPill, PRIORITY_UI, RAD_STATUS_UI, StatusBadge } from "@/components/emr/fhir-ui";
 import { RadOrderPad } from "@/components/emr/RadOrderPad";
+import { RadReportView } from "@/components/emr/RadReportEditor";
 import { Badge, Button, Card, CardHeader, Empty, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { RAD_ASSUMPTIONS } from "@/lib/fhir/assumptions";
@@ -11,7 +12,7 @@ import { BODY_REGIONS, MODALITIES, procByCode } from "@/lib/fhir/rad-catalog";
 import { lastAccepted, lastAttempt, type RadOrder } from "@/lib/fhir/types";
 import type { Encounter } from "@/lib/model";
 import {
-  amendRadOrder, cancelRadOrder, placeRadOrder, radOrderNphiesState, radReportNphiesState, radSendsOf, sendRadOrder, useRad,
+  amendRadOrder, cancelRadOrder, openRadDuplicates, placeRadOrder, radOrderNphiesState, radReportNphiesState, radSendsOf, sendRadOrder, useRad,
 } from "@/lib/radiology";
 import { can, useSession } from "@/lib/session";
 
@@ -68,6 +69,7 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
         <div className="px-4 py-4">
           <RadOrderPad
             key={padKey}
+            duplicatesOf={(codes) => openRadDuplicates(rad.orders, enc.visitNumber, codes).map((c) => procByCode(c)?.short ?? c)}
             canOrder={canOrder}
             reason={reason}
             defaultIndication={enc.reason}
@@ -145,30 +147,7 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
                     {o.status === "received" ? "Waiting for the exam." : "The exam is done. Waiting for the radiologist's report."}
                   </p>
                 )}
-                {published && o.report && (
-                  <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
-                    {o.report.findings && (
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Findings</div>
-                        <p>{o.report.findings}</p>
-                      </div>
-                    )}
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Impression</div>
-                      <p className={cn("font-medium", o.report.critical && "text-destructive")}>{o.report.impression}</p>
-                    </div>
-                    {o.report.addendum && (
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Addendum</div>
-                        <p>{o.report.addendum}</p>
-                      </div>
-                    )}
-                    <div className="text-xs text-muted-foreground">
-                      {o.study?.images ? "Images are available in PACS." : "No images are linked to this report."}
-                      {dev && o.study && <span className="ml-2 font-mono">Accession {o.study.accession} · Study {o.study.studyUid.slice(0, 24)}...</span>}
-                    </div>
-                  </div>
-                )}
+                {published && o.report && <RadReportView order={o} />}
 
                 {dev && (
                   <div>
@@ -207,6 +186,7 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
         {amendingOrder && (
           <RadOrderPad
             key={amendingOrder.id}
+            duplicatesOf={(codes) => openRadDuplicates(rad.orders, enc.visitNumber, codes, amendingOrder.id).map((c) => procByCode(c)?.short ?? c)}
             single
             procLocked={amendingOrder.status !== "received"}
             initial={{ procCode: amendingOrder.procCode, priority: amendingOrder.priority, indication: amendingOrder.indication, clinicalInfo: amendingOrder.clinicalInfo }}

@@ -4,7 +4,9 @@ import { Input, cn } from "@/components/ui/primitives";
 import { EMR_FORM_BY_ID } from "@/lib/emr-forms";
 import { EMR_GROUPS, EMR_MENU, type EmrGroup } from "@/lib/emr-menu";
 import { useDevMode } from "@/lib/devmode";
+import { ageYears, fitsAge } from "@/lib/flowsheet";
 import { getFormRecords, useRecords } from "@/lib/records";
+import { useHis } from "@/lib/store";
 
 /**
  * The chart's left menu: grouped sections, page search, Expand All and Collapse All.
@@ -12,6 +14,7 @@ import { getFormRecords, useRecords } from "@/lib/records";
  */
 export function ChartMenu({ active, visit, onPick }: { active: string; visit: string; onPick: (id: string) => void }) {
   useRecords();
+  const his = useHis();
   const dev = useDevMode();
   const activeItem = EMR_MENU.find((i) => i.id === active);
   const [open, setOpen] = React.useState<Set<EmrGroup>>(new Set<EmrGroup>(["General", ...(activeItem ? [activeItem.group] : [])]));
@@ -19,6 +22,10 @@ export function ChartMenu({ active, visit, onPick }: { active: string; visit: st
 
   const toggle = (g: EmrGroup) => setOpen((s) => { const n = new Set(s); n.has(g) ? n.delete(g) : n.add(g); return n; });
   const query = q.trim().toLowerCase();
+  // Age-appropriate tools only: a tool made for the other age group is hidden, unless it already has records.
+  const enc = his.encounters.find((e) => e.visitNumber === visit);
+  const dob = his.patients.find((p) => p.id === enc?.patientId)?.dob;
+  const forAge = (id: string) => !dob || fitsAge(EMR_FORM_BY_ID[id], ageYears(dob)) || getFormRecords(visit, id).length > 0;
 
   return (
     <nav aria-label="Chart sections" className="h-fit max-h-[calc(100vh-14rem)] overflow-y-auto rounded-xl border border-border bg-card p-2 lg:sticky lg:top-44">
@@ -31,7 +38,7 @@ export function ChartMenu({ active, visit, onPick }: { active: string; visit: st
         <button onClick={() => setOpen(new Set())} className="flex flex-1 items-center justify-center gap-1 rounded-md border border-border py-1 text-xs hover:bg-muted"><Minus className="size-3" />Collapse All</button>
       </div>
       {EMR_GROUPS.map((g) => {
-        const items = EMR_MENU.filter((i) => i.group === g && (!query || i.label.toLowerCase().includes(query)));
+        const items = EMR_MENU.filter((i) => i.group === g && (!query || i.label.toLowerCase().includes(query)) && (i.id === active || forAge(i.id)));
         if (items.length === 0) return null;
         const isOpen = query ? true : open.has(g);
         return (

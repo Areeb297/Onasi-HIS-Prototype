@@ -41,6 +41,20 @@ export interface PatientExtra {
   };
   /** Cards saved to the patient file with the Archive buttons. */
   archive?: { kind: "Insurance card" | "ID card"; at: string; summary: string }[];
+  /** Safety flags set at registration. Shown as badges in the patient banner. HIS only. */
+  flags?: PatientFlags;
+  /** What the clerk chose when the insurance did not cover the visit, in words. HIS only. */
+  coverageDecision?: string;
+}
+
+/** Safety flags on the patient file. All optional, so older saved patients still load. */
+export interface PatientFlags {
+  /** Do Not Resuscitate. Needs the doctor who ordered it and the date of the order. */
+  dnr?: { doctor: string; date: string };
+  /** The patient needs an interpreter in this language. */
+  interpreter?: { language: string };
+  fallRisk?: boolean;
+  isolation?: boolean;
 }
 
 export interface Patient {
@@ -222,7 +236,38 @@ export interface Encounter {
   ed?: EdData;
   /** Diagnoses, procedures, allergies or complaints changed after the last A08. */
   dirty?: boolean;
+  /** Discharge clearances of an inpatient stay: who gave each one and when. HIS only. */
+  clearances?: Partial<Record<ClearanceKey, Clearance>>;
+  /** Outcome and steps of the discharge. HIS only: the message carries just the PV1-36 code in `disposition`. */
+  discharge?: DischargeRecord;
+  /** Bed held for a pre-admission. Counts only while the visit is a pre-admission. HIS only. */
+  reservedBedId?: string;
+  /** Why the visit, admission or transfer was cancelled. HIS only. */
+  cancelReason?: string;
 }
+
+export type ClearanceKey = "clinical" | "pharmacy" | "nursing" | "finance";
+export interface Clearance { by: string; role: string; at: string }
+export type DischargeOutcome = "home" | "transfer" | "ama" | "died";
+
+export interface DischargeRecord {
+  outcome: DischargeOutcome;
+  /** When the doctor's discharge was recorded. Local date-time. */
+  orderedAt: string;
+  orderedBy: string;
+  /** The bed the patient still holds until the nurse records that the patient left the ward. */
+  bedId?: string;
+  leftWardAt?: string;
+  leftBy?: string;
+  /** Discharge went ahead with clearances missing. */
+  override?: { reason: string; by: string; at: string; missing: ClearanceKey[] };
+  /** Transfer to another hospital. Recorded in the HIS only. */
+  transfer?: { hospital: string; reason: string; acceptingDoctor: string; transport: string; consent: boolean };
+  death?: { at: string; cause: string; certifiedBy: string };
+}
+
+/** A bed that is not free although no patient holds it. */
+export interface BedFlag { state: "cleaning" | "out"; since: string; reason?: string; by?: string }
 
 /** Everything a scenario screen can fill in. Each event uses the part it needs. */
 export interface ScenarioForm {
@@ -295,4 +340,6 @@ export interface HisState {
   encounters: Encounter[];
   log: LogEntry[];
   counters: { visit: number; seq: number; patient: number };
+  /** Beds being cleaned or out of service, by bed id. */
+  bedFlags?: Record<string, BedFlag>;
 }

@@ -1,3 +1,4 @@
+import { bedCounts } from "./beds";
 import { clockOf, stageOf } from "./ed";
 import { RCM } from "./masters/rcm";
 import type { HisState } from "./model";
@@ -26,12 +27,16 @@ export function liveCounts(s: HisState = getState(), now = Date.now()) {
     edWaiting: ed.filter((e) => ["waiting-triage", "waiting-doctor"].includes(stageOf(e.ed!))).length,
     bedsTotal: BEDS.length,
     bedsUsed: occupied.size,
+    /** Beds in every state: free, occupied, reserved, discharging, cleaning, out. */
+    bedStates: bedCounts(s),
     ready: outbox.filter((r) => r.ready && r.action && r.state !== "rejected").length,
     rejected: byState("rejected"),
     wards: WARDS.map((w) => {
       const beds = BEDS.filter((b) => b.ward === w.ward);
       const used = beds.filter((b) => occupied.has(b.id)).length;
-      return { ward: w.name, used, free: beds.length - used, total: beds.length };
+      // Free means ready for a patient. Reserved, cleaning and out-of-service beds are neither in use nor free.
+      const free = bedCounts(s, w.ward).free;
+      return { ward: w.name, used, free, notReady: beds.length - used - free, total: beds.length };
     }),
     ctas: [1, 2, 3, 4, 5].map((l) => ({ level: `CTAS ${l}`, n: l, patients: ed.filter((e) => e.ed!.ctas === l).length })),
     sendStates: (["not-sent", "changes", "rejected", "sent"] as SendState[]).map((st) => ({ state: STATE_LABEL[st], items: byState(st) })),

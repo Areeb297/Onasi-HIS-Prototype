@@ -8,7 +8,8 @@ export type EmrGroup = "General" | Exclude<FormGroup, "General">;
 
 export type NativeId =
   | "overview" | "complaints" | "vitals" | "diagnosis" | "prescription" | "procedures" | "allergies"
-  | "laboratory" | "radiology" | "notes" | "soap" | "documents" | "adt";
+  | "laboratory" | "radiology" | "notes" | "soap" | "documents" | "adt" | "surgery"
+  | "emar" | "follow-up" | "consults";
 
 export interface EmrItem {
   id: string;
@@ -28,6 +29,7 @@ export const EMR_MENU: EmrItem[] = [
   n("vitals", "Vitals"),
   n("diagnosis", "Diagnosis"),
   n("prescription", "Prescription"),
+  n("emar", "Medication Chart"),
   n("procedures", "Procedures"),
   n("allergies", "Allergies"),
   n("laboratory", "Laboratory"),
@@ -43,6 +45,8 @@ export const EMR_MENU: EmrItem[] = [
   f("patient-education", "Patient Education", "General"),
   n("soap", "SOAP Notes"),
   f("refer-patient", "Refer Patient", "General"),
+  n("consults", "Consult Requests"),
+  n("follow-up", "Follow-Up"),
   n("documents", "Clinical Documents"),
   n("adt", "ADT Messages"),
 
@@ -62,6 +66,7 @@ export const EMR_MENU: EmrItem[] = [
   f("delivery-outcomes", "Delivery Outcomes", "Obstetrics & Labor (IPD)"),
   f("newborn-ballard-score", "Newborn Ballard Score", "Obstetrics & Labor (IPD)"),
 
+  n("surgery", "Surgery Case", "OT"),
   f("ot-roster", "OT Roster", "OT"),
   f("operation-request", "Operation Request", "OT"),
   f("pre-anesthesia-assessment", "Pre-Anesthesia Assessment", "OT"),
@@ -72,6 +77,7 @@ export const EMR_MENU: EmrItem[] = [
   f("nursing-pain-scale", "Nursing Pain Scale", "Nursing"),
   f("nursing-daily-reassessment", "Nursing Daily Re-assessment", "Nursing"),
   f("pediatric-fall-risk", "Pediatric Fall Risk (Humpty Dumpty)", "Nursing"),
+  f("adult-fall-risk", "Adult Fall Risk (Morse)", "Nursing"),
   f("intake-output", "Daily Intake & Output", "Nursing"),
   f("turning-repositioning", "Turning & Repositioning", "Nursing"),
   f("pressure-ulcer-chart", "Pressure Ulcer Chart", "Nursing"),

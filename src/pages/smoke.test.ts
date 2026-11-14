@@ -49,7 +49,7 @@ describe("screens render without errors", () => {
       beforeAll(() => setDevMode(dev));
 
       it("renders the app shell on several routes", () => {
-        for (const route of ["#/opd", "#/ipd", "#/er", "#/beds", "#/patients", "#/registration", "#/audit", "#/compliance", "#/access", "#/m/clinic", "#/lab", "#/radiology", "#/pharmacy/dispense", "#/ai-governance", "#/nphies-clinical", "#/nphies-financial", "#/agents", "#/dashboard", "#/m/daman-dashboard"]) {
+        for (const route of ["#/opd", "#/ipd", "#/er", "#/beds", "#/patients", "#/registration", "#/audit", "#/compliance", "#/access", "#/m/clinic", "#/lab", "#/radiology", "#/theatre", "#/pharmacy/dispense", "#/ai-governance", "#/nphies-clinical", "#/nphies-financial", "#/agents", "#/dashboard", "#/m/daman-dashboard"]) {
           at(route);
           expect(html(h(App)).length, route).toBeGreaterThan(500);
         }

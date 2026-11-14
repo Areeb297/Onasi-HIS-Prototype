@@ -44,7 +44,10 @@ export function RadOrderPad({
   showSend,
   onSubmit,
   onCancel,
+  duplicatesOf,
 }: {
+  /** Names of picked exams that are already open for the visit. The pad warns before it adds them again. */
+  duplicatesOf?: (procCodes: string[]) => string[];
   initial?: { procCode: string; priority: Priority; indication: string; clinicalInfo: string };
   defaultIndication?: string;
   /** Amend mode: one procedure only. */
@@ -63,6 +66,7 @@ export function RadOrderPad({
   const [priority, setPriority] = React.useState<Priority>(initial?.priority ?? "routine");
   const [indication, setIndication] = React.useState(initial?.indication ?? defaultIndication ?? "");
   const [clinicalInfo, setClinicalInfo] = React.useState(initial?.clinicalInfo ?? "");
+  const [pending, setPending] = React.useState<{ andSend: boolean } | null>(null);
 
   const toggle = (c: string) => setCodes((cur) => (single ? [c] : cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
   const picked = codes.map((c) => procByCode(c)).filter((p): p is RadProcedure => !!p);
@@ -70,6 +74,9 @@ export function RadOrderPad({
   const ready = canOrder && picked.length > 0 && hasReason;
   const whyOff = !canOrder ? "" : picked.length === 0 ? "Pick a procedure first." : !hasReason ? "Enter the reason for the exam. NPHIES rejects a radiology order without it." : "";
   const value: RadOrderInput = { procCodes: codes, priority, indication, clinicalInfo };
+  const dupes = duplicatesOf && !procLocked ? duplicatesOf(codes) : [];
+  /** A duplicate asks first. Anything else goes straight through. */
+  const submit = (andSend: boolean) => (dupes.length > 0 ? setPending({ andSend }) : onSubmit(value, andSend));
 
   return (
     <div className="space-y-3">
@@ -122,13 +129,25 @@ export function RadOrderPad({
           <Input value={clinicalInfo} onChange={(e) => setClinicalInfo(e.target.value)} placeholder="Optional" />
         </Field>
       </div>
+      {pending && dupes.length > 0 && (
+        <div role="alert" className="space-y-2 rounded-lg border border-warn/50 bg-warn/10 p-3">
+          <p className="text-sm">
+            <span className="font-semibold">Already ordered for this visit:</span> {dupes.join(", ")}. Radiology has not reported the earlier order yet. Order the exam again only if a repeat is needed.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => { const p = pending; setPending(null); onSubmit(value, p.andSend); }}>Order Anyway</Button>
+            <Button onClick={() => setPending(null)}>Go Back</Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         <Gate allowed={canOrder} reason="Your role cannot order radiology exams.">
-          <Button variant="primary" disabled={!ready} onClick={() => onSubmit(value, false)}>{submitLabel}</Button>
+          <Button variant="primary" disabled={!ready || !!pending} onClick={() => submit(false)}>{submitLabel}</Button>
         </Gate>
         {showSend && (
           <Gate allowed={canOrder} reason="Your role cannot order radiology exams.">
-            <Button disabled={!ready} onClick={() => onSubmit(value, true)}>{submitLabel} And Send To NPHIES</Button>
+            <Button disabled={!ready || !!pending} onClick={() => submit(true)}>{submitLabel} And Send To NPHIES</Button>
           </Gate>
         )}
         {onCancel && <Button variant="ghost" onClick={onCancel}>Close</Button>}

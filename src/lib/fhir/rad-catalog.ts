@@ -102,5 +102,97 @@ export const REPORT_TEMPLATES: Record<string, { findings: string; impression: st
   },
 };
 
-export const RAD_REGION_LABEL = (p: RadProcedure) => BODY_REGIONS[p.region].display;
+/** Normal wording per study type, so the radiologist starts from the right text for the exam. Demo wording. */
+const NORMAL_REPORTS: Record<string, { findings: string; impression: string }> = {
+  "XCHES-PA": {
+    findings: "The lungs are clear. No consolidation, collapse or pleural effusion. The heart size and mediastinal contours are normal. No pneumothorax. The visible bones are intact.",
+    impression: "Normal chest X-ray.",
+  },
+  XABDO: {
+    findings: "The bowel gas pattern is normal. No dilated bowel loops and no free gas. No abnormal calcification. The visible bones are intact.",
+    impression: "Normal abdominal X-ray.",
+  },
+  "X-LSJ": {
+    findings: "Normal alignment. The vertebral body heights and disc spaces are preserved. No fracture or bone lesion. The sacroiliac joints are normal.",
+    impression: "Normal X-ray of the lumbosacral junction.",
+  },
+  XKNER: {
+    findings: "No fracture or dislocation. The joint spaces are preserved. No joint effusion. Bone density is normal.",
+    impression: "Normal X-ray of the right knee.",
+  },
+  CSKUH: {
+    findings: "No intracranial bleed, mass or midline shift. The ventricles and sulci are normal for age. Grey and white matter differentiation is preserved. The skull is intact.",
+    impression: "Normal CT of the head.",
+  },
+  CCHES: {
+    findings: "The lungs are clear, with no nodule, mass or consolidation. No pleural or pericardial effusion. No enlarged lymph nodes. The heart and great vessels are normal.",
+    impression: "Normal CT of the chest.",
+  },
+  CABPEC: {
+    findings: "The liver, gallbladder, spleen, pancreas, adrenal glands and kidneys are normal. No bowel obstruction or wall thickening. No free fluid or free gas. No enlarged lymph nodes. The pelvic organs are normal.",
+    impression: "Normal CT of the abdomen and pelvis.",
+  },
+  MSKUH: {
+    findings: "Normal brain signal. No mass, bleed or acute infarct. The ventricles are normal in size. The midline structures and the posterior fossa are normal.",
+    impression: "Normal MRI of the brain.",
+  },
+  MLUSP: {
+    findings: "Normal lumbar alignment. The vertebral body heights and signal are normal. The discs are well hydrated with no herniation. No spinal canal or foraminal narrowing. The conus is normal.",
+    impression: "Normal MRI of the lumbar spine.",
+  },
+  UABDO: {
+    findings: "The liver is normal in size and texture with no focal lesion. The gallbladder has no stones and a normal wall. The bile ducts are not dilated. The pancreas, spleen and both kidneys are normal. No free fluid.",
+    impression: "Normal ultrasound of the abdomen.",
+  },
+  UPELV: {
+    findings: "The urinary bladder is normal. The pelvic organs are normal in size and texture. No mass and no free fluid.",
+    impression: "Normal ultrasound of the pelvis.",
+  },
+  XMAMB: {
+    findings: "Both breasts show scattered fibroglandular tissue. No mass, suspicious calcification or distortion. The skin and nipples are normal. No enlarged axillary lymph nodes.",
+    impression: "Normal mammogram of both breasts. BI-RADS 1.",
+  },
+  XBDXW: {
+    findings: "Bone mineral density is within the expected range for age. The T-score is above minus 1.0.",
+    impression: "Normal bone density.",
+  },
+};
+
+export interface ReportTemplate {
+  key: string;
+  label: string;
+  technique?: string;
+  findings: string;
+  impression: string;
+  comparison: string;
+  critical: boolean;
+}
+
+/**
+ * The templates the report editor offers for one study type. The first is the normal wording for that exact exam,
+ * the others are the general abnormal and critical starts.
+ */
+export function reportTemplatesFor(procCode: string): ReportTemplate[] {
+  const proc = procByCode(procCode);
+  const normal = NORMAL_REPORTS[procCode] ?? REPORT_TEMPLATES.normal;
+  return [
+    { key: "normal", label: `Normal ${proc?.short ?? "Study"}`, technique: proc?.technique, findings: normal.findings, impression: normal.impression, comparison: REPORT_TEMPLATES.normal.comparison, critical: false },
+    { key: "abnormal", label: "Abnormal Study", technique: proc?.technique, ...REPORT_TEMPLATES.abnormal, critical: false },
+    { key: "critical", label: "Critical Finding", technique: proc?.technique, ...REPORT_TEMPLATES.critical, critical: true },
+  ];
+}
+
+/** Machines per modality, for the technologist record. Made-up room names. */
+export const RAD_MACHINES: Record<string, string[]> = {
+  DX: ["X-Ray Room 1", "X-Ray Room 2", "Portable X-Ray"],
+  CT: ["CT Scanner 1", "CT Scanner 2"],
+  MR: ["MRI 1.5 Tesla", "MRI 3 Tesla"],
+  US: ["Ultrasound Room 1", "Ultrasound Room 2", "Portable Ultrasound"],
+  MG: ["Mammography Unit"],
+  BMD: ["Bone Density Unit"],
+};
+
+export const machinesFor = (procCode: string): string[] => RAD_MACHINES[procByCode(procCode)?.modality ?? ""] ?? [];
+
+export const RAD_REGION_LABEL =(p: RadProcedure) => BODY_REGIONS[p.region].display;
 export const RAD_MODALITY_LABEL = (p: RadProcedure) => MODALITIES[p.modality].display;

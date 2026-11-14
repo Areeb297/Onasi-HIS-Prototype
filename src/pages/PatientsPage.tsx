@@ -3,17 +3,18 @@ import { Search } from "lucide-react";
 import { ClassBadge, StatusBadge } from "@/components/badges";
 import { Badge, Card, Empty, Input, PageHeader, Table, Td, Th, Button } from "@/components/ui/primitives";
 import { bedLabel, patientName, useHis } from "@/lib/store";
-import { navigate } from "@/lib/router";
-
-function age(dob: string): number {
-  const d = new Date(dob);
-  const diff = Date.now() - d.getTime();
-  return Math.floor(diff / (365.25 * 86_400_000));
-}
+import { navigate, useRoute } from "@/lib/router";
+import { PatientFlagBadges, PatientNameAr } from "@/components/PatientBanner";
+import { WristbandDialog } from "@/components/Wristband";
+import { ageLabel, arabicName } from "@/lib/registration";
 
 export function PatientsPage() {
   const state = useHis();
+  const route = useRoute();
+  /** Set when another screen opens one patient, for example from the duplicate check at registration. */
+  const only = route.params.get("patient");
   const [q, setQ] = React.useState("");
+  const [band, setBand] = React.useState<string | null>(null);
 
   const rows = state.patients
     .map((p) => {
@@ -21,7 +22,8 @@ export function PatientsPage() {
       const latest = [...encs].reverse().find((e) => e.status === "active" || e.status === "preadmit") ?? encs[encs.length - 1];
       return { p, latest, count: encs.length };
     })
-    .filter(({ p }) => `${p.given} ${p.family} ${p.mrn} ${p.nationalId}`.toLowerCase().includes(q.toLowerCase()));
+    .filter(({ p }) => !only || p.id === only)
+    .filter(({ p }) => `${p.given} ${p.family} ${p.mrn} ${p.nationalId} ${p.extra?.idNumber ?? ""} ${p.healthId} ${arabicName(p)}`.toLowerCase().includes(q.trim().toLowerCase()));
 
   const count = (f: (e: (typeof state.encounters)[number]) => boolean) => state.encounters.filter(f).length;
   const tiles = [
@@ -45,9 +47,9 @@ export function PatientsPage() {
         title="Patients"
         subtitle="Made-up patients only. No real hospital or patient data. Pick a patient to see visits, or start an event from the Events menu."
         right={
-          <div className="relative w-64">
+          <div className="relative w-full sm:w-64">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input className="pl-8" placeholder="Search name or MRN" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search patients" />
+            <Input className="pl-8" placeholder="Search name, MRN or ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search patients" />
           </div>
         }
       />
@@ -59,6 +61,12 @@ export function PatientsPage() {
           </div>
         ))}
       </div>
+      {only && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm">
+          <span>Showing one patient.</span>
+          <Button size="sm" onClick={() => navigate("/patients")}>Show All Patients</Button>
+        </div>
+      )}
       <Card>
         <Table>
           <thead>
@@ -84,11 +92,13 @@ export function PatientsPage() {
               <tr key={p.id} className="hover:bg-muted/40">
                 <Td>
                   <div className="font-medium">{patientName(p)}</div>
+                  <PatientNameAr patient={p} className="text-start" />
                   <div className="text-xs text-muted-foreground">{p.mrn}</div>
+                  <PatientFlagBadges patient={p} className="mt-1" />
                 </Td>
                 <Td className="font-mono text-xs">{p.healthId}</Td>
                 <Td>
-                  {age(p.dob)} / {p.sex}
+                  {ageLabel(p.dob) || "Not known"} / {p.sex === "M" ? "Male" : "Female"}
                 </Td>
                 <Td>
                   {latest ? (
@@ -109,6 +119,7 @@ export function PatientsPage() {
                         View Timeline
                       </Button>
                     )}
+                    <Button size="sm" onClick={() => setBand(p.id)}>Print Wristband</Button>
                     <Button size="sm" variant="primary" onClick={() => navigate("/event/A31", { patient: p.id, enc: latest?.visitNumber })}>
                       Update Identity
                     </Button>
@@ -119,6 +130,7 @@ export function PatientsPage() {
           </tbody>
         </Table>
       </Card>
+      <WristbandDialog patientId={band} onClose={() => setBand(null)} />
     </div>
   );
 }

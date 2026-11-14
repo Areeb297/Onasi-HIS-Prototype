@@ -46,7 +46,10 @@ export function LabOrderPad({
   showSend,
   onSubmit,
   onCancel,
+  duplicatesOf,
 }: {
+  /** Names of picked tests that are already open for the visit. The pad warns before it adds them again. */
+  duplicatesOf?: (codes: string[]) => string[];
   initial?: LabOrderInput;
   canOrder: boolean;
   reason: string;
@@ -62,6 +65,7 @@ export function LabOrderPad({
   const [fasting, setFasting] = React.useState<"" | "yes" | "no">(initial?.fasting === true ? "yes" : initial?.fasting === false ? "no" : "");
   const [note, setNote] = React.useState(initial?.note ?? "");
   const [q, setQ] = React.useState("");
+  const [pending, setPending] = React.useState<{ andSend: boolean } | null>(null);
 
   const toggle = (c: string) => !testsLocked && setCodes((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
   const addMany = (list: string[]) => !testsLocked && setCodes((cur) => [...new Set([...cur, ...list])]);
@@ -71,6 +75,9 @@ export function LabOrderPad({
 
   const value: LabOrderInput = { codes, priority, fasting: fasting === "yes" ? true : fasting === "no" ? false : null, note };
   const ready = codes.length > 0 && canOrder;
+  const dupes = duplicatesOf && !testsLocked ? duplicatesOf(codes) : [];
+  /** A duplicate asks first. Anything else goes straight through. */
+  const submit = (andSend: boolean) => (dupes.length > 0 ? setPending({ andSend }) : onSubmit(value, andSend));
 
   return (
     <div className="space-y-3">
@@ -157,15 +164,27 @@ export function LabOrderPad({
         </Field>
       </div>
 
+      {pending && dupes.length > 0 && (
+        <div role="alert" className="space-y-2 rounded-lg border border-warn/50 bg-warn/10 p-3">
+          <p className="text-sm">
+            <span className="font-semibold">Already ordered for this visit:</span> {dupes.join(", ")}. The laboratory has not resulted the earlier order yet. Order the test again only if a new sample is needed.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => { const p = pending; setPending(null); onSubmit(value, p.andSend); }}>Order Anyway</Button>
+            <Button onClick={() => setPending(null)}>Go Back</Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         <Gate allowed={canOrder} reason="Your role cannot order laboratory tests.">
-          <Button variant="primary" disabled={!ready} onClick={() => onSubmit(value, false)}>
+          <Button variant="primary" disabled={!ready || !!pending} onClick={() => submit(false)}>
             {submitLabel}
           </Button>
         </Gate>
         {showSend && (
           <Gate allowed={canOrder} reason="Your role cannot order laboratory tests.">
-            <Button disabled={!ready} onClick={() => onSubmit(value, true)}>
+            <Button disabled={!ready || !!pending} onClick={() => submit(true)}>
               {submitLabel} And Send To NPHIES
             </Button>
           </Gate>

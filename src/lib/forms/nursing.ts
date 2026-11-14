@@ -1,5 +1,12 @@
 import type { FormDef } from "../schema";
-import { YES_NO, YES_NO_UNKNOWN, area, chk, dt, multi, num, radio, scale, section, sel, so, text } from "./util";
+import { SHIFTS, YES_NO, YES_NO_UNKNOWN, area, chk, date, dt, multi, num, radio, scale, section, sel, so, text } from "./util";
+
+/** Shift picker. A new record starts on the shift that is running now. */
+const shift = () => radio("shift", "Shift", SHIFTS, { required: true, prefill: "shift", hint: "Morning 07:00 to 15:00. Evening 15:00 to 23:00. Night 23:00 to 07:00." });
+/** The signed-in nurse, recorded by the system. Nobody types a signature. */
+const nurse = (key: string, label: string) => text(key, label, { auto: "user", hint: "Recorded from your sign-in." });
+/** Allergies as they stand in the chart. Change them in the Allergies section, not here. */
+const chartAllergies = () => text("allergies", "Allergies in the chart", { auto: "allergies", full: true, hint: "Shown from the Allergies section of the chart. To change them, open Allergies." });
 
 const BODY_SITES = ["Sacrum", "Coccyx", "Heels", "Hips (trochanters)", "Elbows", "Back of head", "Ears", "Shoulder blades", "Ankles", "Other"];
 
@@ -11,15 +18,15 @@ export const NURSING_FORMS: FormDef[] = [
     description: "Nursing assessment at admission to the ward.",
     summaryKeys: ["arrivalMode", "consciousness", "mobility", "skin"],
     fields: [
-      ...section("Arrival", dt("assessedAt", "Date and time", { required: true }), sel("arrivalMode", "Arrived by", ["Walking", "Wheelchair", "Stretcher", "Carried"]),
+      ...section("Arrival", dt("assessedAt", "Date and time", { required: true, prefill: "now" }), sel("arrivalMode", "Arrived by", ["Walking", "Wheelchair", "Stretcher", "Carried"]),
         sel("accompaniedBy", "Accompanied by", ["Alone", "Family", "Caregiver", "Ambulance staff"]), text("language", "Preferred language", { placeholder: "Arabic" })),
-      ...section("Physical", sel("consciousness", "Consciousness", ["Alert", "Responds to voice", "Responds to pain", "Unresponsive"], { hint: "AVPU scale." }),
+      ...section("Physical", sel("consciousness", "Consciousness", ["Alert", "Responds to voice", "Responds to pain", "Unresponsive"], { hint: "AVPU scale: Alert, Voice, Pain, Unresponsive." }),
         sel("mobility", "Mobility", ["Independent", "Needs a walking aid", "Needs help of one person", "Needs help of two people", "Bed bound"]),
         sel("skin", "Skin", ["Intact", "Dry or fragile", "Rash", "Wound", "Pressure injury"]), sel("nutrition", "Nutrition", ["Normal diet", "Reduced appetite", "Special diet", "Tube feeding", "Nil by mouth"]),
         sel("elimination", "Bladder and bowel", ["Normal", "Constipation", "Diarrhea", "Incontinence", "Catheter", "Stoma"]), sel("sleep", "Sleep", ["Normal", "Disturbed", "Uses sleep aid"]),
-        multi("senses", "Sensory aids", ["Glasses", "Hearing aid", "Dentures", "None"]),
+        multi("senses", "Sensory aids", ["Glasses", "Hearing aid", "Dentures", "None"]), chartAllergies(),
         chk("noKnownAllergies", "No known allergies", { placeholder: "Patient was asked and has no known allergies", hl7: "Allergies and Adverse Reactions Section", hint: "Tick only after asking. Leave empty if allergies are listed in the chart." })),
-      ...section("Safety and wellbeing", radio("painPresent", "Pain present", YES_NO, { hint: "If yes, complete the Nursing Pain Assessment." }), radio("fallRisk", "Fall risk identified", YES_NO_UNKNOWN),
+      ...section("Safety and wellbeing", radio("painPresent", "Pain present", YES_NO, { hint: "If yes, complete the Nursing Pain Assessment." }), radio("fallRisk", "Fall risk identified", YES_NO_UNKNOWN, { hint: "If yes, complete the fall risk tool for the patient's age." }),
         sel("emotional", "Emotional state", ["Calm", "Anxious", "Low mood", "Agitated", "Withdrawn"]), multi("learningNeeds", "Learning needs", ["Condition", "Medicines", "Diet", "Wound care", "Infection prevention", "None"]),
         text("belongings", "Valuables and belongings"), area("notes", "Notes")),
     ],
@@ -29,9 +36,10 @@ export const NURSING_FORMS: FormDef[] = [
     title: "Nursing Pain Assessment",
     group: "Nursing",
     description: "Detailed pain history using the PQRST approach: Provocation, Quality, Region, Severity, Time.",
+    legend: [["PQRST", "Provocation, Quality, Region, Severity, Time"]],
     summaryKeys: ["location", "quality", "severity", "onset"],
     fields: [
-      ...section("Where and when", dt("assessedAt", "Date and time", { required: true }), text("location", "Location (Region)", { required: true, placeholder: "Lower right abdomen" }),
+      ...section("Where and when", dt("assessedAt", "Date and time", { required: true, prefill: "now" }), text("location", "Location (Region)", { required: true, placeholder: "Lower right abdomen" }),
         text("radiation", "Does it spread (Region)", { placeholder: "To the back" }), sel("onset", "Onset", ["Sudden", "Gradual", "Since a procedure", "Unknown"]),
         text("duration", "Duration", { placeholder: "3 days" }), sel("pattern", "Pattern", ["Constant", "Comes and goes", "Only with movement", "Worse at night"])),
       ...section("What it is like", multi("quality", "Quality", ["Sharp", "Dull", "Burning", "Cramping", "Throbbing", "Stabbing", "Aching", "Tingling"]),
@@ -48,9 +56,18 @@ export const NURSING_FORMS: FormDef[] = [
     group: "Nursing",
     scoreLabel: "Pain score (0 to 10)",
     description: "Numeric rating scale (NRS) 0 to 10. 0 is no pain, 1 to 3 mild, 4 to 6 moderate, 7 to 10 severe. For young children or patients who cannot report pain, choose another tool and record its score.",
+    scoreBands: [
+      { min: 0, max: 0, label: "No pain", tone: "ok" }, { min: 1, max: 3, label: "Mild pain", tone: "ok" },
+      { min: 4, max: 6, label: "Moderate pain", tone: "warn" }, { min: 7, max: 10, label: "Severe pain", tone: "danger" },
+    ],
+    legend: [
+      ["NRS", "Numeric rating scale: the patient gives a number from 0 to 10"],
+      ["FACES", "Wong-Baker FACES: the patient points to one of six faces"],
+      ["FLACC", "Face, Legs, Activity, Cry, Consolability: a behavior scale for patients who cannot say how much it hurts"],
+    ],
     summaryKeys: ["score", "tool", "site", "reassessScore"],
     fields: [
-      ...section("Score", dt("assessedAt", "Date and time", { required: true }),
+      ...section("Score", dt("assessedAt", "Date and time", { required: true, prefill: "now" }),
         sel("tool", "Tool used", ["Numeric rating scale", "Wong-Baker FACES", "FLACC", "Behavioral observation", "Other"], { hint: "Only the 0 to 10 score below is added up by this form." }),
         scale("score", "Pain score (0 to 10)", 10, { required: true }), text("site", "Site of pain", { placeholder: "Right knee" })),
       ...section("Action and reassessment", sel("action", "Action taken", ["None needed", "Repositioned", "Non-drug measures", "Medicine given", "Doctor informed"]),
@@ -65,11 +82,11 @@ export const NURSING_FORMS: FormDef[] = [
     description: "Daily check of the patient's condition and the nursing care plan.",
     summaryKeys: ["assessedAt", "condition", "pain", "planChange"],
     fields: [
-      ...section("Overview", dt("assessedAt", "Date and time", { required: true }), sel("condition", "Overall condition", ["Improving", "Stable", "Deteriorating"], { required: true }),
+      ...section("Overview", dt("assessedAt", "Date and time", { required: true, prefill: "now" }), shift(), sel("condition", "Overall condition", ["Improving", "Stable", "Deteriorating"], { required: true }),
         sel("consciousness", "Consciousness", ["Alert", "Responds to voice", "Responds to pain", "Unresponsive"])),
       ...section("Systems", sel("pain", "Pain", ["None", "Mild", "Moderate", "Severe"]), sel("skin", "Skin", ["Intact", "Redness", "Wound", "Pressure injury"]),
         sel("mobility", "Mobility", ["Independent", "Needs help", "Bed bound"]), sel("diet", "Food and fluid intake", ["Good", "Reduced", "Poor", "Nil by mouth"]),
-        sel("elimination", "Bladder and bowel", ["Normal", "Constipation", "Diarrhea", "Incontinence", "Catheter"]), sel("ivSite", "IV site", ["No line", "Clean", "Redness or swelling", "Removed"])),
+        sel("elimination", "Bladder and bowel", ["Normal", "Constipation", "Diarrhea", "Incontinence", "Catheter"]), sel("ivSite", "Intravenous (IV) line site", ["No line", "Clean", "Redness or swelling", "Removed"])),
       ...section("Plan", radio("fallRiskReviewed", "Fall risk reviewed", YES_NO), radio("planChange", "Care plan changed", YES_NO), area("concerns", "Patient and family concerns"),
         area("plan", "Nursing plan for the next 24 hours")),
     ],
@@ -79,10 +96,14 @@ export const NURSING_FORMS: FormDef[] = [
     title: "Pediatric Fall Risk (Humpty Dumpty)",
     group: "Nursing",
     scoreLabel: "Humpty Dumpty score",
-    description: "Humpty Dumpty Falls Scale for children (Hill-Rodriguez et al, J Pediatr Nurs 2009). Seven items, score 7 to 23. A score of 12 or more is high risk. Reassess when the condition, location or treatment changes.",
-    summaryKeys: ["assessedAt", "diagnosis", "environment", "interventions"],
+    description: "Humpty Dumpty Falls Scale for children under 14 years (Hill-Rodriguez et al, J Pediatr Nurs 2009). Seven items, score 7 to 23. A score of 12 or more is high risk. Reassess when the condition, location or treatment changes.",
+    audience: "child",
+    alternative: "adult-fall-risk",
+    scoreAll: true,
+    scoreBands: [{ min: 7, max: 11, label: "Low risk", tone: "ok" }, { min: 12, max: 23, label: "High risk", tone: "danger" }],
+    summaryKeys: ["assessedAt", "diagnosis", "interventions", "assessedBy"],
     fields: [
-      ...section("Assessment", dt("assessedAt", "Date and time", { required: true, hint: "High risk: total of 12 or more. Low risk: 7 to 11." }),
+      ...section("Assessment", dt("assessedAt", "Date and time", { required: true, prefill: "now", hint: "High risk: total of 12 or more. Low risk: 7 to 11. Answer all seven items to get the total." }),
         radio("age", "Age", [so("u3", "Under 3 years", 4), so("3to7", "3 to under 7 years", 3), so("7to13", "7 to under 13 years", 2), so("13plus", "13 years and above", 1)]),
         radio("gender", "Gender", [so("male", "Male", 2), so("female", "Female", 1)]),
         sel("diagnosis", "Diagnosis", [so("neuro", "Neurological diagnosis", 4), so("oxygen", "Alteration in oxygenation (respiratory, dehydration, anemia, anorexia, syncope, dizziness)", 3),
@@ -94,22 +115,53 @@ export const NURSING_FORMS: FormDef[] = [
         sel("medication", "Medication use", [so("multiple", "Multiple: sedatives, hypnotics, barbiturates, phenothiazines, antidepressants, laxatives or diuretics, narcotics", 3),
           so("one", "One of the medicines above", 2), so("other", "Other medicines, or none", 1)])),
       ...section("Prevention", multi("interventions", "Interventions in place", ["Bed in low position", "Side rails up", "Call bell in reach", "Non-slip footwear", "Parent at bedside", "Fall risk sign on door", "Supervised walking", "Environment cleared"]),
-        text("assessedBy", "Assessed by"), area("notes", "Notes")),
+        nurse("assessedBy", "Assessed by"), area("notes", "Notes")),
+    ],
+  },
+  {
+    id: "adult-fall-risk",
+    title: "Adult Fall Risk (Morse)",
+    group: "Nursing",
+    scoreLabel: "Morse score",
+    description: "Morse Fall Scale for patients aged 14 years and above (Morse, 1989). Six items, score 0 to 125. 0 to 24 is low risk, 25 to 44 moderate risk, 45 or more high risk. Reassess every shift and after a fall or a change in condition.",
+    audience: "adult",
+    alternative: "pediatric-fall-risk",
+    scoreAll: true,
+    scoreBands: [
+      { min: 0, max: 24, label: "Low risk", tone: "ok" }, { min: 25, max: 44, label: "Moderate risk", tone: "warn" }, { min: 45, max: 125, label: "High risk", tone: "danger" },
+    ],
+    legend: [["IV", "Intravenous: a line into a vein"]],
+    summaryKeys: ["assessedAt", "shift", "interventions", "assessedBy"],
+    fields: [
+      ...section("Assessment", dt("assessedAt", "Date and time", { required: true, prefill: "now", hint: "Answer all six items to get the total and the risk band." }), shift(),
+        radio("history", "Fell in the last 3 months", [so("no", "No", 0), so("yes", "Yes", 25)]),
+        radio("secondaryDx", "More than one medical diagnosis", [so("no", "No", 0), so("yes", "Yes", 15)]),
+        radio("aid", "Walking aid", [so("none", "None, bed rest or nurse assists", 0), so("aid", "Crutches, cane or walker", 15), so("furniture", "Holds on to furniture", 30)]),
+        radio("ivLine", "Intravenous (IV) line or heparin lock", [so("no", "No", 0), so("yes", "Yes", 20)]),
+        radio("gait", "Walking", [so("normal", "Normal, bed rest or wheelchair", 0), so("weak", "Weak", 10), so("impaired", "Impaired", 20)]),
+        radio("mental", "Mental status", [so("oriented", "Knows own ability", 0), so("forgets", "Overestimates ability or forgets limits", 15)])),
+      ...section("Prevention", multi("interventions", "Interventions in place", ["Bed in low position", "Side rails up", "Call bell in reach", "Non-slip footwear", "Help with walking and toileting", "Fall risk sign on door", "Fall risk wristband", "Environment cleared"]),
+        nurse("assessedBy", "Assessed by"), area("notes", "Notes")),
     ],
   },
   {
     id: "intake-output",
     title: "Daily Intake & Output",
     group: "Nursing",
-    description: "Fluid balance chart. Enter totals for the period. Balance is total intake minus total output.",
-    summaryKeys: ["periodStart", "totalIntake", "totalOutput", "balance"],
+    description: "Fluid balance chart. Record one entry per shift. The totals and the balance are worked out for you: balance is total intake minus total output. The 24-hour balance adds the three shifts of one date.",
+    rollup: "fluid-balance",
+    legend: [["mL", "Millilitres"], ["IV", "Intravenous: fluid given into a vein"], ["NG", "Nasogastric: a tube through the nose into the stomach"]],
+    summaryKeys: ["chartDate", "shift", "totalIntake", "totalOutput", "balance"],
     fields: [
-      ...section("Period", dt("periodStart", "Period start", { required: true }), sel("periodLength", "Period length", ["4 hours", "6 hours", "8 hours", "12 hours", "24 hours"])),
-      ...section("Intake", num("oral", "Oral", { unit: "mL", min: 0 }), num("iv", "IV fluids", { unit: "mL", min: 0 }), num("tubeFeed", "Tube feeding", { unit: "mL", min: 0 }),
-        num("otherIntake", "Blood products and other", { unit: "mL", min: 0 }), num("totalIntake", "Total intake", { unit: "mL", min: 0 })),
-      ...section("Output", num("urine", "Urine", { unit: "mL", min: 0 }), num("drain", "Drains", { unit: "mL", min: 0 }), num("vomit", "Vomit or NG aspirate", { unit: "mL", min: 0 }),
-        text("stool", "Stool", { placeholder: "2 loose stools" }), num("otherOutput", "Other output", { unit: "mL", min: 0 }), num("totalOutput", "Total output", { unit: "mL", min: 0 })),
-      ...section("Balance", num("balance", "Fluid balance", { unit: "mL", hint: "Total intake minus total output. A negative number means more went out than came in." }), area("note", "Note")),
+      ...section("Shift", date("chartDate", "Date", { required: true, prefill: "today" }), shift()),
+      ...section("Intake", num("oral", "By mouth", { unit: "mL", min: 0 }), num("iv", "Intravenous (IV) fluids", { unit: "mL", min: 0 }), num("tubeFeed", "Tube feeding", { unit: "mL", min: 0 }),
+        num("otherIntake", "Blood products and other", { unit: "mL", min: 0 }),
+        num("totalIntake", "Total intake", { unit: "mL", compute: { add: ["oral", "iv", "tubeFeed", "otherIntake"] }, hint: "Worked out for you." })),
+      ...section("Output", num("urine", "Urine", { unit: "mL", min: 0 }), num("drain", "Drains", { unit: "mL", min: 0 }), num("vomit", "Vomit or nasogastric (NG) tube aspirate", { unit: "mL", min: 0 }),
+        text("stool", "Stool", { placeholder: "2 loose stools" }), num("otherOutput", "Other output", { unit: "mL", min: 0 }),
+        num("totalOutput", "Total output", { unit: "mL", compute: { add: ["urine", "drain", "vomit", "otherOutput"] }, hint: "Worked out for you." })),
+      ...section("Balance", num("balance", "Fluid balance for this shift", { unit: "mL", compute: { add: ["totalIntake"], subtract: ["totalOutput"] }, hint: "Total intake minus total output. A negative number means more went out than came in." }),
+        nurse("recordedBy", "Recorded by"), area("note", "Note")),
     ],
   },
   {
@@ -119,10 +171,10 @@ export const NURSING_FORMS: FormDef[] = [
     description: "Record each position change and skin check. Turn at least every 2 hours, or as set in the care plan.",
     summaryKeys: ["turnedAt", "position", "skinCheck", "nextTurn"],
     fields: [
-      ...section("Turn", dt("turnedAt", "Date and time", { required: true }),
+      ...section("Turn", dt("turnedAt", "Date and time", { required: true, prefill: "now" }), shift(),
         sel("position", "New position", ["Supine", "Left side (30 degrees)", "Right side (30 degrees)", "Prone", "Semi-Fowler", "Fowler", "Chair"], { required: true }),
         sel("previousPosition", "Previous position", ["Supine", "Left side", "Right side", "Prone", "Semi-Fowler", "Fowler", "Chair"]),
-        text("turnedBy", "Turned by"), sel("surface", "Support surface", ["Standard mattress", "Pressure redistributing mattress", "Alternating pressure mattress", "Chair cushion"])),
+        nurse("turnedBy", "Turned by"), sel("surface", "Support surface", ["Standard mattress", "Pressure redistributing mattress", "Alternating pressure mattress", "Chair cushion"])),
       ...section("Skin check", sel("skinCheck", "Skin condition", ["Intact", "Redness that fades on pressure", "Redness that does not fade", "Blister or broken skin"], { required: true, hint: "Redness that does not fade is a stage 1 pressure injury. Record it in the Pressure Ulcer Chart." }),
         multi("areasChecked", "Areas checked", BODY_SITES), chk("heelsOffloaded", "Heels offloaded", { placeholder: "Heels floated" }), radio("moisture", "Skin moist", YES_NO)),
       ...section("Next", dt("nextTurn", "Next turn due"), sel("tolerance", "Tolerance", ["Tolerated well", "Pain on moving", "Short of breath", "Refused"]), area("note", "Note")),
@@ -134,9 +186,15 @@ export const NURSING_FORMS: FormDef[] = [
     group: "Nursing",
     scoreLabel: "Braden score",
     description: "Braden Scale for predicting pressure sore risk (Bergstrom and Braden, 1987), plus wound documentation by NPIAP stage. Braden total 6 to 23; lower is higher risk.",
+    scoreAll: true,
+    scoreBands: [
+      { min: 19, max: 23, label: "No risk", tone: "ok" }, { min: 15, max: 18, label: "Mild risk", tone: "warn" }, { min: 13, max: 14, label: "Moderate risk", tone: "warn" },
+      { min: 10, max: 12, label: "High risk", tone: "danger" }, { min: 6, max: 9, label: "Very high risk", tone: "danger" },
+    ],
+    legend: [["NPIAP", "National Pressure Injury Advisory Panel, which sets the wound stages"]],
     summaryKeys: ["assessedAt", "site", "stage", "length"],
     fields: [
-      ...section("Braden Scale", dt("assessedAt", "Date and time", { required: true, hint: "Braden total: 19 to 23 no risk, 15 to 18 mild, 13 to 14 moderate, 10 to 12 high, 9 or less very high risk. Fill in all six items to get a total." }),
+      ...section("Braden Scale", dt("assessedAt", "Date and time", { required: true, prefill: "now", hint: "Braden total: 19 to 23 no risk, 15 to 18 mild, 13 to 14 moderate, 10 to 12 high, 9 or less very high risk. Fill in all six items to get a total." }),
         radio("sensory", "Sensory perception", [so("1", "1 Completely limited", 1), so("2", "2 Very limited", 2), so("3", "3 Slightly limited", 3), so("4", "4 No impairment", 4)]),
         radio("moisture", "Moisture", [so("1", "1 Constantly moist", 1), so("2", "2 Very moist", 2), so("3", "3 Occasionally moist", 3), so("4", "4 Rarely moist", 4)]),
         radio("activity", "Activity", [so("1", "1 Bedfast", 1), so("2", "2 Chairfast", 2), so("3", "3 Walks occasionally", 3), so("4", "4 Walks frequently", 4)]),
@@ -147,7 +205,7 @@ export const NURSING_FORMS: FormDef[] = [
         num("length", "Length", { unit: "cm", min: 0 }), num("width", "Width", { unit: "cm", min: 0 }), num("depth", "Depth", { unit: "cm", min: 0 }),
         multi("woundBed", "Wound bed", ["Intact skin", "Pink", "Granulation", "Slough", "Eschar", "Exposed bone or tendon"]),
         chk("presentOnAdmission", "Present on admission", { placeholder: "Present on admission" })),
-      ...section("Treatment", area("treatment", "Dressing and treatment"), area("plan", "Offloading and plan")),
+      ...section("Treatment", area("treatment", "Dressing and treatment"), area("plan", "Offloading and plan"), nurse("assessedBy", "Assessed by")),
     ],
   },
   {
@@ -161,10 +219,10 @@ export const NURSING_FORMS: FormDef[] = [
         multi("reason", "Reason", ["Risk of pulling out tubes or lines", "Risk of harm to self", "Risk of harm to others", "Confusion with unsafe behavior", "Other"], { required: true }),
         text("alternatives", "Less restrictive options tried", { placeholder: "Reorientation, sitter, family present" }), text("orderedBy", "Ordered by", { required: true }),
         dt("orderAt", "Order time"), num("orderHours", "Order valid for", { unit: "hours", min: 0 }), radio("familyInformed", "Patient or family informed", YES_NO)),
-      ...section("Check", dt("checkAt", "Check time", { required: true }), sel("circulation", "Circulation, skin and sensation", ["Normal", "Redness", "Swelling or color change", "Skin injury"]),
+      ...section("Check", dt("checkAt", "Check time", { required: true, prefill: "now" }), shift(), sel("circulation", "Circulation, skin and sensation", ["Normal", "Redness", "Swelling or color change", "Skin injury"]),
         sel("behavior", "Behavior", ["Calm", "Restless", "Agitated", "Sedated"]), multi("careGiven", "Care given", ["Position changed", "Limbs moved through range", "Toileting offered", "Fluids offered", "Food offered", "Restraint loosened or checked"]),
-        text("vitals", "Vital signs", { placeholder: "BP 120/80, pulse 78" })),
-      ...section("Decision", radio("continueRestraint", "Continue restraint", ["Yes", "No, removed"], { required: true }), dt("removedAt", "Removed at"), text("checkedBy", "Checked by"), area("note", "Note")),
+        text("vitals", "Vital signs", { placeholder: "Blood pressure 120/80, pulse 78" })),
+      ...section("Decision", radio("continueRestraint", "Continue restraint", ["Yes", "No, removed"], { required: true }), dt("removedAt", "Removed at"), nurse("checkedBy", "Checked by"), area("note", "Note")),
     ],
   },
 ];

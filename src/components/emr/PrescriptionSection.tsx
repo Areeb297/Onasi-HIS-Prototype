@@ -1,6 +1,8 @@
 import * as React from "react";
-import { IconCircleX, IconHandStop, IconPencil, IconPlayerPause, IconPlayerPlay, IconSend, IconShieldCheck, IconShieldExclamation, IconTrash } from "@tabler/icons-react";
-import { ConformancePanel, ControlBadge, ItemStatusBadge, MessageViewer } from "@/components/emr/RxShared";
+import { IconCircleX, IconHandStop, IconMessageReply, IconPencil, IconPlayerPause, IconPlayerPlay, IconSend, IconShieldCheck, IconShieldExclamation, IconTrash } from "@tabler/icons-react";
+import { ConformancePanel, ControlBadge, ItemStatusBadge, MessageViewer, RxPatientStrip, VerifyBadge, VerifyTrail } from "@/components/emr/RxShared";
+import { Textarea } from "@/components/ui/textarea";
+import { answerQuery, verifyStatusOf } from "@/lib/rx-verify";
 import { RxEditor } from "@/components/emr/RxEditor";
 import { Dialog } from "@/components/Dialog";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, Table, Td, Th } from "@/components/ui/primitives";
@@ -133,7 +135,21 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
   const [confirm, setConfirm] = React.useState<{ key: string; item: RxItem } | null>(null);
   const [reason, setReason] = React.useState("");
   const [showFhir, setShowFhir] = React.useState(false);
+  const [answering, setAnswering] = React.useState<RxItem | null>(null);
+  const [answer, setAnswer] = React.useState("");
+  const [answerProblem, setAnswerProblem] = React.useState("");
   const enc = his.encounters.find((e) => e.visitNumber === rx.visitNumber);
+  const atPharmacy = rx.sentAt ? rx.items.filter((i) => i.status === "active" && !fillOf(s, rx, i).done) : [];
+  const nQuery = atPharmacy.filter((i) => verifyStatusOf(i) === "queried").length;
+  const nRejected = atPharmacy.filter((i) => verifyStatusOf(i) === "rejected").length;
+
+  function sendAnswer() {
+    if (!answering) return;
+    const res = answerQuery(rx.id, answering.id, answer);
+    if (!res.ok) return setAnswerProblem(res.problem ?? "The answer could not be saved.");
+    pushToast({ tone: "ok", text: "Answer sent to the pharmacy", detail: "The pharmacist checks the item again." });
+    setAnswering(null);
+  }
   const plan = React.useMemo(() => (dev && showFhir ? planPrescription(s, rx) : null), [dev, showFhir, s, rx]);
   const sends = s.sends.filter((x) => x.kind === "prescription" && x.targetId === rx.id);
   const last = sends[sends.length - 1];
@@ -185,9 +201,14 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
           {raqeeb ? "A Raqeeb reference id is given when nphies accepts this prescription. You need it to cancel or change it." : "Inpatient use is outside the Raqeeb scope. It gets a normal NPHIES reference id, not a Raqeeb one."}
         </p>
       )}
+      {nQuery + nRejected > 0 && (
+        <p role="alert" className="border-b border-border bg-warn/10 px-4 py-2 text-xs">
+          {[nQuery > 0 && `The pharmacy asked a question about ${nQuery} ${nQuery === 1 ? "item" : "items"}`, nRejected > 0 && `The pharmacy rejected ${nRejected} ${nRejected === 1 ? "item" : "items"}`].filter(Boolean).join(". ")}. These items are not dispensed until this is settled.
+        </p>
+      )}
       <Table>
         <thead className="bg-muted/40">
-          <tr><Th>Drug</Th><Th>Dose And Duration</Th><Th>Quantity</Th><Th>Dispensed</Th><Th>Status</Th><Th>Actions</Th></tr>
+          <tr><Th>Drug</Th><Th>Dose And Duration</Th><Th>Quantity</Th><Th>Dispensed</Th><Th>Status And Pharmacy Check</Th><Th>Actions</Th></tr>
         </thead>
         <tbody>
           {rx.items.map((item) => {
@@ -196,6 +217,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
             const sent = !!rx.sentAt;
             const open = item.status === "active" || item.status === "on-hold";
             const noEdit = fill.dispensedTotal > 0;
+            const vstatus = verifyStatusOf(item, fill.dispensedTotal);
             return (
               <tr key={item.id} className="hover:bg-muted/30">
                 <Td>
@@ -213,7 +235,25 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
                 </Td>
                 <Td className="whitespace-nowrap tabular-nums">{item.quantity} {drug.unit}{item.refills > 0 && <span className="text-xs text-muted-foreground"> · {item.refills} repeats</span>}</Td>
                 <Td className="whitespace-nowrap tabular-nums text-xs">{sent ? `${round(fill.dispensedTotal)} of ${item.quantity}` : "Not yet"}</Td>
-                <Td><ItemStatusBadge status={item.status} /></Td>
+                <Td className="max-w-[260px]">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <ItemStatusBadge status={item.status} />
+                    {sent && item.status === "active" && !fill.done && <VerifyBadge status={vstatus} />}
+                  </div>
+                  {sent && item.status === "active" && (
+                    <div className="mt-1">
+                      <VerifyTrail item={item} status={vstatus} />
+                      {vstatus === "rejected" && <div className="text-xs text-muted-foreground">Edit the item to send it for a new check, or cancel it.</div>}
+                      {vstatus === "queried" && (
+                        <span className="mt-1 inline-flex" title={canWrite ? undefined : "You do not have permission to prescribe"}>
+                          <Button size="sm" variant="primary" disabled={!canWrite} onClick={() => { setAnswering(item); setAnswer(""); setAnswerProblem(""); }}>
+                            <IconMessageReply className="size-4" />Answer The Pharmacist
+                          </Button>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </Td>
                 <Td>
                   <div className="inline-flex items-center gap-0.5 rounded-full border border-border bg-background px-1.5 py-1">
                     {open && (
@@ -290,11 +330,41 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
       >
         {confirm && (
           <div className="space-y-3 text-sm">
+            <RxPatientStrip rx={rx} />
             <p>{ACTION_TEXT[confirm.key].help}</p>
             {(rx.raqeebRef ?? rx.nationalRef) && <p className="text-xs text-muted-foreground">Sent with {rx.raqeebRef ? "Raqeeb" : "NPHIES"} reference id {rx.raqeebRef ?? rx.nationalRef}.</p>}
             <Field label="Reason (Optional)">
               <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: patient changed treatment" />
             </Field>
+          </div>
+        )}
+      </Dialog>
+      <Dialog
+        open={!!answering}
+        onClose={() => setAnswering(null)}
+        title="Answer The Pharmacist"
+        subtitle={answering ? `${getDrug(answering.drugId).generic} ${getDrug(answering.drugId).strengthValue} ${getDrug(answering.drugId).strengthUnit}, ${rx.number}` : undefined}
+        footer={
+          <>
+            <Button onClick={() => setAnswering(null)}>Close</Button>
+            <span title={answer.trim().length < 2 ? "Type your answer first" : undefined}>
+              <Button variant="primary" disabled={answer.trim().length < 2} onClick={sendAnswer}>Send Answer To Pharmacy</Button>
+            </span>
+          </>
+        }
+      >
+        {answering && (
+          <div className="space-y-3 text-sm">
+            <RxPatientStrip rx={rx} />
+            <div className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs">
+              <div className="font-semibold">Question from {answering.verify?.by}</div>
+              <div className="mt-0.5">{answering.verify?.query?.text}</div>
+            </div>
+            <p className="text-xs text-muted-foreground">{dosageNarrative(getDrug(answering.drugId), answering)}. To change the dose, close this and edit the item. An edited item goes back to the pharmacy for a new check.</p>
+            <Field label="Your Answer" required>
+              <Textarea rows={3} value={answer} onChange={(e) => { setAnswer(e.target.value); setAnswerProblem(""); }} />
+            </Field>
+            {answerProblem && <p role="alert" className="text-xs text-destructive">{answerProblem}</p>}
           </div>
         )}
       </Dialog>

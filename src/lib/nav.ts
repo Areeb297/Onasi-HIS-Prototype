@@ -2,7 +2,7 @@ import {
   IconActivity, IconBed, IconBuildingHospital, IconCalendar, IconCash, IconClipboardHeart, IconDeviceDesktopAnalytics,
   IconFlask, IconHeartbeat, IconId, IconLock, IconPill, IconPlayerPlay, IconReportMedical, IconSettings, IconShieldCheck,
   IconStethoscope, IconUsers, IconUserShield, IconXboxX, IconBuildingBank, IconFileInvoice, IconHeartRateMonitor, IconTool,
-  IconCloudUpload, IconRadioactive, IconNotebook, IconTable, IconListDetails, IconSchool, IconRobot, IconFolders,
+  IconCloudUpload, IconRadioactive, IconScissors, IconNotebook, IconTable, IconListDetails, IconSchool, IconRobot, IconFolders,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
 import type { Permission } from "./session";
@@ -75,6 +75,10 @@ export const NAV: NavGroup[] = [
   {
     id: "rad", label: "Radiology", icon: IconRadioactive, color: "text-move",
     pages: [{ id: "rad", label: "Worklist", path: "/radiology", perm: "rad.report" }],
+  },
+  {
+    id: "theatre", label: "Theatre", icon: IconScissors, color: "text-cancel",
+    pages: [{ id: "theatre", label: "Theatre List", path: "/theatre", perm: "emr.read" }],
   },
   {
     id: "pharmacy", label: "Pharmacy", icon: IconPill, color: "text-ok",

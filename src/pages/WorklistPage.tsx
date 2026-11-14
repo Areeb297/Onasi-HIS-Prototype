@@ -2,9 +2,11 @@ import * as React from "react";
 import { IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
 import { Plus, RotateCcw } from "lucide-react";
 import { ActionLegend, RowActions, type ActionKey } from "@/components/RowActions";
-import { useVisitActions } from "@/components/VisitActions";
+import { DischargeProgress, useVisitActions } from "@/components/VisitActions";
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th } from "@/components/ui/primitives";
+import { heldBedOf } from "@/lib/beds";
 import { useDevMode } from "@/lib/devmode";
+import { niceDate } from "@/lib/discharge";
 import { can, hasGlass, useSession } from "@/lib/session";
 import type { Encounter } from "@/lib/model";
 import { DOCTORS, SERVICES } from "@/lib/reference-data";
@@ -29,19 +31,13 @@ function dateOf(e: Encounter): string {
   return e.admitAt ?? e.expectedAdmitAt ?? e.dischargeAt ?? "";
 }
 
-function niceDate(local: string): string {
-  if (!local) return "None";
-  const d = new Date(local);
-  return `${d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
-}
-
 const day = (offset: number) => toLocalInput(new Date(Date.now() + offset * 86_400_000)).slice(0, 10);
 
 export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolean }) {
   const state = useHis();
   const dev = useDevMode();
   useSession();
-  const { act, openRegister, openPatient, dialogs } = useVisitActions();
+  const { act, openRegister, openPatient, openClearances, openLeftWard, dialogs } = useVisitActions();
 
   const [start, setStart] = React.useState(day(mode !== "ipd" ? -7 : -14));
   const [end, setEnd] = React.useState(day(mode !== "ipd" ? 0 : 7));
@@ -89,7 +85,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
         subtitle={
           mode !== "ipd"
             ? "Outpatient visits. Use the icons on each row. Most actions send an ADT message in one click, and the toast has an Undo."
-            : "Inpatients and pre-admissions. Use the icons on each row. Most actions send an ADT message in one click, and the toast has an Undo."
+            : "Inpatients and pre-admissions. Each action shows what will happen before you confirm. Discharge needs the four clearances, and the bed stays held until the patient leaves the ward."
         }
         right={
           <div className="flex gap-2">
@@ -157,12 +153,13 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
               <Th>{mode === "ipd" ? "Ward and Bed" : "Department"}</Th>
               <Th>Doctor</Th>
               <Th>Status</Th>
+              {mode === "ipd" && <Th>Discharge</Th>}
               <Th>Actions</Th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><Td colSpan={6}><Empty>No visits match these filters.</Empty></Td></tr>
+              <tr><Td colSpan={mode === "ipd" ? 7 : 6}><Empty>No visits match these filters.</Empty></Td></tr>
             )}
             {rows.map((e) => {
               const p = state.patients.find((x) => x.id === e.patientId);
@@ -200,6 +197,16 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
                       </>
                     ) : e.status === "active" ? (
                       <div className="font-medium">{bedLabel(e.bedId)}</div>
+                    ) : heldBedOf(e) ? (
+                      <>
+                        <div className="font-medium">{bedLabel(heldBedOf(e))}</div>
+                        <div className="text-xs text-muted-foreground">Held until the patient leaves</div>
+                      </>
+                    ) : e.status === "preadmit" && e.reservedBedId ? (
+                      <>
+                        <div className="font-medium">{bedLabel(e.reservedBedId)}</div>
+                        <div className="text-xs text-muted-foreground">Reserved</div>
+                      </>
                     ) : (
                       <div className="text-muted-foreground">{e.status === "preadmit" ? "Not assigned yet" : "None"}</div>
                     )}
@@ -211,6 +218,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
                       {e.dirty && <Badge tone="warn" className="whitespace-nowrap">Changes Not Sent</Badge>}
                     </span>
                   </Td>
+                  {mode === "ipd" && <Td><DischargeProgress enc={e} onClearances={openClearances} onLeftWard={openLeftWard} /></Td>}
                   <Td><RowActions enc={e} onAct={(k) => onAct(e, k)} /></Td>
                 </tr>
               );

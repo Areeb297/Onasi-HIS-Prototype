@@ -3,7 +3,7 @@ import { IconMessage2, IconShieldExclamation, IconShieldCheck } from "@tabler/ic
 import { AlertTriangle, CheckCircle2, CircleAlert, Plus, Trash2 } from "lucide-react";
 import { ClassBadge } from "@/components/badges";
 import { RowActions, type ActionKey } from "@/components/RowActions";
-import { useVisitActions } from "@/components/VisitActions";
+import { VisitDischargeProgress, useVisitActions } from "@/components/VisitActions";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { Timeline, type TimelineEvent } from "@/components/ui/timeline";
@@ -26,8 +26,12 @@ import { EmrFormPage } from "@/components/EmrFormPage";
 import { ClinicalDocsSection } from "@/components/emr/ClinicalDocsSection";
 import { LabSection } from "@/components/emr/LabSection";
 import { PrescriptionSection } from "@/components/emr/PrescriptionSection";
+import { ConsultSection } from "@/components/emr/ConsultSection";
+import { EmarSection } from "@/components/emr/EmarSection";
+import { FollowUpSection } from "@/components/emr/FollowUpSection";
 import { RadiologySection } from "@/components/emr/RadiologySection";
 import { SoapSection } from "@/components/emr/SoapSection";
+import { TheatreSection } from "@/components/emr/TheatreSection";
 import { audit } from "@/lib/audit";
 import { EMR_FORM_BY_ID } from "@/lib/emr-forms";
 import { EMR_MENU, type NativeId } from "@/lib/emr-menu";
@@ -75,7 +79,8 @@ function GlassGate({ patient }: { patient: Patient }) {
 const NATIVE: Record<NativeId, (p: { enc: Encounter }) => React.ReactElement> = {
   overview: OverviewTab, complaints: Complaints, vitals: VitalsSection, diagnosis: Diagnosis, prescription: PrescriptionSection,
   procedures: Procedures, allergies: Allergies, laboratory: LabSection, radiology: RadiologySection, notes: Notes,
-  soap: SoapSection, documents: ClinicalDocsSection, adt: AdtMessages,
+  soap: SoapSection, documents: ClinicalDocsSection, adt: AdtMessages, surgery: TheatreSection,
+  emar: EmarSection, "follow-up": FollowUpSection, consults: ConsultSection,
 };
 
 export function ChartPage() {
@@ -121,6 +126,7 @@ export function ChartPage() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Visit actions</span>
           <RowActions enc={{ ...enc, status: enc.status }} onAct={onAct} />
+          <VisitDischargeProgress enc={enc} />
           <AiBriefModal enc={enc} patient={patient} />
         </div>
         {enc.dirty && (

@@ -1,3 +1,4 @@
+import { careAttention } from "./care-attention";
 import { EMR_FORM_BY_ID } from "./emr-forms";
 import { getDocsState, docsForVisit } from "./docs";
 import { RAD_CATALOG } from "./fhir/rad-catalog";
@@ -177,6 +178,7 @@ export function attentionFor(enc: Encounter, patient: Patient): Attention[] {
     const published = docsForVisit(enc.visitNumber, getDocsState()).some((d) => d.status === "published");
     if (!published) out.push({ id: "doc", level: "medium", section: "documents", text: "Discharged, but no clinical summary has been published to NPHIES." });
   }
+  out.push(...careAttention(enc));
   const rank = { high: 0, medium: 1, info: 2 } as const;
   return out.sort((a, b) => rank[a.level] - rank[b.level]);
 }

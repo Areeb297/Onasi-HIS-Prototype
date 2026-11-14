@@ -1,13 +1,14 @@
 import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import type { LabOrder } from "@/lib/fhir/types";
-import { hasCritical, releaseLabResult, startProcessing } from "@/lib/lab";
+import { awaitingVerification, hasCritical, startProcessing } from "@/lib/lab";
 import { can } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { auditMove } from "./audit-move";
 import { byPriorityThenAge } from "./board-util";
 import { CheckCircle2 } from "lucide-react";
-import { CardAction, CardFoot, CardSubject, PatientLine, PriorityTag, ProgressRing, Tag } from "./CardBits";
+import { CardAction, CardFoot, CardSubject, PriorityTag, ProgressRing, Tag } from "./CardBits";
+import { OrderCardPatient } from "./OrderCardPatient";
 import { ClockPill } from "./ClockPill";
 import { CriticalPulse, TubeIcon } from "./glyphs";
 import {
@@ -23,7 +24,7 @@ const NEXT_ACTION: Record<LabStageId, { label: string; to?: LabStageId }> = {
   ordered: { label: "Collect Specimen", to: "collected" },
   collected: { label: "Start Processing", to: "in-progress" },
   "in-progress": { label: "Enter Results", to: "entered" },
-  entered: { label: "Release Result", to: "published" },
+  entered: { label: "Send For Verification", to: "published" },
   published: { label: "View Or Amend" },
 };
 
@@ -35,7 +36,8 @@ function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCt
   const prog = resultProgress(order);
   const tubes = tubesForOrder(order);
   const chips = testChips(order);
-  const next = NEXT_ACTION[stage];
+  const waiting = awaitingVerification(order);
+  const next = stage === "entered" && waiting ? { label: "Verify Result", to: "published" as LabStageId } : NEXT_ACTION[stage];
   const critical = hasCritical(order);
   const filled = stage !== "ordered";
   return (
@@ -45,6 +47,8 @@ function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCt
           <PriorityTag tone={ctx.lane.tone} label={PRIORITY_WORD[ctx.lane.id] ?? ctx.lane.label} />
           {order.fasting === true && <Tag tone="merge">Fasting</Tag>}
           {critical && <CriticalPulse />}
+          {waiting && <Tag tone="update">Awaiting Verification</Tag>}
+          {!waiting && order.sentBack && order.status === "in-progress" && <Tag tone="merge">Sent Back</Tag>}
         </div>
         <div className="flex items-end gap-1" aria-label={`${tubes.length} ${tubes.length === 1 ? "container" : "containers"}`}>
           {tubes.slice(0, 3).map((k) => <TubeIcon key={k} kind={k} filled={filled} />)}
@@ -52,7 +56,7 @@ function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCt
       </div>
 
       <div className="mt-1.5">
-        <PatientLine patient={patient} onOpen={ctx.overlay ? undefined : onOpen} dev={ctx.dev} extra={`${order.id} · ${order.visitNumber}`} now={ctx.now} />
+        <OrderCardPatient patient={patient} orderedAt={order.orderedAt} onOpen={ctx.overlay ? undefined : onOpen} now={ctx.now} devExtra={ctx.dev ? `${order.id} · Visit ${order.visitNumber}` : undefined} />
       </div>
       <CardSubject>{chips.slice(0, 4).join(", ")}{chips.length > 4 && ` and ${chips.length - 4} more`}</CardSubject>
 
@@ -83,14 +87,16 @@ const PRIORITY_WORD: Record<string, string> = { stat: "STAT", urgent: "Urgent", 
 
 /**
  * The laboratory swim lane board. Lanes are priorities, stages follow the real order status.
- * onCollect and onOpenEditor belong to the page: it owns the Collect dialog and the result editor.
+ * onCollect, onOpenEditor and onVerify belong to the page: it owns the Collect dialog, the result editor and the
+ * verification sign-off.
  */
 export function LabBoard({
-  orders, onCollect, onOpenEditor, onOpen,
+  orders, onCollect, onOpenEditor, onVerify, onOpen,
 }: {
   orders: LabOrder[];
   onCollect: (id: string) => void;
   onOpenEditor: (id: string, hint: string) => void;
+  onVerify: (id: string) => void;
   onOpen: (id: string) => void;
 }) {
   const his = useHis();
@@ -120,7 +126,10 @@ export function LabBoard({
       return "deferred";
     }
     if (to === "published") {
-      return releaseLabResult(o.id);
+      // Release is a sign-off by a second user, so the move opens a form and the card moves when that is done.
+      if (awaitingVerification(o)) onVerify(o.id);
+      else onOpenEditor(o.id, "Check the results, then press Send For Verification. A second user verifies and releases them.");
+      return "deferred";
     }
     return false;
   }
@@ -159,6 +168,7 @@ export function LabBoard({
       />
       <p className="mt-2 text-xs text-muted-foreground">
         Drag a card to the next stage, or use the arrows button on the card. Moves that need input open the form first. Tube caps show the container the specimen goes in.
+        Verify Result opens the sign-off, where a second user chooses Verify And Release or Send Back. Release Result is not possible before that.
       </p>
     </div>
   );

@@ -5,10 +5,11 @@ import { CodeBlock } from "@/components/ui/code-block";
 import { Card, CardHeader, Empty, PageHeader, cn } from "@/components/ui/primitives";
 import { Timeline, type TimelineEvent } from "@/components/ui/timeline";
 import { useDevMode } from "@/lib/devmode";
+import { clearanceList, departureGap, gapText, needsClearances, outcomeDef } from "@/lib/discharge";
 import { visitMessages } from "@/lib/visitMessages";
 import { pretty } from "@/lib/hl7";
 import { navigate, useRoute } from "@/lib/router";
-import { bedLabel, patientName, useHis } from "@/lib/store";
+import { bedLabel, nowLocal, patientName, useHis } from "@/lib/store";
 import { EVENT_BY_ID } from "@/lib/spec";
 
 export function EncountersPage() {
@@ -92,6 +93,20 @@ export function EncountersPage() {
               <Info label="Admitted" value={selected.admitAt?.replace("T", " ") ?? "Not yet"} />
               <Info label="Discharged" value={selected.dischargeAt?.replace("T", " ") ?? "Not yet"} />
               <Info label="Diagnoses" value={selected.dx.map((d) => d.code).join(", ") || "None"} />
+              {needsClearances(selected) && (
+                <Info label="Discharge Clearances" value={clearanceList(selected).map((c) => `${c.label}: ${c.done ? "done" : "waiting"}`).join(", ")} />
+              )}
+              {selected.discharge && <Info label="Outcome" value={outcomeDef(selected.discharge.outcome).label} />}
+              {selected.discharge?.bedId && (
+                <Info
+                  label="Left The Ward"
+                  value={selected.discharge.leftWardAt
+                    ? `${selected.discharge.leftWardAt.replace("T", " ")} (${gapText(departureGap(selected, nowLocal())?.minutes ?? 0)} after discharge)`
+                    : "Not yet"}
+                />
+              )}
+              {selected.discharge?.override && <Info label="Clearance Override" value={`${selected.discharge.override.by}: ${selected.discharge.override.reason}`} />}
+              {selected.cancelReason && <Info label="Reason Recorded" value={selected.cancelReason} />}
             </div>
             <div className="p-4">
               {events.length === 0 ? (

@@ -226,6 +226,8 @@ export interface DispenseRequest {
   lines: { itemId: string; quantity: number; lot?: string; expiry?: string }[];
   secure?: Dispense["secure"];
   verification: Dispense["verification"];
+  /** Kept on the dispense record. Not part of the message. */
+  witness?: Dispense["witness"];
 }
 
 export interface DispensePlan {
@@ -306,6 +308,7 @@ export function planDispense(s: RxState, req: DispenseRequest, stable = true): D
     lines,
     secure: req.secure,
     verification: req.verification,
+    ...(req.witness ? { witness: req.witness } : {}),
   };
   const input = dispenseInput(s, rx, dispense, lines);
   if (!input) return null;
@@ -352,7 +355,7 @@ export function sendDispense(req: DispenseRequest): { outcome: SendOutcome | nul
     const lowRem = plan.dispense.lines.map((l) => `${getDrug(l.drugId).generic} ${l.quantity} (${l.type})`).join("; ");
     audit("create", `Dispense ${plan.dispense.number}`, {
       patient: rx.patientId,
-      detail: `Visit ${rx.visitNumber}. ${lowRem}.${req.verification.skippedReason ? ` Scan skipped: ${req.verification.skippedReason}` : " Wristband and drug scans matched."}`,
+      detail: `Visit ${rx.visitNumber}. ${lowRem}.${req.verification.skippedReason ? ` Scan skipped: ${req.verification.skippedReason}` : " Wristband and drug scans matched."}${req.witness ? ` Witness: ${req.witness.name} (${req.witness.staffNo}).` : ""}`,
     });
   }
   setRx(next);

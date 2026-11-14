@@ -14,6 +14,49 @@ export function shortRange(t: LabTest, sex: "M" | "F"): string {
   return refTextFor(t, sex);
 }
 
+const stamp = (iso: string) =>
+  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+
+/** Who entered and who verified the results, and the critical result call. Shown under the results, also in the chart. */
+export function LabSignOff({ order }: { order: LabOrder }) {
+  const { enteredBy, submittedAt, verifiedBy, verifiedAt, verifyOverrideReason, criticalCall, sentBack } = order;
+  if (!enteredBy && !verifiedBy && !criticalCall && !sentBack) return null;
+  return (
+    <div className="space-y-1 border-t border-border px-3 py-2 text-xs text-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {enteredBy && (
+          <span>
+            <span className="font-semibold">Entered by</span> {enteredBy.name}
+            {submittedAt && `, ${stamp(submittedAt)}`}
+          </span>
+        )}
+        {verifiedBy && verifiedAt ? (
+          <span>
+            <span className="font-semibold">Verified by</span> {verifiedBy.name}, {stamp(verifiedAt)}
+          </span>
+        ) : (
+          enteredBy && submittedAt && <span className="font-medium text-warn">Waiting for verification</span>
+        )}
+      </div>
+      {verifyOverrideReason && <div>Verified by the same user who entered it, with an administrator override. Reason: {verifyOverrideReason}</div>}
+      {sentBack && !verifiedBy && (
+        <div className="text-warn">
+          Sent back by {sentBack.by}, {stamp(sentBack.at)}. Reason: {sentBack.reason}
+        </div>
+      )}
+      {criticalCall && (
+        <div className="flex items-start gap-1.5 font-medium text-destructive">
+          <ShieldAlert className="mt-px size-4 shrink-0" aria-hidden="true" />
+          <span>
+            Critical result called to {criticalCall.toldTo} by {criticalCall.toldBy}, {stamp(criticalCall.at)}.
+            {criticalCall.readBack && " Read-back confirmed."}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Results of one order: abnormal flags, critical rows in red, corrected and cancelled results marked. */
 export function LabResultsTable({ order, sex }: { order: LabOrder; sex: "M" | "F" }) {
   const rows: { t: LabTest; indent: boolean; panel: boolean }[] = [];
@@ -29,6 +72,7 @@ export function LabResultsTable({ order, sex }: { order: LabOrder; sex: "M" | "F
     } else rows.push({ t, indent: false, panel: false });
   }
   return (
+    <>
     <Table>
       <thead>
         <tr>
@@ -93,5 +137,7 @@ export function LabResultsTable({ order, sex }: { order: LabOrder; sex: "M" | "F
         })}
       </tbody>
     </Table>
+    <LabSignOff order={order} />
+    </>
   );
 }

@@ -1,13 +1,14 @@
 import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import type { RadOrder } from "@/lib/fhir/types";
-import { markPerformed, procByCode, releaseRadReport } from "@/lib/radiology";
+import { isRadSigned, procByCode, releaseRadReport } from "@/lib/radiology";
 import { can } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { auditMove } from "./audit-move";
 import { byPriorityThenAge } from "./board-util";
 import { CheckCircle2 } from "lucide-react";
-import { CardAction, CardFoot, CardSubject, PatientLine, PriorityTag, Tag } from "./CardBits";
+import { CardAction, CardFoot, CardSubject, PriorityTag, Tag } from "./CardBits";
+import { OrderCardPatient } from "./OrderCardPatient";
 import { fmtDuration } from "./clock";
 import { ClockPill } from "./ClockPill";
 import { CriticalPulse, ModalityGlyph } from "./glyphs";
@@ -21,10 +22,10 @@ import { TONE } from "./tone";
 import type { CardCtx, MoveCheck, MoveResult } from "./types";
 
 const NEXT_ACTION: Record<RadStageId, { label: string; to?: RadStageId }> = {
-  ordered: { label: "Mark Exam Performed", to: "performed" },
+  ordered: { label: "Mark Exam Done", to: "performed" },
   performed: { label: "Write Report", to: "reporting" },
   reporting: { label: "Release Report", to: "reported" },
-  reported: { label: "View Or Amend" },
+  reported: { label: "Open Report" },
 };
 
 function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCtx; onOpen: () => void; allowed: boolean }) {
@@ -33,7 +34,9 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
   const proc = procByCode(order.procCode);
   const stage = ctx.stage.id as RadStageId;
   const clock = radClock(order, stage);
-  const next = NEXT_ACTION[stage];
+  const signed = isRadSigned(order);
+  // A draft must be signed in the editor first, so the button says that and opens the report.
+  const next = stage === "reporting" && !signed ? { label: "Sign Report" } : NEXT_ACTION[stage];
   const modality = proc?.modality ?? "DX";
   const t = TONE[ctx.lane.tone];
   const prio = order.priority === "stat" ? { tone: "cancel" as const, label: "STAT" } : order.priority === "routine" ? { tone: "muted" as const, label: "Routine" } : { tone: "merge" as const, label: "Urgent" };
@@ -52,7 +55,7 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
       </div>
 
       <div className="mt-1.5">
-        <PatientLine patient={patient} onOpen={ctx.overlay ? undefined : onOpen} dev={ctx.dev} extra={`${order.id} · ${order.visitNumber}`} now={ctx.now} />
+        <OrderCardPatient patient={patient} orderedAt={order.orderedAt} onOpen={ctx.overlay ? undefined : onOpen} now={ctx.now} devExtra={ctx.dev ? `${order.id} · Visit ${order.visitNumber}` : undefined} />
       </div>
       <CardSubject>
         {proc?.short ?? order.procCode}
@@ -67,10 +70,11 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
             <span className="inline-flex items-center gap-1 text-xs font-medium text-ok"><CheckCircle2 className="size-3.5" aria-hidden="true" /> Report released</span>
           )}
           {stage === "reporting" && order.report && !order.report.impression.trim() && <Tag tone="merge">No impression yet</Tag>}
+          {stage === "reporting" && <Tag tone={signed ? "ok" : "update"}>{signed ? "Signed" : "Draft"}</Tag>}
         </div>
         {!ctx.overlay && (
           <div className="flex gap-1.5">
-            {stage === "reporting" && (
+            {stage === "reporting" && signed && (
               <CardAction label="Open Report" variant="secondary" allowed={allowed} reason="Your role cannot write radiology reports." onClick={onOpen} />
             )}
             <CardAction
@@ -89,9 +93,11 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
 
 /** The radiology swim lane board. Lanes are modalities, stages follow the real order status plus a draft report. */
 export function RadBoard({
-  orders, onOpenEditor, onOpen,
+  orders, onPerform, onOpenEditor, onOpen,
 }: {
   orders: RadOrder[];
+  /** Opens the exam record of the page: machine, times, contrast and the pregnancy check. */
+  onPerform: (id: string) => void;
   onOpenEditor: (id: string, hint: string) => void;
   onOpen: (id: string) => void;
 }) {
@@ -112,12 +118,19 @@ export function RadBoard({
   const nameOf = (o: RadOrder) => patientName(his.patients.find((p) => p.id === o.patientId));
 
   function onMove(o: RadOrder, _from: string, to: string): MoveResult {
-    if (to === "performed") return markPerformed(o.id);
+    if (to === "performed") {
+      onPerform(o.id);
+      return "deferred";
+    }
     if (to === "reporting") {
       onOpenEditor(o.id, "Write the findings and the impression. The card moves to Reporting as soon as you type.");
       return "deferred";
     }
     if (to === "reported") {
+      if (!isRadSigned(o)) {
+        onOpenEditor(o.id, "A radiologist must sign the report before it is released. Check the text, then press Sign Report.");
+        return "deferred";
+      }
       return releaseRadReport(o.id);
     }
     return false;
@@ -157,6 +170,7 @@ export function RadBoard({
       />
       <p className="mt-2 text-xs text-muted-foreground">
         Drag a card to the next stage, or use the arrows button on the card. The clock on Exam Done and Reporting cards counts down to the report due time.
+        A report is released only after a radiologist has signed it.
       </p>
     </div>
   );

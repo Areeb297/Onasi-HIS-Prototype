@@ -2,6 +2,9 @@
  * Radiology: own localStorage store, seeds, order and report lifecycle, sending to (simulated) NPHIES, conformance status.
  *
  * Order flow:  chart "Place Order" -> received -> exam performed -> reported -> amended
+ * Exam:        the technologist records the machine, the times, contrast and the pregnancy check, then marks it done.
+ * Report:      draft -> signed by a radiologist -> released to the chart. After signing the text is fixed; later notes
+ *              are addenda that keep the original.
  * NPHIES:      order bundle (6.1, amendment 6.2) and report bundle (3.1, amendment 3.2). Amendments replace the original:
  *              same set identifier, higher version number, status amended / corrected / cancelled.
  */
@@ -10,22 +13,22 @@ import { audit } from "./audit";
 import { conformanceStep, type ConfStep } from "./fhir/conformance";
 import { simulateNphies, type Json, type Person } from "./fhir/common";
 import { newDicomUid, buildRadOrderBundle, buildRadReportBundle } from "./fhir/rad-bundles";
-import { procByCode, REPORT_TEMPLATES } from "./fhir/rad-catalog";
+import { machinesFor, procByCode, reportTemplatesFor } from "./fhir/rad-catalog";
 import { amendmentChecks, validateRadOrderBundle, validateRadReportBundle } from "./fhir/rad-validate";
 import { createStore } from "./fhir/store-util";
 import {
-  lastAccepted, nextVersion, type DocStatus, type Priority, type RadOrder, type RadReport, type RadStudy, type SendRecord,
+  lastAccepted, nextVersion, type DocStatus, type PregnancyCheck, type Priority, type RadOrder, type RadReport, type RadStudy, type SendRecord,
 } from "./fhir/types";
 import type { Encounter, Patient } from "./model";
 import { doctorIdForUser, personFromDoctor, personFromUser } from "./fhir/people";
-import { can, currentUser } from "./session";
+import { can, currentUser, type DemoUser } from "./session";
 import { getState, patientName } from "./store";
 import { pushToast } from "./toast";
 
 export * from "./fhir/rad-catalog";
 export { buildRadOrderBundle, buildRadReportBundle } from "./fhir/rad-bundles";
 export { validateRadOrderBundle, validateRadReportBundle } from "./fhir/rad-validate";
-export type { RadOrder, RadReport, RadStatus, RadStudy } from "./fhir/types";
+export type { PregnancyCheck, RadOrder, RadReport, RadStatus, RadStudy } from "./fhir/types";
 
 /** The consultant radiologist who signs reports (legal authenticator). Made-up. */
 export const RAD_CONSULTANT: Person = { id: "R9001", name: "Dr. Rami Alshehri" };
@@ -192,32 +195,120 @@ export function cancelRadOrder(id: string): boolean {
   return true;
 }
 
+/**
+ * Exams in `procCodes` that are already open (not yet reported, not cancelled) for the same visit.
+ * Returns the catalogue codes, so the caller can name them.
+ */
+export function openRadDuplicates(orders: RadOrder[], visitNumber: string, procCodes: string[], excludeOrderId?: string): string[] {
+  const open = new Set(
+    orders.filter((o) => o.visitNumber === visitNumber && o.id !== excludeOrderId && (o.status === "received" || o.status === "performed")).map((o) => o.procCode),
+  );
+  return [...new Set(procCodes.filter((c) => open.has(c)))];
+}
+
 /* ---------- radiology side ---------- */
 
-/** The exam is done. Creates the study record (UID, accession). Images are in PACS unless told otherwise. */
-export function markPerformed(id: string, opts: { images?: boolean } = {}): boolean {
+/** What the technologist records when the exam is done. Times are ISO or datetime-local strings. */
+export interface ExamDetails {
+  machine: string;
+  start: string;
+  end: string;
+  /** null = not answered yet. */
+  contrastGiven: boolean | null;
+  contrastAmount: string;
+  /** Empty = not answered yet. */
+  pregnancy: PregnancyCheck | "";
+  pregnancyNote: string;
+  images?: boolean;
+}
+
+/** The pregnancy question is asked of women aged 12 to 55. */
+export function needsPregnancyCheck(p: Pick<Patient, "sex" | "dob">, now: number = Date.now()): boolean {
+  if (p.sex !== "F") return false;
+  const age = Math.floor((now - new Date(p.dob).getTime()) / (365.25 * 86_400_000));
+  return age >= 12 && age <= 55;
+}
+
+/** What is still wrong or missing in the technologist record, in plain words. Empty means the exam can be marked done. */
+export function examProblems(d: ExamDetails, patient: Pick<Patient, "sex" | "dob">, now: number = Date.now()): string[] {
+  const out: string[] = [];
+  if (!d.machine.trim()) out.push("Choose the machine.");
+  const start = new Date(d.start).getTime();
+  const end = new Date(d.end).getTime();
+  if (!d.start || Number.isNaN(start)) out.push("Enter the start time.");
+  if (!d.end || Number.isNaN(end)) out.push("Enter the end time.");
+  if (!Number.isNaN(start) && !Number.isNaN(end)) {
+    if (end < start) out.push("The end time is before the start time.");
+    if (end > now + 60_000) out.push("The end time is in the future.");
+  }
+  if (d.contrastGiven === null) out.push("Say if contrast was given.");
+  if (d.contrastGiven && !d.contrastAmount.trim()) out.push("Enter the amount of contrast given.");
+  if (needsPregnancyCheck(patient, now)) {
+    if (!d.pregnancy) out.push("Record the pregnancy check.");
+    else if (d.pregnancy !== "not-pregnant" && !d.pregnancyNote.trim()) out.push("Note what was done about the possible pregnancy.");
+  }
+  return out;
+}
+
+/**
+ * The technologist step: checks the record, then marks the exam done. This is what the worklist uses.
+ * The study cannot be reported before this.
+ */
+export function completeExam(id: string, details: ExamDetails): boolean {
   const o = getRadOrder(id);
   if (!o || !allowed("rad.report", `Radiology order ${id}`)) return false;
   if (o.status !== "received") return false;
-  const end = new Date();
+  const patient = getState().patients.find((p) => p.id === o.patientId);
+  if (!patient) return false;
+  const problems = examProblems(details, patient);
+  if (problems.length) {
+    pushToast({ tone: "warn", text: "The exam record is not complete.", detail: problems.join(" ") });
+    return false;
+  }
+  return markPerformed(id, { images: details.images, details });
+}
+
+/** The exam is done. Creates the study record (UID, accession). Images are in PACS unless told otherwise. */
+export function markPerformed(id: string, opts: { images?: boolean; details?: ExamDetails } = {}): boolean {
+  const o = getRadOrder(id);
+  if (!o || !allowed("rad.report", `Radiology order ${id}`)) return false;
+  if (o.status !== "received") return false;
+  const d = opts.details;
+  const end = d ? new Date(d.end) : new Date();
   const study: RadStudy = {
     studyUid: newDicomUid(),
     accession: `ACC${o.id.slice(3)}`,
-    performedStart: new Date(end.getTime() - 15 * 60_000).toISOString(),
+    performedStart: d ? new Date(d.start).toISOString() : new Date(end.getTime() - 15 * 60_000).toISOString(),
     performedEnd: end.toISOString(),
     performedBy: currentUser().name,
     images: opts.images ?? true,
     series: 1,
     instances: 2,
+    machine: d?.machine.trim() || machinesFor(o.procCode)[0],
   };
+  if (d) {
+    study.contrastGiven = !!d.contrastGiven;
+    if (d.contrastGiven) study.contrastAmount = d.contrastAmount.trim();
+    if (d.pregnancy) {
+      study.pregnancy = d.pregnancy;
+      if (d.pregnancyNote.trim()) study.pregnancyNote = d.pregnancyNote.trim();
+    }
+  }
   mutate(id, (x) => {
     x.study = study;
     x.status = "performed";
     x.report = x.report ?? { technique: procByCode(x.procCode)?.technique ?? "", comparison: "", findings: "", impression: "", addendum: "", critical: false, communicated: "", reportedAt: "", reportedById: "" };
   });
-  audit("update", `Radiology order ${id}`, { patient: nameOf(o), detail: `Exam performed, accession ${study.accession}` });
+  const extra = d ? `, ${study.machine}, contrast ${study.contrastGiven ? study.contrastAmount : "not given"}${study.pregnancy ? `, pregnancy check: ${PREGNANCY_TEXT[study.pregnancy]}` : ""}` : "";
+  audit("update", `Radiology order ${id}`, { patient: nameOf(o), detail: `Exam performed, accession ${study.accession}${extra}` });
   return true;
 }
+
+export const PREGNANCY_TEXT: Record<PregnancyCheck, string> = {
+  "not-pregnant": "Not pregnant",
+  pregnant: "Pregnant",
+  unsure: "Not sure",
+};
 
 export function setStudyImages(id: string, images: boolean): boolean {
   const o = getRadOrder(id);
@@ -229,10 +320,24 @@ export function setStudyImages(id: string, images: boolean): boolean {
   return true;
 }
 
-/** Save the report text. After publishing, any change marks the report as changed (needs an amendment). */
+/** The parts of a report that are fixed once the radiologist has signed. */
+const SIGNED_TEXT: (keyof RadReport)[] = ["technique", "comparison", "findings", "impression", "critical", "communicated"];
+
+/**
+ * Save the report text. After publishing, any change marks the report as changed (needs an amendment).
+ * The exam must be marked done first, and a signed report only takes addenda.
+ */
 export function saveRadReport(id: string, patch: Partial<RadReport>): boolean {
   const o = getRadOrder(id);
   if (!o || !allowed("rad.report", `Radiology order ${id}`)) return false;
+  if (!o.study) {
+    pushToast({ tone: "warn", text: "The exam is not marked done.", detail: "Mark the exam as done before you write the report." });
+    return false;
+  }
+  if (o.report?.signedAt && SIGNED_TEXT.some((k) => k in patch && patch[k] !== o.report![k])) {
+    pushToast({ tone: "warn", text: "This report is signed.", detail: "The signed text cannot change. Add an addendum instead." });
+    return false;
+  }
   mutate(id, (x) => {
     const base: RadReport = x.report ?? { technique: "", comparison: "", findings: "", impression: "", addendum: "", critical: false, communicated: "", reportedAt: "", reportedById: "" };
     const next = { ...base, ...patch };
@@ -242,9 +347,12 @@ export function saveRadReport(id: string, patch: Partial<RadReport>): boolean {
   return true;
 }
 
-export function applyReportTemplate(id: string, key: keyof typeof REPORT_TEMPLATES): boolean {
-  const t = REPORT_TEMPLATES[key];
-  return saveRadReport(id, { findings: t.findings, impression: t.impression, comparison: t.comparison, critical: key === "critical" });
+/** Fill the report from a template of the study type: "normal" gives the normal wording for that exact exam. */
+export function applyReportTemplate(id: string, key: string): boolean {
+  const o = getRadOrder(id);
+  const t = o && reportTemplatesFor(o.procCode).find((x) => x.key === key);
+  if (!t) return false;
+  return saveRadReport(id, { technique: t.technique ?? o.report?.technique ?? "", findings: t.findings, impression: t.impression, comparison: t.comparison, critical: t.critical });
 }
 
 export const reportMissing = (o: RadOrder): string[] => {
@@ -253,6 +361,100 @@ export const reportMissing = (o: RadOrder): string[] => {
   if (!o.report?.impression.trim()) miss.push("Impression");
   return miss;
 };
+
+/* ---------- sign-off ---------- */
+
+/** Only a radiologist signs a report. */
+export const canSignRadReport = (u: DemoUser): boolean => u.role === "radiologist";
+
+export const isRadSigned = (o: RadOrder): boolean => !!o.report?.signedAt;
+
+function mustBeRadiologist(o: RadOrder, what: string): boolean {
+  if (canSignRadReport(currentUser())) return true;
+  audit("denied", `Radiology report ${o.id}`, { patient: nameOf(o), detail: `Only a radiologist can ${what}` });
+  pushToast({ tone: "warn", text: `Only a radiologist can ${what}.` });
+  return false;
+}
+
+/** Sign the draft. The signer becomes the reporting radiologist and the text is fixed from here on. */
+export function signRadReport(id: string): boolean {
+  const o = getRadOrder(id);
+  if (!o || !allowed("rad.report", `Radiology order ${id}`)) return false;
+  if (!mustBeRadiologist(o, "sign a report")) return false;
+  if (!o.study || o.status !== "performed") {
+    pushToast({ tone: "warn", text: "This report cannot be signed now.", detail: o.study ? "It is already released." : "Mark the exam as done first." });
+    return false;
+  }
+  if (o.report?.signedAt) return true;
+  const miss = reportMissing(o);
+  if (miss.length) {
+    pushToast({ tone: "warn", text: "The report is not complete.", detail: `Missing: ${miss.join(", ")}.` });
+    return false;
+  }
+  if (o.report?.critical && !o.report.communicated.trim()) {
+    pushToast({ tone: "warn", text: "Record who was told about the critical finding." });
+    return false;
+  }
+  const who = personFromUser(currentUser());
+  const at = new Date().toISOString();
+  mutate(id, (x) => {
+    if (!x.report) return;
+    x.report.signedAt = at;
+    x.report.signedBy = { id: who.id, name: who.name };
+    x.report.reportedAt = at;
+    x.report.reportedById = who.id;
+  });
+  audit("update", `Radiology report ${id} signed`, { patient: nameOf(o), detail: `Visit ${o.visitNumber}. Signed by ${who.name}.` });
+  pushToast({ tone: "ok", text: "Report signed.", detail: "Release it to make it show in the chart." });
+  return true;
+}
+
+/** Take a signed report back to draft. Only before it is released. */
+export function reopenRadDraft(id: string): boolean {
+  const o = getRadOrder(id);
+  if (!o || !allowed("rad.report", `Radiology order ${id}`)) return false;
+  if (!mustBeRadiologist(o, "reopen a signed report")) return false;
+  if (o.status !== "performed" || !o.report?.signedAt) return false;
+  mutate(id, (x) => {
+    if (!x.report) return;
+    x.report.signedAt = undefined;
+    x.report.signedBy = undefined;
+  });
+  audit("update", `Radiology report ${id} reopened`, { patient: nameOf(o), detail: `Visit ${o.visitNumber}. Signature removed before release.` });
+  return true;
+}
+
+/** Add a note to a signed report. The signed text stays as it was. */
+export function addRadAddendum(id: string, text: string): boolean {
+  const o = getRadOrder(id);
+  if (!o || !allowed("rad.report", `Radiology order ${id}`)) return false;
+  if (!mustBeRadiologist(o, "add an addendum")) return false;
+  if (!o.report?.signedAt) {
+    pushToast({ tone: "warn", text: "Sign the report before you add an addendum." });
+    return false;
+  }
+  if (!text.trim()) return false;
+  const by = currentUser().name;
+  const at = new Date().toISOString();
+  mutate(id, (x) => {
+    if (!x.report) return;
+    x.report.addenda = [...(x.report.addenda ?? []), { text: text.trim(), at, by }];
+    x.report.addendum = x.report.addenda.map((a) => `${a.text} (Added by ${a.by}, ${a.at.slice(0, 16).replace("T", " ")} UTC)`).join(" ");
+    if (isRadPublished(x)) x.reportDirty = true;
+  });
+  audit("update", `Radiology report ${id} addendum`, { patient: nameOf(o), detail: `Visit ${o.visitNumber}. The signed text was kept.` });
+  pushToast({ tone: "ok", text: "Addendum added.", detail: isRadPublished(o) ? "Publish the amendment to send it to NPHIES." : undefined });
+  return true;
+}
+
+/** Why a report cannot be sent to NPHIES yet, or null when it can. Used by the NPHIES Clinical page. */
+export function radReportSendBlock(o: RadOrder): string | null {
+  if (!o.study) return "Waiting for the exam to be done.";
+  const miss = reportMissing(o);
+  if (miss.length) return `The report still needs: ${miss.join(", ")}.`;
+  if (!isRadPublished(o)) return isRadSigned(o) ? "Waiting for the signed report to be released." : "Waiting for the radiologist to sign the report.";
+  return null;
+}
 
 /* ---------- sending ---------- */
 
@@ -309,9 +511,10 @@ export function publishRadReport(id: string, amendStatus: "amended" | "corrected
   const version = nextVersion(radSendsOf(o, "rad-report"), "rad-report");
   const docStatus: DocStatus = version === 1 ? "final" : amendStatus;
   const user = currentUser();
-  const radiologist = doctorIdForUser(user) && user.role !== "radiologist" ? personFromDoctor(doctorIdForUser(user)!) : personFromUser(user);
+  // The author is the radiologist who signed. Without a signature (older data) it is the user who publishes.
+  const radiologist = o.report?.signedBy ?? (doctorIdForUser(user) && user.role !== "radiologist" ? personFromDoctor(doctorIdForUser(user)!) : personFromUser(user));
   mutate(id, (x) => {
-    if (x.report) {
+    if (x.report && !x.report.signedAt) {
       x.report.reportedAt = new Date().toISOString();
       x.report.reportedById = radiologist.id;
     }
@@ -332,7 +535,7 @@ export function publishRadReport(id: string, amendStatus: "amended" | "corrected
 }
 
 /**
- * Release the report to the chart. This does not send anything to NPHIES: the report then waits on the
+ * Release the signed report to the chart. This does not send anything to NPHIES: the report then waits on the
  * NPHIES Clinical page, where publishRadReport sends it.
  */
 export function releaseRadReport(id: string): boolean {
@@ -343,11 +546,14 @@ export function releaseRadReport(id: string): boolean {
     pushToast({ tone: "warn", text: "The report is not complete.", detail: `Missing: ${o.study ? reportMissing(o).join(", ") : "exam not performed"}.` });
     return false;
   }
+  if (!isRadSigned(o)) {
+    pushToast({ tone: "warn", text: "The report is not signed.", detail: "A radiologist must sign the report before it is released." });
+    return false;
+  }
   const ctx = radContext(o);
   mutate(id, (x) => {
     x.status = "resulted";
     x.reportDirty = true;
-    if (x.report) x.report.reportedAt = new Date().toISOString();
   });
   audit("update", `Radiology report ${id} released`, { patient: ctx ? patientName(ctx.patient) : undefined, detail: `Visit ${o.visitNumber}. Waiting to be sent from NPHIES Clinical.` });
   pushToast({ tone: "ok", text: "Report released to the chart.", detail: "Send it to NPHIES from the NPHIES Clinical page." });
@@ -356,7 +562,7 @@ export function releaseRadReport(id: string): boolean {
 
 /** One click for testers: a chest X-ray order, exam done and a normal report typed, ready to publish. */
 export function createRadConformanceSample(enc: Encounter): RadOrder | null {
-  const o = placeRadOrder(enc, { procCode: "XCHES-PA", priority: "routine", indication: "Conformance sample", clinicalInfo: "Made-up test case." });
+  const o = placeRadOrder(enc, { procCode: "XCHES-PA", priority: "routine", indication: "Sample exam", clinicalInfo: "Made-up test case." });
   if (!o) return null;
   markPerformed(o.id);
   applyReportTemplate(o.id, "normal");
@@ -374,7 +580,7 @@ export function radConformance(s: RadState): ConfStep[] {
   return [
     conformanceStep({ ...base, id: "6.1", title: "Radiology Order: Publish", what: "a radiology order bundle", sends: orders, amendment: false, hint: "Place an order in the chart and press Send Order To NPHIES." }),
     conformanceStep({ ...base, id: "6.2", title: "Radiology Order: Amended Order", what: "an amendment that replaces the order", sends: orders, amendment: true, minimums: amendmentChecks, hint: "Change a sent order in the chart, then send it again." }),
-    conformanceStep({ ...base, id: "3.1", title: "Radiology Report: Publish", what: "a radiology report bundle", sends: reports, amendment: false, hint: "Use Create Conformance Sample, then Publish Report." }),
+    conformanceStep({ ...base, id: "3.1", title: "Radiology Report: Publish", what: "a radiology report bundle", sends: reports, amendment: false, hint: "Use Create Sample Exam, sign and release the report as a radiologist, then send it from NPHIES Clinical." }),
     conformanceStep({ ...base, id: "3.2", title: "Radiology Report: Amended Report", what: "an amendment that replaces the report", sends: reports, amendment: true, minimums: amendmentChecks, hint: "Edit the report text, then Publish Amendment." }),
   ];
 }

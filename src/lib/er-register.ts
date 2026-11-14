@@ -2,6 +2,7 @@ import { quickCreate } from "./actions";
 import { startEd } from "./ed";
 import type { EdData, PatientExtra } from "./model";
 import { DOCTORS } from "./reference-data";
+import { findDuplicates } from "./registration";
 import { lookupById } from "./registry";
 import { getState, nextHealthId, nowLocal, registerPatient, updateEncounter } from "./store";
 
@@ -14,6 +15,8 @@ import { getState, nextHealthId, nowLocal, registerPatient, updateEncounter } fr
  *    A real HIS would use the temporary or unidentified patient process of the national registry.
  *  - Nationality is "999" (unknown) and marital status is "U" (unknown, the HL7 value) when we do not know them.
  *  - Emergency care does not wait for consent or insurance, so neither is asked here.
+ *  - A registry patient who already has a file here (same ID number or Health ID) keeps that file. The visit is added to it
+ *    without stopping the clerk, because the door does not wait for a duplicate question.
  */
 
 export type ErIdentity =
@@ -31,7 +34,14 @@ export interface ErRegistration {
   referring?: string;
 }
 
-export type ErResult = { ok: true; visit: string; patientId: string; temporary: boolean } | { ok: false; message: string };
+export type ErResult = { ok: true; visit: string; patientId: string; temporary: boolean; /** The visit was added to a file the patient already had. */ existing?: boolean } | { ok: false; message: string };
+
+/** The file a registry person already has here, matched on the ID number or the Health ID only. */
+export function existingFileFor(idNumber: string, patients = getState().patients) {
+  const p = lookupById(idNumber);
+  if (!p) return undefined;
+  return findDuplicates({ idNumber: p.idNumber, healthId: p.healthId }, patients)[0]?.patient;
+}
 
 /** Birth date from an approximate age. The middle of the year, so the age is right for about six months either way. */
 export function dobFromAge(ageYears: number | undefined, ageMonths: number | undefined, now = new Date()): string {
@@ -48,17 +58,20 @@ export function registerEmergency(r: ErRegistration): ErResult {
   const attending = r.attending ?? DOCTORS[0].id;
   let patientId = "";
   let temporary = true;
+  let existing = false;
 
   if (r.identity.kind === "registry") {
     const p = lookupById(r.identity.idNumber);
     if (!p) return { ok: false, message: "That ID number is not in the national registry." };
     temporary = false;
+    const onFile = existingFileFor(p.idNumber, s.patients);
+    if (onFile) { patientId = onFile.id; existing = true; }
     const extra: PatientExtra = {
       secondName: p.second, thirdName: p.third, nameAr: { first: p.firstAr, second: p.secondAr, third: p.thirdAr, family: p.familyAr },
       religion: p.religion, bloodGroup: p.bloodGroup, idType: p.idType, idNumber: p.idNumber, mobile: p.mobile, occupation: p.occupation,
       visitPayType: p.insurance && p.insurance.status === "Active" ? "Insurance" : "Cash", insurance: p.insurance, fileStatus: "Regular File",
     };
-    patientId = registerPatient({
+    if (!onFile) patientId = registerPatient({
       healthId: p.healthId, given: p.first, family: p.family, dob: p.dob, sex: p.sex, nationality: p.nationality, maritalStatus: p.maritalStatus,
       address: p.address, consentAt: undefined, extra,
     }).id;
@@ -87,5 +100,5 @@ export function registerEmergency(r: ErRegistration): ErResult {
   updateEncounter(visit, (e) => {
     if (e.ed) e.ed = { ...e.ed, complaint: r.complaint.trim() || undefined, temporaryId: temporary || undefined, arrivalAt: e.ed.arrivalAt ?? nowLocal() };
   }, { touch: false });
-  return { ok: true, visit, patientId, temporary };
+  return { ok: true, visit, patientId, temporary, existing: existing || undefined };
 }

@@ -93,6 +93,31 @@ export interface RxItem {
   /** Raised each time the item changes after it was sent. */
   version: number;
   allergyOverride?: { reason: string; by: string; at: string; allergy: string };
+  /** Pharmacist check before dispensing. Hospital record only, never sent to nphies. Empty means not checked yet. */
+  verify?: RxVerification;
+}
+
+/** The latest pharmacist decision on an item. It counts only while the item version is the one that was checked. */
+export interface RxVerification {
+  status: "verified" | "queried" | "rejected";
+  /** Item version the pharmacist looked at. An edit by the prescriber raises the item version and asks for a new check. */
+  version: number;
+  /** Pharmacist name and staff number. */
+  by: string;
+  byId: string;
+  at: string;
+  /** Note typed when verifying, needed when the check sheet shows a serious finding. */
+  note?: string;
+  /** Why the item was rejected. */
+  reason?: string;
+  /** Question to the prescriber and the answer. */
+  query?: { text: string; answer?: string; answeredBy?: string; answeredAt?: string };
+}
+
+/** Second person who checks a controlled drug at hand over. */
+export interface Witness {
+  name: string;
+  staffNo: string;
 }
 
 export interface SentMark {
@@ -154,6 +179,8 @@ export interface Dispense {
   secure?: { mode: "authenticated" | "override"; value?: string; /** Code from OVERRIDE_REASONS. */ justification?: string };
   /** Closed-loop scan result. */
   verification: { patientScan: boolean; drugScans: string[]; skippedReason?: string };
+  /** Witness of a controlled drug hand over. Hospital record only. */
+  witness?: Witness;
 }
 
 export interface RxCheck {

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { IconAlertTriangle, IconCheck, IconChevronDown, IconCircleDashed, IconInfoCircle, IconShieldExclamation, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCheck, IconChevronDown, IconCircleDashed, IconInfoCircle, IconShieldCheck, IconShieldExclamation, IconX } from "@tabler/icons-react";
 import { Badge, Card, cn } from "@/components/ui/primitives";
 import { CodeBlock } from "@/components/ui/code-block";
 import { useDevMode } from "@/lib/devmode";
@@ -7,8 +7,12 @@ import { ASSUMPTIONS } from "@/lib/fhir/medication";
 import { CONTROL_LABEL } from "@/lib/rx-catalogue";
 import { GROUPS, STEPS, stepStatus, type StepStatus } from "@/lib/rx-logic";
 import type { SafetyFinding } from "@/lib/rx-safety";
-import type { ControlClass, ItemStatus, RxCheck, SendRecord } from "@/lib/rx-types";
+import type { ControlClass, ItemStatus, Prescription, RxCheck, RxItem, SendRecord } from "@/lib/rx-types";
 import { useRx } from "@/lib/rx";
+import type { Allergy, Patient } from "@/lib/model";
+import { ageOf, measuresFor } from "@/lib/rx-send";
+import { VERIFY_LABEL, type VerifyStatus } from "@/lib/rx-verify";
+import { useHis } from "@/lib/store";
 
 /** Small pieces shared by the prescription tab and the pharmacy worklist. */
 
@@ -28,6 +32,95 @@ export function ItemStatusBadge({ status }: { status: ItemStatus }) {
 export function ControlBadge({ cls }: { cls: ControlClass }) {
   if (cls === "U") return null;
   return <Badge tone="danger">{CONTROL_LABEL[cls]} ({cls})</Badge>;
+}
+
+/* ---------- who the patient is, at the top of every pharmacy dialog ---------- */
+
+const SEVERITY_TEXT = { SV: "severe", MO: "moderate", MI: "mild" } as const;
+
+/** Name, MRN, age and sex, weight when recorded, and the allergies. */
+export function PatientStrip({ patient, allergies, weightKg, visit }: { patient?: Patient; allergies: Allergy[]; weightKg?: number; visit?: string }) {
+  const list = allergies.filter((a) => a.text);
+  return (
+    <div role="region" aria-label="Patient" className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className="text-sm font-semibold">{patient ? `${patient.given} ${patient.family}` : "Unknown patient"}</span>
+        {patient && (
+          <>
+            <span className="text-xs text-muted-foreground">MRN <span className="font-mono text-foreground">{patient.mrn}</span></span>
+            <span className="text-xs text-muted-foreground">{ageOf(patient.dob)} years, {patient.sex === "M" ? "Male" : "Female"}</span>
+          </>
+        )}
+        <span className="text-xs text-muted-foreground">{weightKg ? `Weight ${weightKg} kg` : "Weight not recorded"}</span>
+        {visit && <span className="text-xs text-muted-foreground">Visit <span className="font-mono text-foreground">{visit}</span></span>}
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+        {list.length ? (
+          <>
+            <span className="inline-flex items-center gap-1 font-semibold text-destructive"><IconShieldExclamation className="size-4" stroke={1.75} />Allergies</span>
+            {list.map((a) => (
+              <Badge key={a.text} tone="danger">{a.text}, {SEVERITY_TEXT[a.severity]}{a.reaction ? `, ${a.reaction}` : ""}</Badge>
+            ))}
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1 font-medium text-ok"><IconShieldCheck className="size-4" stroke={1.75} />No allergies recorded</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Patient, allergies and weight for a prescription, read from the chart. */
+export function RxPatientStrip({ rx }: { rx: Pick<Prescription, "patientId" | "visitNumber"> }) {
+  const his = useHis();
+  const s = useRx();
+  const enc = his.encounters.find((e) => e.visitNumber === rx.visitNumber);
+  return (
+    <PatientStrip
+      patient={his.patients.find((p) => p.id === rx.patientId)}
+      allergies={enc?.allergies ?? []}
+      weightKg={enc ? measuresFor(s, enc).weightKg : undefined}
+      visit={rx.visitNumber}
+    />
+  );
+}
+
+/* ---------- pharmacist check ---------- */
+
+const VERIFY_TONE: Record<VerifyStatus, "ok" | "warn" | "danger" | "update" | "move"> = {
+  "to-verify": "update",
+  queried: "warn",
+  answered: "move",
+  rejected: "danger",
+  verified: "ok",
+};
+
+export function VerifyBadge({ status }: { status: VerifyStatus }) {
+  return <Badge tone={VERIFY_TONE[status]}>{VERIFY_LABEL[status]}</Badge>;
+}
+
+export const fmtWhen = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+
+/** Who checked the item and when, plus the question, answer or reason. */
+export function VerifyTrail({ item, status }: { item: RxItem; status: VerifyStatus }) {
+  const v = item.verify;
+  if (!v) return status === "verified" ? <div className="text-xs text-muted-foreground">Handed over before the pharmacist check was introduced.</div> : null;
+  const stale = v.version !== item.version;
+  return (
+    <div className="space-y-0.5 text-xs text-muted-foreground">
+      {stale && <div>The prescriber changed this item after the last check. It needs a new check.</div>}
+      {!stale && v.status === "verified" && <div>Verified by {v.by} ({v.byId}), {fmtWhen(v.at)}.{v.note ? ` Note: ${v.note}` : ""}</div>}
+      {!stale && v.status === "rejected" && <div className="text-destructive">Rejected by {v.by} ({v.byId}), {fmtWhen(v.at)}. Reason: {v.reason}</div>}
+      {v.query && (
+        <>
+          <div>{stale ? "Earlier question" : "Question"} from {v.by}{v.status === "queried" ? `, ${fmtWhen(v.at)}` : ""}: <span className="text-foreground">{v.query.text}</span></div>
+          {v.query.answer
+            ? <div>Answer from {v.query.answeredBy}{v.query.answeredAt ? `, ${fmtWhen(v.query.answeredAt)}` : ""}: <span className="text-foreground">{v.query.answer}</span></div>
+            : !stale && <div>No answer from the prescriber yet.</div>}
+        </>
+      )}
+    </div>
+  );
 }
 
 /* ---------- safety banners ---------- */

@@ -2,6 +2,8 @@
  * Laboratory: own localStorage store, seeds, order and result lifecycle, sending to (simulated) NPHIES, conformance status.
  *
  * Order flow:   chart "Place Order" -> received -> specimen collected -> in progress -> resulted -> amended
+ * Sign-off:     in progress has three steps: enter results, send for verification, then a second user verifies and
+ *               releases (or sends back with a reason). A critical value needs a recorded call-back before release.
  * NPHIES:       order bundle (5.1, amendment 5.2) and result bundle (2.1, amendment 2.2). Amendments replace the original:
  *               same set identifier, higher version number, status amended / corrected / cancelled.
  * Everything is stored in the browser. No network calls.
@@ -12,23 +14,23 @@ import { conformanceStep, type ConfStep } from "./fhir/conformance";
 import { simulateNphies, type Json } from "./fhir/common";
 import { buildLabOrderBundle, buildLabReportBundle } from "./fhir/lab-bundles";
 import {
-  CONFORMANCE_SAMPLE_CODES, ORGANISMS, expand, interpretValue, normalizeCodes, sampleValue, testByCode, type LabTest,
+  CONFORMANCE_SAMPLE_CODES, ORGANISMS, expand, interpretValue, normalizeCodes, parseNumeric, sampleValue, testByCode, type LabTest,
 } from "./fhir/lab-catalog";
 import { labAmendmentMinimums, labResultMinimums, validateLabOrderBundle, validateLabReportBundle } from "./fhir/lab-validate";
 import { LAB_DIRECTOR, doctorIdForUser, personFromDoctor, personFromUser, providerIdForUser } from "./fhir/people";
 import { createStore } from "./fhir/store-util";
 import {
-  lastAccepted, nextVersion, type DocStatus, type LabOrder, type LabResult, type LabSpecimen, type Priority, type SendRecord,
+  lastAccepted, nextVersion, type CriticalCall, type DocStatus, type LabOrder, type LabResult, type LabSpecimen, type Priority, type SendRecord,
 } from "./fhir/types";
 import type { Encounter, Patient } from "./model";
-import { can, currentUser } from "./session";
+import { can, currentUser, type DemoUser } from "./session";
 import { getState, patientName } from "./store";
 import { pushToast } from "./toast";
 
 export * from "./fhir/lab-catalog";
 export { buildLabOrderBundle, buildLabReportBundle, formatResult, placerNumber } from "./fhir/lab-bundles";
 export { labAmendmentMinimums, labResultMinimums, validateLabOrderBundle, validateLabReportBundle } from "./fhir/lab-validate";
-export type { LabOrder, LabResult, LabSpecimen, LabStatus, Priority } from "./fhir/types";
+export type { CriticalCall, LabOrder, LabResult, LabSpecimen, LabStatus, Priority, StaffStamp } from "./fhir/types";
 
 export { LAB_DIRECTOR, doctorIdForUser, personFromDoctor, personFromUser, providerIdForUser };
 
@@ -116,6 +118,80 @@ export function missingResults(o: LabOrder): LabTest[] {
     const r = o.results[t.code];
     return !r || (t.kind === "organism" ? !r.organism && !r.value.trim() : !r.value.trim());
   });
+}
+
+/** The results were sent for verification and nobody has verified or returned them yet. */
+export const awaitingVerification = (o: LabOrder): boolean => o.status === "in-progress" && !!o.submittedAt && !o.verifiedAt;
+
+/** Critical results of an order that are still part of the report. */
+export const criticalResults = (o: LabOrder): LabResult[] =>
+  Object.values(o.results).filter((r) => (r.interp === "HH" || r.interp === "LL") && r.status !== "cancelled");
+
+/**
+ * The two-person rule. `sameUser` is true when this user sent the results for verification or typed one of the values.
+ * Only an administrator may then verify, and must give a reason.
+ */
+export function verifierCheck(o: Pick<LabOrder, "enteredBy" | "results">, user: DemoUser): { sameUser: boolean; mayOverride: boolean } {
+  const pid = providerIdForUser(user);
+  const typed = !!pid && Object.values(o.results).some((r) => r.performedBy?.id === pid);
+  return { sameUser: o.enteredBy?.userId === user.id || typed, mayOverride: user.role === "admin" };
+}
+
+/** What is missing from a critical call-back record. Empty means it is complete. */
+export function criticalCallProblems(c: Partial<CriticalCall> | undefined): string[] {
+  const out: string[] = [];
+  if (!c?.toldTo?.trim()) out.push("Who was told");
+  if (!c?.toldBy?.trim()) out.push("Who made the call");
+  if (!c?.at || Number.isNaN(new Date(c.at).getTime())) out.push("Time of the call");
+  if (!c?.readBack) out.push("Read-back confirmed");
+  return out;
+}
+
+/**
+ * The last released result of the same test for the same patient, from another order. Null when there is none.
+ * Used by the verifier to compare (delta check).
+ */
+export function previousResult(orders: LabOrder[], order: LabOrder, code: string): { result: LabResult; order: LabOrder } | null {
+  const curAt = order.results[code]?.at;
+  let best: { result: LabResult; order: LabOrder } | null = null;
+  for (const o of orders) {
+    if (o.id === order.id || o.patientId !== order.patientId || !isPublished(o)) continue;
+    const r = o.results[code];
+    if (!r || r.status === "cancelled" || !(r.value.trim() || r.organism)) continue;
+    if (curAt && r.at > curAt) continue;
+    if (!best || r.at > best.result.at) best = { result: r, order: o };
+  }
+  return best;
+}
+
+/** Change from the previous value to the current one, for numbers only. */
+export function resultDelta(prev: string, cur: string): { diff: number; pct: number | null } | null {
+  const a = parseNumeric(prev);
+  const b = parseNumeric(cur);
+  if (!a || !b) return null;
+  const diff = Math.round((b.n - a.n) * 1000) / 1000;
+  return { diff, pct: a.n !== 0 ? Math.round((diff / Math.abs(a.n)) * 1000) / 10 : null };
+}
+
+/**
+ * Tests in `codes` that are already on an open order (not yet resulted, not cancelled) for the same visit.
+ * A panel counts as a duplicate when one of its tests is already open, and the other way round.
+ */
+export function openLabDuplicates(orders: LabOrder[], visitNumber: string, codes: string[], excludeOrderId?: string): string[] {
+  const open = orders.filter((o) => o.visitNumber === visitNumber && o.id !== excludeOrderId && (o.status === "received" || o.status === "collected" || o.status === "in-progress"));
+  const openCodes = new Set(open.flatMap((o) => o.codes));
+  const openLeaves = new Set(open.flatMap((o) => leafTests(o).map((t) => t.code)));
+  const out: string[] = [];
+  for (const c of codes) {
+    const t = testByCode(c);
+    if (!t) continue;
+    if (openCodes.has(c)) out.push(t.short);
+    else {
+      const hits = expand([c]).filter((leaf) => openLeaves.has(leaf.code));
+      if (hits.length) out.push(t.panel ? `${t.short} (${hits.map((h) => h.short).join(", ")} already ordered)` : t.short);
+    }
+  }
+  return [...new Set(out)];
 }
 
 export const hasCritical = (o: LabOrder) => Object.values(o.results).some((r) => (r.interp === "HH" || r.interp === "LL") && r.status !== "cancelled");
@@ -256,9 +332,9 @@ export function startProcessing(id: string): boolean {
   return true;
 }
 
+/** There is no flag here on purpose: the flag is always worked out from the value and the ranges. */
 export interface ResultPatch {
   value?: string;
-  interp?: LabResult["interp"];
   organism?: LabResult["organism"];
   sens?: LabResult["sens"];
   note?: string;
@@ -269,6 +345,7 @@ export function saveLabResult(id: string, code: string, patch: ResultPatch): boo
   const o = getOrder(id);
   const t = testByCode(code);
   if (!o || !t || !allowed("lab.result", `Lab order ${id}`)) return false;
+  if (lockedForVerification(o)) return false;
   const sex = getState().patients.find((p) => p.id === o.patientId)?.sex ?? "M";
   const published = isPublished(o);
   mutate(id, (x) => {
@@ -283,8 +360,7 @@ export function saveLabResult(id: string, code: string, patch: ResultPatch): boo
       sens: patch.sens ?? old?.sens,
       note: patch.note ?? old?.note,
     };
-    if (patch.interp) next.interp = patch.interp;
-    else if (patch.value !== undefined || patch.organism !== undefined) {
+    if (patch.value !== undefined || patch.organism !== undefined) {
       next.interp = t.kind === "organism" ? (next.organism ? "POS" : "NEG") : interpretValue(t, next.value, sex);
     }
     const changed = !old || old.value !== next.value || old.interp !== next.interp || old.organism?.code !== next.organism?.code || JSON.stringify(old.sens) !== JSON.stringify(next.sens);
@@ -297,9 +373,17 @@ export function saveLabResult(id: string, code: string, patch: ResultPatch): boo
   return true;
 }
 
+/** Results that wait for the verifier cannot change. The verifier sends them back to entry first. */
+function lockedForVerification(o: LabOrder): boolean {
+  if (!awaitingVerification(o)) return false;
+  pushToast({ tone: "warn", text: "These results are waiting for verification.", detail: "The verifier must send them back before they can change." });
+  return true;
+}
+
 export function cancelLabResult(id: string, code: string, cancel: boolean): boolean {
   const o = getOrder(id);
   if (!o || !o.results[code] || !allowed("lab.result", `Lab order ${id}`)) return false;
+  if (lockedForVerification(o)) return false;
   mutate(id, (x) => {
     x.results[code] = { ...x.results[code], status: cancel ? "cancelled" : "corrected" };
     if (isPublished(x)) x.resultDirty = true;
@@ -314,13 +398,14 @@ export function noteResultsSaved(id: string): void {
   if (!o) return;
   const n = Object.values(o.results).filter((r) => r.value.trim() || r.organism).length;
   audit("update", `Lab results ${id}`, { patient: nameOf(o), detail: `${n} result(s) saved, visit ${o.visitNumber}` });
-  pushToast({ tone: "ok", text: "Results saved.", detail: "They are not published until you press Publish Result." });
+  pushToast({ tone: "ok", text: "Results saved.", detail: isPublished(o) ? "Publish the amendment to replace the earlier version." : "Send them for verification when every result is entered." });
 }
 
 /** Fill every test with a believable value, so the document meets the Seha minimum content. */
 export function fillSampleResults(id: string): boolean {
   const o = getOrder(id);
   if (!o || !allowed("lab.result", `Lab order ${id}`)) return false;
+  if (lockedForVerification(o)) return false;
   const sex = getState().patients.find((p) => p.id === o.patientId)?.sex ?? "M";
   const performedBy = resultPerformer();
   mutate(id, (x) => {
@@ -344,7 +429,7 @@ export function fillSampleResults(id: string): boolean {
 
 /** One click for testers: an order that, once resulted, meets the Seha lab result minimum content (2.1.1). */
 export function createConformanceSampleOrder(enc: Encounter): LabOrder | null {
-  const o = placeLabOrder(enc, { codes: CONFORMANCE_SAMPLE_CODES, priority: "routine", fasting: null, note: "Conformance sample" });
+  const o = placeLabOrder(enc, { codes: CONFORMANCE_SAMPLE_CODES, priority: "routine", fasting: null, note: "Sample order" });
   if (!o) return null;
   collectSpecimens(o.id);
   startProcessing(o.id);
@@ -411,6 +496,10 @@ export function publishLabResult(id: string, amendStatus: "amended" | "corrected
     pushToast({ tone: "warn", text: "Some results are still empty.", detail: "Enter every result before publishing." });
     return null;
   }
+  if (awaitingVerification(o)) {
+    pushToast({ tone: "warn", text: "This result is waiting for verification.", detail: "A second user must verify and release it before it is sent." });
+    return null;
+  }
   // Practitioner.identifier must be a provider-directory id, never the app user id (Practitioner page id 68026521).
   if (!providerIdForUser(currentUser())) {
     pushToast({ tone: "warn", text: "Your account has no provider ID.", detail: "A result can only be published by a user who is in the national provider directory." });
@@ -435,23 +524,125 @@ export function publishLabResult(id: string, amendStatus: "amended" | "corrected
   return rec;
 }
 
+/* ---------- verification (sign-off) ---------- */
+
 /**
- * Release the result to the chart: the lab has finished and checked it. This does not send anything to NPHIES.
- * The result then waits on the NPHIES Clinical page, where it is sent (publishLabResult does the sending).
+ * The technologist has entered every result and hands the order to a verifier.
+ * Refuses while any result is empty and says which ones.
  */
-export function releaseLabResult(id: string): boolean {
+export function submitForVerification(id: string): boolean {
+  const o = getOrder(id);
+  if (!o || !allowed("lab.result", `Lab order ${id}`)) return false;
+  if (o.status !== "in-progress" || awaitingVerification(o)) return false;
+  const missing = missingResults(o);
+  if (missing.length) {
+    pushToast({ tone: "warn", text: "Some results are still empty.", detail: `Enter these first: ${missing.map((m) => m.short).join(", ")}.` });
+    return false;
+  }
+  const u = currentUser();
+  const at = new Date().toISOString();
+  mutate(id, (x) => {
+    x.enteredBy = { userId: u.id, name: u.name };
+    x.submittedAt = at;
+    x.sentBack = undefined;
+  });
+  audit("update", `Lab result ${id} sent for verification`, { patient: nameOf(o), detail: `Visit ${o.visitNumber}. ${leafTests(o).length} result(s).` });
+  pushToast({ tone: "ok", text: "Results sent for verification.", detail: "A second user must verify and release them." });
+  return true;
+}
+
+/** The verifier returns the results to entry, with a reason. */
+export function sendBackLabResult(id: string, reason: string): boolean {
+  const o = getOrder(id);
+  if (!o || !allowed("lab.result", `Lab order ${id}`)) return false;
+  if (!awaitingVerification(o)) return false;
+  if (!reason.trim()) {
+    pushToast({ tone: "warn", text: "Give a reason for sending the results back." });
+    return false;
+  }
+  const u = currentUser();
+  mutate(id, (x) => {
+    x.submittedAt = undefined;
+    x.sentBack = { by: u.name, at: new Date().toISOString(), reason: reason.trim() };
+  });
+  audit("update", `Lab result ${id} sent back to entry`, { patient: nameOf(o), detail: `Visit ${o.visitNumber}. Reason: ${reason.trim()}` });
+  pushToast({ tone: "ok", text: "Results sent back to entry." });
+  return true;
+}
+
+export interface VerifyInput {
+  /** Needed when an administrator verifies a result they entered themselves. */
+  overrideReason?: string;
+  /** Needed when the order has a critical value. */
+  criticalCall?: CriticalCall;
+}
+
+/**
+ * Verify and release: the sign-off by a second user. The result becomes final in the chart. Nothing is sent to NPHIES:
+ * the result then waits on the NPHIES Clinical page, where publishLabResult sends it.
+ */
+export function verifyAndReleaseLabResult(id: string, input: VerifyInput = {}): boolean {
   const o = getOrder(id);
   if (!o || !allowed("lab.result", `Lab order ${id}`)) return false;
   if (isPublished(o)) return true;
-  if (missingResults(o).length) {
-    pushToast({ tone: "warn", text: "Some results are still empty.", detail: "Enter every result before you release them." });
+  const missing = missingResults(o);
+  if (missing.length) {
+    pushToast({ tone: "warn", text: "Some results are still empty.", detail: `Enter these first: ${missing.map((m) => m.short).join(", ")}.` });
     return false;
   }
-  const ctx = orderContext(o);
-  mutate(id, (x) => { x.status = "resulted"; x.resultDirty = true; });
-  audit("update", `Lab result ${id} released`, { patient: ctx ? patientName(ctx.patient) : undefined, detail: `Visit ${o.visitNumber}. Waiting to be sent from NPHIES Clinical.` });
-  pushToast({ tone: "ok", text: "Result released to the chart.", detail: "Send it to NPHIES from the NPHIES Clinical page." });
+  if (!awaitingVerification(o)) {
+    pushToast({ tone: "warn", text: "Send the results for verification first.", detail: "A result is released only after a second user has verified it." });
+    return false;
+  }
+  const u = currentUser();
+  const who = verifierCheck(o, u);
+  const reason = input.overrideReason?.trim() ?? "";
+  if (who.sameUser && !who.mayOverride) {
+    audit("denied", `Lab result ${id} verification`, { patient: nameOf(o), detail: "The same user entered the result" });
+    pushToast({ tone: "warn", text: "You entered this result.", detail: "A different user must verify it." });
+    return false;
+  }
+  if (who.sameUser && !reason) {
+    pushToast({ tone: "warn", text: "Give a reason for verifying your own result." });
+    return false;
+  }
+  const critical = hasCritical(o);
+  if (critical) {
+    const gaps = criticalCallProblems(input.criticalCall);
+    if (gaps.length) {
+      pushToast({ tone: "warn", text: "Record the critical result call first.", detail: `Missing: ${gaps.join(", ")}.` });
+      return false;
+    }
+  }
+  const at = new Date().toISOString();
+  mutate(id, (x) => {
+    x.verifiedBy = { userId: u.id, name: u.name };
+    x.verifiedAt = at;
+    x.verifyOverrideReason = who.sameUser ? reason : undefined;
+    x.criticalCall = critical && input.criticalCall ? { ...input.criticalCall, toldTo: input.criticalCall.toldTo.trim(), toldBy: input.criticalCall.toldBy.trim() } : undefined;
+    x.status = "resulted";
+    x.resultDirty = true;
+  });
+  const patient = nameOf(o);
+  if (who.sameUser) audit("update", `Lab result ${id} verified with override`, { patient, detail: `The verifier also entered the result. Reason: ${reason}` });
+  if (critical && input.criticalCall) {
+    const c = input.criticalCall;
+    audit("update", `Lab result ${id} critical call`, { patient, detail: `Told ${c.toldTo.trim()} by ${c.toldBy.trim()} at ${c.at}. Read-back confirmed.` });
+  }
+  audit("update", `Lab result ${id} verified and released`, { patient, detail: `Visit ${o.visitNumber}. Entered by ${o.enteredBy?.name ?? "unknown"}. Waiting to be sent from NPHIES Clinical.` });
+  pushToast({ tone: "ok", text: "Result verified and released to the chart.", detail: "Send it to NPHIES from the NPHIES Clinical page." });
   return true;
+}
+
+/** Kept for callers that release without extra input. It is the same sign-off, so it only works after verification was asked for. */
+export const releaseLabResult = (id: string): boolean => verifyAndReleaseLabResult(id);
+
+/** Why a result cannot be sent to NPHIES yet, or null when it can. Used by the NPHIES Clinical page. */
+export function labResultSendBlock(o: LabOrder): string | null {
+  const missing = missingResults(o).length;
+  if (missing) return `${missing} of ${leafTests(o).length} results are still empty.`;
+  if (!isPublished(o)) return awaitingVerification(o) ? "Waiting for a second user to verify and release the result." : "Waiting for the laboratory to send the result for verification.";
+  return null;
 }
 
 /* ---------- developer switches ---------- */
@@ -469,7 +660,7 @@ export function labConformance(s: LabState): ConfStep[] {
   return [
     conformanceStep({ ...base, id: "5.1", title: "Laboratory Order: Publish", what: "a laboratory order bundle", sends: orders, amendment: false, hint: "Place an order in the chart and press Send Order To NPHIES." }),
     conformanceStep({ ...base, id: "5.2", title: "Laboratory Order: Amended Order", what: "an amendment that replaces the order", sends: orders, amendment: true, hint: "Change or cancel a sent order in the chart, then send it again." }),
-    conformanceStep({ ...base, id: "2.1", title: "Lab Result: Publish", what: "a result bundle with the minimum content", sends: results, amendment: false, minimums: labResultMinimums, hint: "Use Create Conformance Sample Order, then Publish Result." }),
+    conformanceStep({ ...base, id: "2.1", title: "Lab Result: Publish", what: "a result bundle with the minimum content", sends: results, amendment: false, minimums: labResultMinimums, hint: "Use Create Sample Order, send the result for verification, verify it as a second user, then send it from NPHIES Clinical." }),
     conformanceStep({ ...base, id: "2.2", title: "Lab Result: Amended Report", what: "an amendment that replaces the result", sends: results, amendment: true, minimums: labAmendmentMinimums, hint: "Correct one result, cancel another, then Publish Amendment." }),
   ];
 }

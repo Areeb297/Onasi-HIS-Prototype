@@ -12,8 +12,10 @@ import { fmtDuration } from "./clock";
 import { ClockPill } from "./ClockPill";
 import { PillStrip } from "./glyphs";
 import {
-  RX_LANES, RX_MOVE_HINT, RX_STAGES, itemFills, rxCanMove, rxClock, rxLaneOf, rxStageLabel, rxStageOf, rxStats, type ItemFill, type RxStageId,
+  RX_BOARD_STAGES, RX_LANES, RX_MOVE_HINT, RX_VERIFY_MOVE_HINT, itemFills, rxBoardCanMove, rxBoardClock, rxBoardStageOf, rxLaneOf, rxStageLabel, rxStats, rxVerifyCounts,
+  type ItemFill, type RxBoardStageId,
 } from "./rx-board";
+import { needsPharmacist, pharmacyItems } from "@/lib/rx-verify";
 import { StatStrip } from "./StatStrip";
 import { SwimBoard } from "./SwimBoard";
 import type { CardCtx, MoveCheck, MoveResult } from "./types";
@@ -39,13 +41,15 @@ function FillBar({ f }: { f: ItemFill }) {
   );
 }
 
-function RxCard({ rx, s, ctx, allowed, onDispense }: { rx: Prescription; s: RxState; ctx: CardCtx; allowed: boolean; onDispense: () => void }) {
+function RxCard({ rx, s, ctx, allowed, onDispense, onVerify }: { rx: Prescription; s: RxState; ctx: CardCtx; allowed: boolean; onDispense: () => void; onVerify: () => void }) {
   const his = useHis();
   const patient = his.patients.find((p) => p.id === rx.patientId);
   const enc = his.encounters.find((e) => e.visitNumber === rx.visitNumber);
   const allergic = !!enc?.allergies.length;
-  const stage = ctx.stage.id as RxStageId;
-  const clock = rxClock(s, rx, stage);
+  const stage = ctx.stage.id as RxBoardStageId;
+  const clock = rxBoardClock(s, rx, stage);
+  const vc = rxVerifyCounts(s, rx);
+  const checkedBy = [...new Set(rx.items.filter((i) => i.verify?.status === "verified" && i.verify.version === i.version).map((i) => i.verify?.by))].join(", ");
   const fills = itemFills(s, rx);
   const totalQty = fills.reduce((n, f) => n + f.quantity, 0);
   const left = fills.reduce((n, f) => n + (f.done ? 0 : f.remaining), 0);
@@ -55,6 +59,8 @@ function RxCard({ rx, s, ctx, allowed, onDispense }: { rx: Prescription; s: RxSt
         <div className="flex flex-wrap items-center gap-1">
           <PriorityTag tone={ctx.lane.tone} label={ctx.lane.id === "controlled" ? "Controlled drug" : "Standard"} />
           {rx.raqeebRef && <Tag tone="merge">Raqeeb</Tag>}
+          {stage !== "dispensed" && vc.toVerify > 0 && <Tag tone="update">{vc.toVerify} To Verify</Tag>}
+          {stage !== "dispensed" && vc.withPrescriber > 0 && <Tag tone="muted">{vc.withPrescriber} With Prescriber</Tag>}
         </div>
         <span
           className={allergic ? "text-destructive" : "text-ok"}
@@ -79,11 +85,19 @@ function RxCard({ rx, s, ctx, allowed, onDispense }: { rx: Prescription; s: RxSt
         {fills.slice(0, 3).map((f) => <FillBar key={f.id} f={f} />)}
         {fills.length > 3 && <li className="text-xs text-muted-foreground">+{fills.length - 3} more items</li>}
       </ul>
+      {checkedBy && <p className="mt-2 text-xs text-muted-foreground">Verified by {checkedBy}</p>}
 
       <CardFoot>
         {clock ? <ClockPill since={clock.since} targetMin={clock.targetMin} now={ctx.now} /> : <span className="inline-flex items-center gap-1 text-xs font-medium text-ok"><CheckCircle2 className="size-3.5" aria-hidden="true" /> Handed over</span>}
         {!ctx.overlay && stage !== "dispensed" && (
-          <CardAction label={stage === "partial" ? "Dispense The Rest" : "Dispense"} allowed={allowed} reason="Your role cannot dispense medicines." onClick={onDispense} />
+          <span className="flex flex-wrap items-center gap-1.5">
+            {(stage === "verify" || vc.toVerify + vc.withPrescriber > 0) && (
+              <CardAction label={vc.toVerify > 0 ? "Check And Verify" : "Open Check Sheet"} variant={vc.toVerify > 0 ? "primary" : "secondary"} allowed={allowed} reason="Your role cannot dispense or verify medicines." onClick={onVerify} />
+            )}
+            {vc.verified > 0 && (
+              <CardAction label={stage === "partial" ? "Dispense The Rest" : "Dispense"} variant={vc.toVerify > 0 ? "secondary" : "primary"} allowed={allowed} reason="Your role cannot dispense medicines." onClick={onDispense} />
+            )}
+          </span>
         )}
       </CardFoot>
     </div>
@@ -91,10 +105,18 @@ function RxCard({ rx, s, ctx, allowed, onDispense }: { rx: Prescription; s: RxSt
 }
 
 /**
- * The pharmacy swim lane board. Lanes: controlled drugs and standard. Stages come from the dispense lines.
- * Every forward move opens the Dispense dialog, because quantities and scans must be entered. Nothing moves backwards.
+ * The pharmacy swim lane board. Lanes: controlled drugs and standard. Stages: To Verify, then the stages that come from the dispense lines.
+ * Leaving To Verify opens the pharmacist check sheet. Every other forward move opens the Dispense dialog,
+ * because quantities and scans must be entered. Nothing moves backwards.
  */
-export function RxBoard({ state, prescriptions, onDispense }: { state: RxState; prescriptions: Prescription[]; onDispense: (id: string) => void }) {
+export function RxBoard({
+  state, prescriptions, onDispense, onVerify,
+}: {
+  state: RxState;
+  prescriptions: Prescription[];
+  onDispense: (id: string) => void;
+  onVerify: (rxId: string, itemId: string) => void;
+}) {
   const his = useHis();
   const dev = useDevMode();
   const allowed = can("rx.dispense");
@@ -105,27 +127,35 @@ export function RxBoard({ state, prescriptions, onDispense }: { state: RxState; 
   }, []);
 
   const cards = React.useMemo(
-    () => prescriptions.filter((r) => rxStageOf(state, r)).sort((a, b) => (a.sentAt ?? a.authoredAt).localeCompare(b.sentAt ?? b.authoredAt)),
+    () => prescriptions.filter((r) => rxBoardStageOf(state, r)).sort((a, b) => (a.sentAt ?? a.authoredAt).localeCompare(b.sentAt ?? b.authoredAt)),
     [prescriptions, state],
   );
   const stats = rxStats(state, now);
   const nameOf = (rx: Prescription) => patientName(his.patients.find((p) => p.id === rx.patientId));
 
-  function onMove(rx: Prescription): MoveResult {
-    onDispense(rx.id);
+  /** The item the check sheet opens on: first one waiting for the pharmacist, else the first one not verified. */
+  function verifyFirst(rx: Prescription) {
+    const list = pharmacyItems(state, rx).filter((x) => x.status !== "verified");
+    const pick = list.find((x) => needsPharmacist(x.status)) ?? list[0];
+    if (pick) onVerify(rx.id, pick.item.id);
+  }
+
+  function onMove(rx: Prescription, from: string): MoveResult {
+    if (from === "verify") verifyFirst(rx);
+    else onDispense(rx.id);
     return "deferred";
   }
 
-  const canDrag = (): MoveCheck => (allowed ? { ok: true } : { ok: false, reason: "Your role cannot dispense. It needs the rx.dispense permission." });
+  const canDrag = (): MoveCheck => (allowed ? { ok: true } : { ok: false, reason: "Your role cannot dispense or verify. It needs the rx.dispense permission." });
 
   return (
     <div>
       <StatStrip
         stats={[
-          { label: "Waiting For Pharmacy", value: stats.waiting, tone: stats.waiting ? "move" : "ok", note: stats.offBoard ? `${stats.offBoard} on hold, stopped or cancelled, see Table view` : "Pending and partly dispensed" },
-          { label: "Controlled Waiting", value: stats.controlledWaiting, tone: stats.controlledWaiting ? "cancel" : "ok", note: "Need the secure code" },
-          { label: "Dispensed Today", value: stats.dispensedToday, note: "Prescriptions with a hand over today" },
-          { label: "Average Wait", value: stats.avgWaitMin === null ? "None yet" : fmtDuration(stats.avgWaitMin), note: stats.late ? `${stats.late} past target now` : "Sent to first hand over" },
+          { label: "To Verify", value: stats.toVerify, tone: stats.toVerify ? "update" : "ok", note: stats.withPrescriber ? `Items to check. ${stats.withPrescriber} more with the prescriber` : "Items waiting for the pharmacist check" },
+          { label: "Waiting For Pharmacy", value: stats.waiting, tone: stats.waiting ? "move" : "ok", note: stats.offBoard ? `${stats.offBoard} on hold, stopped or cancelled, see Table view` : "Prescriptions not fully handed over" },
+          { label: "Controlled Waiting", value: stats.controlledWaiting, tone: stats.controlledWaiting ? "cancel" : "ok", note: "Need a witness and the secure code" },
+          { label: "Dispensed Today", value: stats.dispensedToday, note: `${stats.avgWaitMin === null ? "No hand over yet" : `Average wait ${fmtDuration(stats.avgWaitMin)}`}${stats.late ? `. ${stats.late} past target now` : ""}` },
         ]}
       />
       <SwimBoard<Prescription>
@@ -133,23 +163,23 @@ export function RxBoard({ state, prescriptions, onDispense }: { state: RxState; 
         laneHeading="Drug Type"
         storageKey="rx"
         lanes={RX_LANES}
-        stages={RX_STAGES}
+        stages={RX_BOARD_STAGES}
         cards={cards}
         getId={(r) => r.id}
         label={(r) => `${nameOf(r)}, ${r.number}`}
         laneOf={rxLaneOf}
-        stageOf={(r) => rxStageOf(state, r) ?? "pending"}
-        renderCard={(r, ctx) => <RxCard rx={r} s={state} ctx={ctx} allowed={allowed} onDispense={() => onDispense(r.id)} />}
-        canMove={rxCanMove}
+        stageOf={(r) => rxBoardStageOf(state, r) ?? "pending"}
+        renderCard={(r, ctx) => <RxCard rx={r} s={state} ctx={ctx} allowed={allowed} onDispense={() => onDispense(r.id)} onVerify={() => verifyFirst(r)} />}
+        canMove={rxBoardCanMove}
         canDrag={canDrag}
         onMove={onMove}
         onMoved={(r, from, to, via) => auditMove(`Prescription ${r.number}`, rxStageLabel(to), nameOf(r), via, `Visit ${r.visitNumber}, from ${rxStageLabel(from)}`)}
-        clockOf={(r, st) => rxClock(state, r, st)}
-        moveHint={() => RX_MOVE_HINT}
+        clockOf={(r, st) => rxBoardClock(state, r, st)}
+        moveHint={(_r, from) => (from === "verify" ? RX_VERIFY_MOVE_HINT : RX_MOVE_HINT)}
         dev={dev}
       />
       <p className="mt-2 text-xs text-muted-foreground">
-        Drag a card forward to open the Dispense dialog. The card moves when the dispense is saved. FF is a full dispense, FFP a part, FFC the part that completes the fill.
+        A new prescription starts in To Verify. Drag it forward to open the check sheet. Only verified items can be dispensed. From Pending, drag a card forward to open the Dispense dialog. The card moves when the dispense is saved. FF is a full dispense, FFP a part, FFC the part that completes the fill.
       </p>
     </div>
   );

@@ -7,7 +7,7 @@ import { PERMISSION_LABELS } from "./permission-labels";
 import { FRAMEWORKS } from "./compliance-data";
 
 const ROUTES = new Set([
-  "/patients", "/confidential", "/registration", "/opd", "/ipd", "/er", "/beds", "/lab", "/radiology", "/pharmacy/dispense",
+  "/patients", "/confidential", "/registration", "/opd", "/ipd", "/er", "/beds", "/lab", "/radiology", "/theatre", "/pharmacy/dispense",
   "/audit", "/compliance", "/ai-governance", "/nphies-clinical", "/nphies-financial", "/agents", "/dashboard", "/access", "/runner", "/log", "/encounters", "/spec",
 ]);
 

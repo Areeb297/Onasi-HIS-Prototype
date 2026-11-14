@@ -1,5 +1,5 @@
 import * as React from "react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, TriangleAlert } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { LabBoard } from "@/components/board/LabBoard";
 import { ViewToggle, useWorklistView } from "@/components/board/ViewToggle";
@@ -7,15 +7,17 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { ConformancePanel, DocViewer, Gate, LAB_STATUS_UI, NphiesPill, PRIORITY_UI, StatusBadge } from "@/components/emr/fhir-ui";
 import { LabResultEntry } from "@/components/emr/LabResultEntry";
 import { LabResultsTable } from "@/components/emr/LabResultsTable";
+import { LabVerifyDialog } from "@/components/emr/LabVerifyDialog";
+import { PatientIdStrip, ageYears } from "@/components/emr/PatientIdStrip";
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { LAB_ASSUMPTIONS } from "@/lib/fhir/assumptions";
-import { SPECIMEN_TYPES, testByCode } from "@/lib/fhir/lab-catalog";
+import { SPECIMEN_TYPES, catalogRangeProblems, testByCode } from "@/lib/fhir/lab-catalog";
 import { personFromDoctor } from "@/lib/fhir/people";
 import type { LabOrder, LabStatus } from "@/lib/fhir/types";
 import type { Patient } from "@/lib/model";
 import {
-  collectSpecimens, createConformanceSampleOrder, hasCritical, isPublished, labConformance, labSendsOf, leafTests, orderNphiesState,
+  awaitingVerification, collectSpecimens, createConformanceSampleOrder, hasCritical, isPublished, labConformance, labSendsOf, leafTests, orderNphiesState,
   resetLab, resultNphiesState, setRejectNext, startProcessing, toggleViewed, useLab,
 } from "@/lib/lab";
 import { can, useSession } from "@/lib/session";
@@ -36,7 +38,9 @@ const PRIORITY_RANK: Record<string, number> = { stat: 0, asap: 1, urgent: 2, rou
 const when = (iso: string) =>
   `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 
-/** Worklist for the laboratory technologist: collect, process, enter results, publish, amend. */
+const RANGE_PROBLEMS = catalogRangeProblems();
+
+/** Worklist for the laboratory: collect, process, enter results, send for verification, verify and release, amend. */
 export function LabWorklistPage() {
   const lab = useLab();
   const his = useHis();
@@ -49,6 +53,7 @@ export function LabWorklistPage() {
   const [editorHint, setEditorHint] = React.useState("");
   const [collectId, setCollectId] = React.useState<string | null>(null);
   const [collectAt, setCollectAt] = React.useState(() => toLocalInput(new Date()));
+  const [verifyId, setVerifyId] = React.useState<string | null>(null);
   const activeVisits = his.encounters.filter((e) => e.status === "active");
   const [sampleVisit, setSampleVisit] = React.useState("");
 
@@ -72,6 +77,14 @@ export function LabWorklistPage() {
   const open = lab.orders.find((o) => o.id === openId);
   const openPatient = open && his.patients.find((p) => p.id === open.patientId);
   const collecting = lab.orders.find((o) => o.id === collectId);
+  const collectingPatient = collecting && his.patients.find((p) => p.id === collecting.patientId);
+  const verifying = lab.orders.find((o) => o.id === verifyId && awaitingVerification(o));
+  const verifyingPatient = verifying && his.patients.find((p) => p.id === verifying.patientId);
+  /** The sign-off is a dialog, so the side sheet closes first. Two layers would trap the keyboard. */
+  const openVerify = (id: string) => {
+    if (view === "board") setOpenId(null);
+    setVerifyId(id);
+  };
 
   function rowActions(o: LabOrder) {
     const toggle = (label: string) => (
@@ -101,7 +114,12 @@ export function LabWorklistPage() {
             <Button size="sm" variant="primary" disabled={!canResult} onClick={() => startProcessing(o.id)}>Start Processing</Button>
           </Gate>
         )}
-        {o.status === "in-progress" && toggle("Enter Results")}
+        {o.status === "in-progress" && awaitingVerification(o) && (
+          <Gate allowed={canResult} reason="Your role cannot verify laboratory results.">
+            <Button size="sm" variant="primary" disabled={!canResult} onClick={() => openVerify(o.id)}>Verify Result</Button>
+          </Gate>
+        )}
+        {o.status === "in-progress" && toggle(awaitingVerification(o) ? "Details" : "Enter Results")}
         {isPublished(o) && toggle("View Or Amend")}
         {(o.status === "received" || o.status === "collected" || o.status === "cancelled") && toggle("Details")}
       </div>
@@ -112,7 +130,7 @@ export function LabWorklistPage() {
     <div>
       <PageHeader
         title="Laboratory Worklist"
-        subtitle="Collect specimens, enter results and release them. Send them to NPHIES from NPHIES Clinical. STAT and urgent orders are listed first."
+        subtitle="Collect specimens, enter results, then a second user verifies and releases them. Send them to NPHIES from NPHIES Clinical. STAT and urgent orders are listed first."
         right={
           <div className="flex flex-wrap items-center gap-2">
             <ViewToggle value={view} onChange={setView} />
@@ -125,6 +143,21 @@ export function LabWorklistPage() {
           </div>
         }
       />
+
+      {dev && RANGE_PROBLEMS.length > 0 && (
+        <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+          <div>
+            <div className="font-semibold text-destructive">Test catalogue: {RANGE_PROBLEMS.length} range problem{RANGE_PROBLEMS.length === 1 ? "" : "s"}</div>
+            <p className="text-xs text-foreground">A critical range must lie outside the normal range. Fix these rows in lab-catalog.ts.</p>
+            {RANGE_PROBLEMS.map((r) => (
+              <div key={r.code}>
+                {r.short} <span className="font-mono text-xs">{r.code}</span>: {r.problems.join(" ")}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {view === "board" ? (
         <>
@@ -143,6 +176,7 @@ export function LabWorklistPage() {
               setEditorHint(hint);
               setOpenId(id);
             }}
+            onVerify={openVerify}
             onOpen={(id) => {
               setEditorHint("");
               setOpenId(id);
@@ -215,6 +249,8 @@ export function LabWorklistPage() {
                       <Td>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <StatusBadge map={LAB_STATUS_UI} status={o.status} />
+                          {awaitingVerification(o) && <Badge tone="update">Awaiting Verification</Badge>}
+                          {!awaitingVerification(o) && o.status === "in-progress" && o.sentBack && <Badge tone="warn">Sent Back</Badge>}
                           {hasCritical(o) && <Badge tone="danger">Critical</Badge>}
                         </div>
                       </Td>
@@ -232,7 +268,7 @@ export function LabWorklistPage() {
             </Table>
           </Card>
 
-          {open && openPatient && <Card className="mt-4"><OrderDetail order={open} patient={openPatient} dev={dev} onClose={() => setOpenId(null)} /></Card>}
+          {open && openPatient && <Card className="mt-4"><OrderDetail order={open} patient={openPatient} dev={dev} onClose={() => setOpenId(null)} onVerify={() => openVerify(open.id)} /></Card>}
         </>
       )}
 
@@ -240,10 +276,10 @@ export function LabWorklistPage() {
         <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-3xl">
           <SheetHeader className="sr-only">
             <SheetTitle>Laboratory Order</SheetTitle>
-            <SheetDescription>Enter and publish results for this order.</SheetDescription>
+            <SheetDescription>Enter results for this order and send them for verification.</SheetDescription>
           </SheetHeader>
           {editorHint && <p className="mx-4 mt-10 rounded-md border border-update/40 bg-update/10 px-3 py-2 text-xs">{editorHint}</p>}
-          {open && openPatient && <div className="mt-10"><OrderDetail order={open} patient={openPatient} dev={dev} onClose={() => setOpenId(null)} /></div>}
+          {open && openPatient && <div className="mt-10"><OrderDetail order={open} patient={openPatient} dev={dev} onClose={() => setOpenId(null)} onVerify={() => openVerify(open.id)} /></div>}
         </SheetContent>
       </Sheet>
 
@@ -273,7 +309,7 @@ export function LabWorklistPage() {
                   }}
                   title="Orders CBC, CRP, urinalysis and a urine culture, collects the specimens and fills the results, so the report meets 2.1.1."
                 >
-                  Create Conformance Sample Order
+                  Create Sample Order
                 </Button>
               </Gate>
             </>
@@ -302,6 +338,7 @@ export function LabWorklistPage() {
       >
         {collecting && (
           <div className="space-y-3">
+            {collectingPatient && <PatientIdStrip patient={collectingPatient} visitNumber={collecting.visitNumber} />}
             <p className="text-sm">Specimens to collect:</p>
             <ul className="list-disc space-y-1 pl-5 text-sm">
               {[...new Set(leafTests(collecting).map((t) => t.specimen))].map((k) => (
@@ -311,18 +348,20 @@ export function LabWorklistPage() {
                 </li>
               ))}
             </ul>
-            <Field label="Collected At" hl7="Specimen.collection.collectedDateTime">
-              <Input type="datetime-local" value={collectAt} onChange={(e) => setCollectAt(e.target.value)} />
+            <Field label="Collected At" required hl7="Specimen.collection.collectedDateTime">
+              <Input type="datetime-local" value={collectAt} aria-required="true" onChange={(e) => setCollectAt(e.target.value)} />
             </Field>
           </div>
         )}
       </Dialog>
+
+      {verifying && verifyingPatient && <LabVerifyDialog key={verifying.id} order={verifying} patient={verifyingPatient} onClose={() => setVerifyId(null)} />}
     </div>
   );
 }
 
 /** The open order: specimens, result entry or the read only results, and in Developer View the FHIR bundles. */
-function OrderDetail({ order: open, patient: openPatient, dev, onClose }: { order: LabOrder; patient: Patient; dev: boolean; onClose: () => void }) {
+function OrderDetail({ order: open, patient: openPatient, dev, onClose, onVerify }: { order: LabOrder; patient: Patient; dev: boolean; onClose: () => void; onVerify: () => void }) {
   return (
     <div>
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
@@ -331,12 +370,13 @@ function OrderDetail({ order: open, patient: openPatient, dev, onClose }: { orde
             {patientName(openPatient)} · {open.codes.map((c) => testByCode(c)?.short).join(", ")}
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {openPatient.mrn} · {openPatient.sex === "M" ? "Male" : "Female"}
+            MRN {openPatient.mrn} · {ageYears(openPatient.dob)} years, {openPatient.sex === "M" ? "Male" : "Female"}
             {dev && <span className="ml-2 font-mono">{open.id} · Visit {open.visitNumber} · Health ID {openPatient.healthId}</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge map={LAB_STATUS_UI} status={open.status} />
+          {awaitingVerification(open) && <Badge tone="update">Awaiting Verification</Badge>}
           <Button size="sm" variant="ghost" onClick={() => onClose()}>Close</Button>
         </div>
       </header>
@@ -353,7 +393,7 @@ function OrderDetail({ order: open, patient: openPatient, dev, onClose }: { orde
           </div>
         )}
         {open.status === "in-progress" || isPublished(open) ? (
-          <LabResultEntry order={open} patient={openPatient} />
+          <LabResultEntry order={open} patient={openPatient} onVerify={onVerify} />
         ) : (
           <div className="rounded-lg border border-border">
             <LabResultsTable order={open} sex={openPatient.sex} />
@@ -363,7 +403,7 @@ function OrderDetail({ order: open, patient: openPatient, dev, onClose }: { orde
           <div className="space-y-5 border-t border-border pt-4">
             <div>
               <h3 className="mb-2 text-sm font-semibold">Laboratory Report Bundle</h3>
-              <DocViewer key={`${open.id}-r${labSendsOf(open, "lab-result").length}`} records={labSendsOf(open, "lab-result")} filenamePrefix={`lab-result-${open.id}`} empty="Not published yet. Press Publish Result." />
+              <DocViewer key={`${open.id}-r${labSendsOf(open, "lab-result").length}`} records={labSendsOf(open, "lab-result")} filenamePrefix={`lab-result-${open.id}`} empty="Not sent yet. Release the result, then send it from NPHIES Clinical." />
             </div>
             <div>
               <h3 className="mb-2 text-sm font-semibold">Laboratory Order Bundle</h3>

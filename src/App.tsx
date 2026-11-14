@@ -30,6 +30,7 @@ import { RadiologyWorklistPage } from "@/pages/RadiologyWorklistPage";
 import { RunnerPage } from "@/pages/RunnerPage";
 import { ScenarioPage } from "@/pages/ScenarioPage";
 import { SpecPage } from "@/pages/SpecPage";
+import { TheatreListPage } from "@/pages/TheatreListPage";
 import { WorklistPage } from "@/pages/WorklistPage";
 
 import { setDevMode, useDevMode } from "@/lib/devmode";
@@ -279,6 +280,7 @@ function Page() {
     case "/registration": return <RegistrationPage />;
     case "/beds": return <BedBoardPage />;
     case "/lab": return <LabWorklistPage />;
+    case "/theatre": return <TheatreListPage />;
     case "/radiology": return <RadiologyWorklistPage />;
     case "/pharmacy/dispense": return <PharmacyDispensePage />;
     case "/audit": return <AuditPage />;

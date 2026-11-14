@@ -40,6 +40,20 @@ export interface FieldDef {
   /** Developer View tag, for example "DG1-3" or "Composition.section". */
   hl7?: string;
   hint?: string;
+  /** Number worked out from other number fields: the sum of `add` minus the sum of `subtract`. Shown read-only. */
+  compute?: { add: string[]; subtract?: string[] };
+  /** Filled by the system and shown read-only: the signed-in user, or the allergies recorded in the chart. */
+  auto?: "user" | "allergies";
+  /** Starting value for a new record: the time now, today's date, or the shift that is running now. */
+  prefill?: "now" | "today" | "shift";
+}
+
+/** Names a range of a total score, for example "High risk" for 45 and above. */
+export interface ScoreBand {
+  min: number;
+  max: number;
+  label: string;
+  tone: "ok" | "warn" | "danger";
 }
 
 export type FormGroup = "General" | "Rehab" | "Gynecology & Antenatal (OPD)" | "Obstetrics & Labor (IPD)" | "OT" | "Nursing";
@@ -56,6 +70,18 @@ export interface FormDef {
   nphies?: string;
   /** Computed total for score forms: sum of scale scores. */
   scoreLabel?: string;
+  /** Risk bands for the total score. */
+  scoreBands?: ScoreBand[];
+  /** The total only counts when every scored item is answered. */
+  scoreAll?: boolean;
+  /** Age group the tool is made for. Children are under 14 years. */
+  audience?: "child" | "adult";
+  /** Form id of the same kind of tool for the other age group. */
+  alternative?: string;
+  /** Short forms used on the form, with their meaning. */
+  legend?: [string, string][];
+  /** Extra summary above the record list. */
+  rollup?: "fluid-balance";
 }
 
 export type CellType = "text" | "badge" | "bool" | "number" | "date" | "mono";

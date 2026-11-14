@@ -25,7 +25,7 @@ export const LAB_STAGES: (BoardStage & { id: LabStageId })[] = [
   { id: "ordered", label: "Ordered", tone: "move", hint: "Waiting for a specimen", target: range("ordered") },
   { id: "collected", label: "Specimen Collected", tone: "admit", hint: "On the way to the bench", target: range("collected") },
   { id: "in-progress", label: "In Progress", tone: "update", hint: "On the analyser", target: range("in-progress") },
-  { id: "entered", label: "Results Entered", tone: "merge", hint: "Checked, ready to release", target: range("entered") },
+  { id: "entered", label: "Results Entered", tone: "merge", hint: "Waiting for a second user to verify", target: range("entered") },
   { id: "published", label: "Resulted", tone: "ok", hint: "Released to the chart", limit: 4 },
 ];
 
@@ -222,6 +222,6 @@ export function labStats(orders: LabOrder[], now: number): LabStats {
 export const LAB_MOVE_HINT: Record<string, string> = {
   "ordered>collected": "Runs collectSpecimens. Creates the Specimen records. No NPHIES message.",
   "collected>in-progress": "Runs startProcessing. Marks the specimens received. No NPHIES message.",
-  "in-progress>entered": "Opens the result editor. saveLabResult stores each value and flag. No NPHIES message yet.",
-  "entered>published": "Runs releaseLabResult. The result is final in the chart. Nothing is sent: it waits on the NPHIES Clinical page, which sends the result FHIR bundle (2.1).",
+  "in-progress>entered": "Opens the result editor. saveLabResult stores each value and works out the flag. No NPHIES message yet.",
+  "entered>published": "Opens the sign-off. submitForVerification, then verifyAndReleaseLabResult by a second user. The result is final in the chart. Nothing is sent: it waits on the NPHIES Clinical page, which sends the result FHIR bundle (2.1).",
 };

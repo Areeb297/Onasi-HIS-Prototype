@@ -60,6 +60,22 @@ describe("quick emergency registration", () => {
     expect(getState().encounters.find((e) => e.visitNumber === r.visit)?.ed?.temporaryId).toBeUndefined();
   });
 
+  it("adds the visit to the file a registry patient already has, and makes a new file only once for a new person", () => {
+    const before = getState().patients.length;
+    const r = registerEmergency({ identity: { kind: "registry", idNumber: "1000000029" }, arrivalMode: "Walk-in", complaint: "Headache" });
+    expect(r).toMatchObject({ ok: true, patientId: "P002", existing: true, temporary: false });
+    expect(getState().patients.length).toBe(before);
+    expect(last().errors).toBe(0);
+    const a = registerEmergency({ identity: { kind: "registry", idNumber: "1000000201" }, arrivalMode: "Walk-in", complaint: "" });
+    const b = registerEmergency({ identity: { kind: "registry", idNumber: "1000000201" }, arrivalMode: "Walk-in", complaint: "" });
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.existing).toBeUndefined();
+    expect(b).toMatchObject({ patientId: a.patientId, existing: true });
+    expect(getState().patients.length).toBe(before + 1);
+    expect(getState().patients.find((p) => p.id === a.patientId)?.extra?.nameAr?.family).toBe("العتيبي");
+  });
+
   it("says what is missing instead of failing silently", () => {
     expect(registerEmergency({ identity: { kind: "unknown", sex: "M" }, arrivalMode: "Walk-in", complaint: "" })).toMatchObject({ ok: false });
     expect(registerEmergency({ identity: { kind: "known", given: "", family: "X", sex: "M", ageYears: 5 }, arrivalMode: "Walk-in", complaint: "" })).toMatchObject({ ok: false });

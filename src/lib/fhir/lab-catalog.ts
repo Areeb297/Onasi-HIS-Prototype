@@ -218,7 +218,41 @@ export function parseNumeric(raw: string): { n: number; op: "<" | ">" | "" } | n
   return { n: Number(m[2]), op: (m[1]?.[0] as "<" | ">" | undefined) ?? "" };
 }
 
-/** Work out the interpretation flag for a typed value. The technologist can override it. */
+/** Critical limits in words, for the result entry table: "Below 7 or above 20 g/dL". Empty when the test has none. */
+export function critTextFor(t: LabTest): string {
+  const u = unitText(t);
+  const unit = u ? ` ${u}` : "";
+  if (t.critLow !== undefined && t.critHigh !== undefined) return `Below ${t.critLow} or above ${t.critHigh}${unit}`;
+  if (t.critLow !== undefined) return `Below ${t.critLow}${unit}`;
+  if (t.critHigh !== undefined) return `Above ${t.critHigh}${unit}`;
+  return "";
+}
+
+/**
+ * Range sanity for one catalogue row. A critical limit must lie outside the normal range (male and female),
+ * and each low limit must be below its high limit. Returns the problems in plain words; empty means the row is fine.
+ */
+export function rangeProblems(t: LabTest): string[] {
+  const out: string[] = [];
+  const pairs: { label: string; low?: number; high?: number }[] = [{ label: "normal range", low: t.low, high: t.high }];
+  if (t.lowF !== undefined || t.highF !== undefined) pairs.push({ label: "female normal range", low: t.lowF ?? t.low, high: t.highF ?? t.high });
+  for (const p of pairs) {
+    if (p.low !== undefined && p.high !== undefined && p.low >= p.high) out.push(`The ${p.label} is upside down: low ${p.low} is not below high ${p.high}.`);
+    if (t.critLow !== undefined && p.low !== undefined && t.critLow >= p.low) out.push(`Critical low ${t.critLow} must be below the ${p.label} low limit ${p.low}.`);
+    if (t.critHigh !== undefined && p.high !== undefined && t.critHigh <= p.high) out.push(`Critical high ${t.critHigh} must be above the ${p.label} high limit ${p.high}.`);
+    if (t.critLow !== undefined && p.high !== undefined && t.critLow >= p.high) out.push(`Critical low ${t.critLow} lies above the ${p.label}.`);
+    if (t.critHigh !== undefined && p.low !== undefined && t.critHigh <= p.low) out.push(`Critical high ${t.critHigh} lies below the ${p.label}.`);
+  }
+  if (t.critLow !== undefined && t.critHigh !== undefined && t.critLow >= t.critHigh) out.push(`Critical low ${t.critLow} is not below critical high ${t.critHigh}.`);
+  return [...new Set(out)];
+}
+
+/** Every catalogue row whose ranges do not make sense. Empty for a healthy catalogue. */
+export function catalogRangeProblems(catalog: LabTest[] = LAB_CATALOG): { code: string; short: string; problems: string[] }[] {
+  return catalog.map((t) => ({ code: t.code, short: t.short, problems: rangeProblems(t) })).filter((r) => r.problems.length > 0);
+}
+
+/** Work out the interpretation flag for a typed value. The technologist does not pick it. */
 export function interpretValue(t: LabTest, raw: string, sex: "M" | "F"): Interp {
   const v = raw.trim();
   if (!v) return "N";

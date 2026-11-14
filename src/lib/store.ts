@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from "react";
 import { audit } from "./audit";
+import { bedInfos, bedProblem } from "./beds";
 import { assemble, buildSegments, countChecks, messageToString, segmentStatuses, validate, type BuiltMessage } from "./hl7";
-import type { Encounter, HisState, LogEntry, LogSource, Patient, ScenarioForm } from "./model";
+import type { BedFlag, Encounter, HisState, LogEntry, LogSource, Patient, ScenarioForm } from "./model";
 import {
-  ALLERGY_SAMPLES, BEDS, BED_BY_ID, DEFAULT_DISPOSITION, DISPOSITIONS, DOCTORS, DX_SAMPLES, PR_SAMPLES, SEED_PATIENTS, countryCode, defaultAdmissionMethod,
+  ALLERGY_SAMPLES, BED_BY_ID, DEFAULT_DISPOSITION, DISPOSITIONS, DOCTORS, DX_SAMPLES, PR_SAMPLES, SEED_PATIENTS, countryCode, defaultAdmissionMethod,
 } from "./reference-data";
 import { EVENT_BY_ID, STANDARD_SEGMENTS, Z_SEGMENTS, type EventId, type SegId } from "./spec";
 
@@ -39,8 +40,8 @@ export function occupiedBeds(state: HisState): Record<string, Encounter> {
 }
 
 export function freeBeds(state: HisState, includeBedId?: string) {
-  const occ = occupiedBeds(state);
-  return BEDS.filter((b) => !occ[b.id] || b.id === includeBedId);
+  // Free means ready for a patient: not occupied, reserved, waiting for a discharged patient to leave, being cleaned or out of service.
+  return bedInfos(state).filter((i) => i.state === "free" || i.bed.id === includeBedId).map((i) => i.bed);
 }
 
 /** Which visits each event can act on. "new" events do not need one. */
@@ -188,6 +189,7 @@ function cloneState(s: HisState): HisState {
     encounters: s.encounters.map((e) => ({ ...e, transfers: [...e.transfers], dx: [...e.dx], pr: [...e.pr], allergies: [...e.allergies], complaints: [...e.complaints], notes: [...e.notes], ed: e.ed ? { ...e.ed } : undefined })),
     log: s.log,
     counters: { ...s.counters },
+    bedFlags: s.bedFlags,
   };
 }
 
@@ -397,10 +399,10 @@ export function formProblem(state: HisState, eventId: EventId, form: ScenarioFor
   }
   if (eventId === "A05" && !form.expectedAdmitAt) return "Enter the expected admit date.";
   if (eventId === "A31" && (!form.family || !form.given || !form.dob)) return "Enter a name and date of birth.";
-  if (form.bedId) {
-    const occ = occupiedBeds(state)[form.bedId];
-    const inUseByOther = occ && occ.visitNumber !== form.encounterId;
-    if (inUseByOther && (["A01", "A02", "A06", "A13"] as EventId[]).includes(eventId)) return "That bed is taken.";
+  if (form.bedId && (["A01", "A02", "A06", "A13"] as EventId[]).includes(eventId)) {
+    // Only a free bed, the visit's own bed, or the bed reserved for this patient.
+    const why = bedProblem(state, form.bedId, { visit: form.encounterId, patientId: form.patientId });
+    if (why) return why;
   }
   return null;
 }
@@ -500,6 +502,16 @@ export function updateEncounter(visit: string, fn: (e: Encounter) => void, opts:
   fn(e);
   if (opts.touch !== false && e.status !== "cancelled" && e.status !== "preadmit") e.dirty = true;
   current = next;
+  emit();
+}
+
+/** Mark a bed as being cleaned or out of service, or clear the mark (null) so the bed is free again. No ADT message is sent. */
+export function setBedFlag(bedId: string, flag: BedFlag | null) {
+  const s = getState();
+  const bedFlags = { ...(s.bedFlags ?? {}) };
+  if (flag) bedFlags[bedId] = flag;
+  else delete bedFlags[bedId];
+  current = { ...s, bedFlags };
   emit();
 }
 
@@ -656,5 +668,8 @@ export function seedState(): HisState {
     e.ed = { arrivalAt: at(9), arrivalMode: "Ground EMS Ambulance", triageAt: at(8), ctas: 1, complaint: "Chest pain and sweating", area: "Resus", seenAt: at(7), stage: "treatment", triageNurse: "Huda Alotaibi, RN", gcs: 15, pain: 9 };
     e.vitals = vit("84/50", "128", "36.9", "89", "28", "88");
   });
+  // Bed states: a bed held for the planned admission, and one out of service.
+  emr("P005", (e) => { e.reservedBedId = "402-B"; });
+  state.bedFlags = { "ICU2-B": { state: "out", since: at(2880), reason: "Maintenance", by: "System Administrator" } };
   return state;
 }

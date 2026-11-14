@@ -11,7 +11,7 @@ import { formatResult } from "@/lib/fhir/lab-bundles";
 import { personFromDoctor } from "@/lib/fhir/people";
 import { testByCode } from "@/lib/fhir/lab-catalog";
 import {
-  amendLabOrder, cancelLabOrder, hasCritical, labSendsOf, orderNphiesState, placeLabOrder, resultNphiesState, sendLabOrder, useLab,
+  amendLabOrder, cancelLabOrder, hasCritical, labSendsOf, openLabDuplicates, orderNphiesState, placeLabOrder, resultNphiesState, sendLabOrder, useLab,
 } from "@/lib/lab";
 import type { Encounter } from "@/lib/model";
 import { can, useSession } from "@/lib/session";
@@ -83,6 +83,7 @@ export function LabSection({ enc }: { enc: Encounter }) {
         <div className="px-4 py-4">
           <LabOrderPad
             key={padKey}
+            duplicatesOf={(codes) => openLabDuplicates(lab.orders, enc.visitNumber, codes)}
             canOrder={canOrder}
             reason={reason}
             submitLabel="Place Order"
@@ -200,6 +201,7 @@ export function LabSection({ enc }: { enc: Encounter }) {
         {amendingOrder && (
           <LabOrderPad
             key={amendingOrder.id}
+            duplicatesOf={(codes) => openLabDuplicates(lab.orders, enc.visitNumber, codes, amendingOrder.id)}
             initial={{ codes: amendingOrder.codes, priority: amendingOrder.priority, fasting: amendingOrder.fasting, note: amendingOrder.note }}
             testsLocked={amendingOrder.status !== "received"}
             canOrder={canOrder}
