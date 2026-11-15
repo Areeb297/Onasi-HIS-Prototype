@@ -22,6 +22,7 @@ import { can, useSession } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { lastAccepted, lastAttempt, type LabOrder } from "@/lib/fhir/types";
 import { fmtDateTime } from "@/lib/format";
+import { confirmPatient } from "@/lib/wrong-patient";
 
 const when = (iso: string) =>
   fmtDateTime(iso);
@@ -114,7 +115,8 @@ export function LabSection({ enc, view: startView = "Results" }: { enc: Encounte
             reason={reason}
             submitLabel="Place Order"
             showSend
-            onSubmit={(v, andSend) => {
+            onSubmit={async (v, andSend) => {
+              if (!(await confirmPatient(enc.patientId))) return;
               const o = placeLabOrder(enc, v);
               if (o && andSend) sendLabOrder(o.id);
               if (o) setPadKey((k) => k + 1);

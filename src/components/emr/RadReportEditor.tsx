@@ -16,6 +16,7 @@ import { can, useSession } from "@/lib/session";
 import { getState, patientName } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 import { fmtDateTime, fmtTime } from "@/lib/format";
+import { confirmForVisit } from "@/lib/wrong-patient";
 
 const stamp = (iso: string) =>
   fmtDateTime(iso);
@@ -230,7 +231,7 @@ export function RadReportEditor({ order }: { order: RadOrder }) {
           </p>
           <p className="text-sm"><span className="font-semibold">Impression:</span> {r.impression}</p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" disabled={!canSignNow} onClick={() => { if (signRadReport(order.id)) setSigning(false); }}>
+            <Button variant="primary" disabled={!canSignNow} onClick={async () => { if (!(await confirmForVisit(order.visitNumber))) return; if (signRadReport(order.id)) setSigning(false); }}>
               <PenLine className="size-4" aria-hidden="true" />
               Confirm And Sign
             </Button>

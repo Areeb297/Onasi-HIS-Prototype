@@ -47,6 +47,7 @@ import { audit } from "@/lib/audit";
 import { EMR_FORM_BY_ID } from "@/lib/emr-forms";
 import { EMR_MENU, type NativeId } from "@/lib/emr-menu";
 import { breakGlass, can, hasGlass, useSession } from "@/lib/session";
+import { patientMarker } from "@/lib/patient-marker";
 import { coverageView, normalizeDx } from "@/lib/chart-entries";
 import { caseOf, useFinancial } from "@/lib/nphies-financial";
 import { fmtDateTime } from "@/lib/format";
@@ -248,7 +249,8 @@ function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
   return (
     <>
       <div className="glass-card z-20 overflow-hidden rounded-2xl sm:sticky sm:top-[3.4rem]" role="region" aria-label="Patient header">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 border-l-4 border-l-move px-3 py-2.5 sm:px-4 sm:py-3">
+        {/* The left accent is the patient's marker colour, the same as on the patient's tab. */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 border-l-4 px-3 py-2.5 sm:px-4 sm:py-3" style={{ borderLeftColor: patientMarker(patient, !!patient.confidential && !hasGlass(patient.id)).bg }}>
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-move/12 text-sm font-semibold text-move sm:size-11" aria-hidden="true">{initials}</span>
             <div className="min-w-0">

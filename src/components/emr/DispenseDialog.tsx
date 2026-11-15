@@ -20,6 +20,7 @@ import { dispenseChecked, dispenseGate, orderLine, pharmacyItems, secureProblems
 import { can, currentUser } from "@/lib/session";
 import { pushToast } from "@/lib/toast";
 import { useHis } from "@/lib/store";
+import { confirmPatient } from "@/lib/wrong-patient";
 
 /**
  * Dispense dialog. For each verified item: the order (dose, route, frequency, prescriber), the patient's allergies and weight,
@@ -164,7 +165,8 @@ export function DispenseDialog({ rx, focusItemId, onClose, queue }: { rx: Prescr
   ].filter((x, i, a) => a.indexOf(x) === i);
   const ready = canDispense && chosen.length > 0 && gate.length === 0 && (plan?.problems.length ?? 1) === 0 && !skipMissing && rsdIssues.length === 0;
 
-  function submit() {
+  async function submit() {
+    if (!(await confirmPatient(rx.patientId))) return;
     const res = dispenseChecked(request);
     setProblems(res.problems);
     if (!res.outcome) return;

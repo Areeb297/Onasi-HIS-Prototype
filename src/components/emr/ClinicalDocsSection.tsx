@@ -20,6 +20,7 @@ import { getFormRecords, useRecords } from "@/lib/records";
 import { can, useSession } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { confirmPatient } from "@/lib/wrong-patient";
 
 /** Chart tab "Clinical Documents": generate, check, publish (simulated), amend. CDA R2 over IHE ITI-41. */
 
@@ -285,7 +286,8 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
                       variant="primary"
                       disabled={!mayPublish || dead}
                       title={!mayPublish ? "Your role cannot publish documents." : undefined}
-                      onClick={() => {
+                      onClick={async () => {
+                        if (!(await confirmPatient(enc.patientId))) return;
                         report(publishDoc(doc.id));
                         setTab(dev ? "response" : "preview");
                       }}

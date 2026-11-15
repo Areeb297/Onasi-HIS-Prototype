@@ -15,6 +15,7 @@ import type { Patient } from "@/lib/model";
 import { useSession } from "@/lib/session";
 import { toLocalInput } from "@/lib/store";
 import { fmtDateTime } from "@/lib/format";
+import { confirmForVisit } from "@/lib/wrong-patient";
 
 const stamp = (iso: string) =>
   fmtDateTime(iso);
@@ -73,7 +74,8 @@ export function LabVerifyDialog({ order, patient, onClose }: { order: LabOrder; 
             <Button
               variant="primary"
               disabled={!ready}
-              onClick={() => {
+              onClick={async () => {
+                if (!(await confirmForVisit(order.visitNumber))) return;
                 if (verifyAndReleaseLabResult(order.id, { overrideReason: needsOverride ? override : undefined, criticalCall: critical ? call : undefined })) onClose();
               }}
             >

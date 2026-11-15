@@ -19,6 +19,7 @@ import { visitInsured } from "@/lib/order-fields";
 import { can, useSession } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { fmtDateTime } from "@/lib/format";
+import { confirmPatient } from "@/lib/wrong-patient";
 
 const when = (iso: string) =>
   fmtDateTime(iso);
@@ -83,7 +84,8 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
             defaultIndication={enc.reason}
             submitLabel="Place Order"
             showSend
-            onSubmit={(v, andSend) => {
+            onSubmit={async (v, andSend) => {
+              if (!(await confirmPatient(enc.patientId))) return;
               const { orders: placed } = placeRadOrderGroup(enc, v);
               if (andSend) for (const o of placed) sendRadOrder(o.id);
               if (placed.length) setPadKey((k) => k + 1);

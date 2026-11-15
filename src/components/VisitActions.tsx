@@ -34,6 +34,7 @@ import {
   CONVERSION_REASON_MIN, MOVE_REASONS, WARD_TRANSFER_REASONS, conversionProblems, emptyExtras, extrasFrom, extrasProblems, extrasToAdmission,
   freeBedsByFloor, moveVisitProblem, type AdmissionExtras,
 } from "@/lib/visit-forms";
+import { confirmForVisit } from "@/lib/wrong-patient";
 
 type BedDlg = { kind: "bed"; event: "A01"; visit?: string; patientId?: string };
 type TransferDlg = { kind: "transfer"; visit: string };
@@ -1216,8 +1217,9 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
   const problems = [...first, ...approvalIssues];
   const tabIssues: Partial<Record<TabId, number>> = { disposition: first.length, followup: approvalIssues.length };
 
-  function confirm() {
+  async function confirm() {
     if (!outcome) return;
+    if (!(await confirmForVisit(visit))) return;
     onClose();
     dischargePatient(visit, { outcome, dx: picked, transfer, death, overrideReason: missing.length && override ? overrideReason : undefined, details });
   }

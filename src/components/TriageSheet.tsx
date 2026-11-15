@@ -15,6 +15,7 @@ import { COMPLAINT_SAMPLES } from "@/lib/reference-data";
 import { currentUser } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { recordFromTriage } from "@/lib/vitals";
+import { confirmPatient } from "@/lib/wrong-patient";
 
 const num = (s: string) => (s.trim() === "" || Number.isNaN(Number(s)) ? undefined : Number(s));
 
@@ -102,8 +103,9 @@ export function TriageSheet({ enc, onClose }: { enc: Encounter; onClose: () => v
   const close = () => guard(onClose);
   const summaryRef = React.useRef<HTMLDivElement>(null);
 
-  function save() {
+  async function save() {
     if (!fe.attempt() || !picked) return;
+    if (!(await confirmPatient(enc.patientId))) return;
     const why = a.drivers.length ? whyLine(a) : "Presenting complaint (no modifier raised the level)";
     saveTriage(
       enc.visitNumber,

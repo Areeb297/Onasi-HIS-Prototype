@@ -9,6 +9,7 @@ import { addNote, deleteNote, editNote, notesOf, setNoteActive } from "@/lib/pro
 import { can, useSession } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { confirmForVisit, confirmPatient } from "@/lib/wrong-patient";
 
 /**
  * Chart section "Progress Notes". Notes can be edited, set to Active or Inactive, and deleted with a reason.
@@ -39,8 +40,9 @@ export function ProgressNotesSection({ enc: initial }: { enc: Encounter }) {
   const shown = rows.filter((r) => filter === "all" || (filter === "active" ? r.active : !r.active));
   const deleted = [...(enc.notesDeleted ?? [])].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
 
-  const add = () => {
+  const add = async () => {
     if (!text.trim()) { setTried(true); composer.current?.focus(); return; }
+    if (!(await confirmPatient(enc.patientId))) return;
     if (addNote(enc.visitNumber, text)) { setText(""); setTried(false); pushToast({ tone: "ok", text: "Progress note added" }); }
   };
 
@@ -132,9 +134,10 @@ function EditSheet({ visit, id, original, onClose }: { visit: string; id: string
   const [text, setText] = React.useState(original);
   const changed = text.trim() !== original.trim();
   const v = useValidation({ text: !text.trim() && "The note cannot be empty. To take it off the chart, delete it." });
-  const save = () => {
+  const save = async () => {
     if (!v.submit()) return;
     if (!changed) { onClose(); return; }
+    if (!(await confirmForVisit(visit))) return;
     if (editNote(visit, id, text)) { pushToast({ tone: "ok", text: "Progress note updated" }); onClose(); }
   };
   return (

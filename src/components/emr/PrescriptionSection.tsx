@@ -18,6 +18,7 @@ import type { ItemStatus, Prescription, RxItem } from "@/lib/rx-types";
 import { can } from "@/lib/session";
 import { nowLocal, updateEncounter, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { confirmPatient } from "@/lib/wrong-patient";
 
 /** The chart "Prescription" tab: measurements, a fast editor, the prescriptions of this visit and the conformance panel. */
 
@@ -176,15 +177,17 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
       ? rx.lastSend && !rx.lastSend.ok ? { label: "Rejected", tone: "danger" as const } : { label: "Draft, Not Sent", tone: "neutral" as const }
       : rx.dirty ? { label: "Changes Not Sent", tone: "warn" as const } : { label: "Sent", tone: "ok" as const };
 
-  function send() {
+  async function send() {
+    if (!(await confirmPatient(rx.patientId))) return;
     const out = sendPrescription(rx.id, rx.sentAt ? "update" : "create");
     if (!out) return;
     if (out.ok) pushToast({ tone: "ok", text: `${rx.number} sent to nphies`, detail: out.refId ? `Raqeeb reference id ${out.refId}` : "Accepted (201)." });
     else pushToast({ tone: "danger", text: `${rx.number} was rejected`, detail: firstError(out.record.checks) });
   }
 
-  function doAction() {
+  async function doAction() {
     if (!confirm) return;
+    if (!(await confirmPatient(rx.patientId))) return;
     const t = ACTION_TEXT[confirm.key];
     const out = sendPrescription(rx.id, t.action, { itemId: confirm.item.id, status: t.status, reason: reason.trim() || undefined });
     audit("update", `Prescription item ${confirm.item.identifier}`, {

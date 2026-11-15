@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { getState } from "./store";
 
 /**
  * Wrong-patient check. Before something is signed or sent for a patient (an order, a prescription, a note, a
@@ -72,6 +73,12 @@ export function confirmPatient(patientId: string, now: number = Date.now()): Pro
     };
     emit();
   });
+}
+
+/** The same check when only the visit number is at hand. */
+export function confirmForVisit(visit: string, now: number = Date.now()): Promise<boolean> {
+  const id = getState().encounters.find((e) => e.visitNumber === visit)?.patientId;
+  return id ? confirmPatient(id, now) : Promise.resolve(true);
 }
 
 export const answerPatientCheck = (ok: boolean) => pending?.resolve(ok);

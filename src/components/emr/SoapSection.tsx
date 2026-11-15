@@ -22,6 +22,7 @@ import {
 } from "@/lib/soap-details";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { confirmPatient } from "@/lib/wrong-patient";
 
 /**
  * Chart tab "SOAP Notes". Each letter has a summary and the structured parts the HIS keeps (history of present
@@ -98,8 +99,9 @@ export function SoapSection({ enc }: { enc: Encounter }) {
     }
   }
 
-  function save(andSign: boolean) {
+  async function save(andSign: boolean) {
     if (!edit || !patient) return;
+    if (andSign && !(await confirmPatient(patient.id))) return;
     const note = saveSoap(enc.visitNumber, patient.id, edit.draft, { id: edit.id, aiDrafted: !!edit.ai });
     saveSoapDetail(enc.visitNumber, note.id, edit.detail);
     if (edit.ai) {
@@ -303,7 +305,7 @@ function NoteCard({ n, detail, patient, dev, mayWrite, editing, onEdit }: { n: S
         right={
           <div className="flex shrink-0 items-center gap-1.5">
             {draft && (
-              <Button size="sm" variant="primary" disabled={!mayWrite} onClick={() => { signSoap(n.id); pushToast({ tone: "ok", text: "SOAP note co-signed." }); }}>
+              <Button size="sm" variant="primary" disabled={!mayWrite} onClick={async () => { if (!(await confirmPatient(n.patientId))) return; signSoap(n.id); pushToast({ tone: "ok", text: "SOAP note co-signed." }); }}>
                 <PenLine className="size-4" /> Co-sign
               </Button>
             )}

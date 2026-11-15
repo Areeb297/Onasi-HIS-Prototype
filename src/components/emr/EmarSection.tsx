@@ -17,6 +17,7 @@ import { can, useSession } from "@/lib/session";
 import { patientName, toLocalInput, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 import { fmtDateTime, fmtDayHeading, fmtMonthYear, fmtTime, fmtWeekday } from "@/lib/format";
+import { confirmPatient } from "@/lib/wrong-patient";
 
 /**
  * The chart "Medication Chart" tab (eMAR). A nurse works from the Now view; the day, week and month grids show the whole picture.
@@ -531,9 +532,10 @@ function DoseForm({ enc, patient, order, slot, onClose }: { enc: Encounter; pati
   };
   const otherNote = reason === "Other" || timingReason === "Other" || prnReason === "Other" || complications.includes("Other");
 
-  function save() {
+  async function save() {
     if (!outcome) return;
     if (outcome === "given" && Number.isNaN(at)) { setErrors(["Enter the time the dose was given."]); return; }
+    if (!(await confirmPatient(enc.patientId))) return;
     const res = recordDose({
       visit: enc.visitNumber, itemId: order.itemId, slot: slot ?? undefined, outcome,
       at: outcome === "given" ? at : undefined, rights, reason, note,
