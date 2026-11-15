@@ -1,12 +1,12 @@
 import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import { motion, useReducedMotion } from "framer-motion";
-import { AlertTriangle, ChevronDown, ChevronRight, RotateCw, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ChevronDown, ChevronRight, RotateCw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { cn } from "@/components/ui/primitives";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
 import { runCds } from "@/lib/ai/cds";
-import { AI_LABEL, ageOf, fullName, vitalsLine } from "@/lib/ai/context";
+import { ageOf, fullName, vitalsLine } from "@/lib/ai/context";
 import { buildContext } from "@/lib/ai/live";
 import { audit } from "@/lib/audit";
 import { attentionFor, buildTimeline } from "@/lib/chart-review";
@@ -22,6 +22,8 @@ import { can } from "@/lib/session";
 
 export interface Brief {
   story: string;
+  /** The same facts as short labelled chips, for the summary card. */
+  facts: { label: string; value: string; tone?: "danger" | "muted" }[];
   watch: { level: "high" | "medium"; text: string }[];
   recent: { title: string; when: string }[];
   next: { label: string; section: string }[];
@@ -43,6 +45,16 @@ export function buildBrief(enc: Encounter, patient: Patient, now: Date = new Dat
     meds.length ? `On ${meds.slice(0, 4).join(", ")}${meds.length > 4 ? ` and ${meds.length - 4} more` : ""}.` : "",
   ].filter(Boolean).join(" ");
 
+  const facts: Brief["facts"] = [
+    { label: "Patient", value: `${ageOf(patient.dob, now)} y, ${patient.sex === "M" ? "Male" : "Female"}` },
+    { label: "Visit", value: ({ I: "Inpatient", O: "Outpatient", E: "Emergency", P: "Pre-Admission" } as Record<string, string>)[enc.cls] ?? "Visit" },
+    ...(reason ? [{ label: "Reason", value: reason }] : []),
+    { label: "Diagnosis", value: enc.dx.length ? enc.dx.map((d) => d.text).join("; ") : "Not recorded", tone: enc.dx.length ? undefined : ("muted" as const) },
+    { label: "Allergies", value: enc.allergies.length ? enc.allergies.map((a) => a.text).join(", ") : "None recorded", tone: enc.allergies.length ? ("danger" as const) : ("muted" as const) },
+    { label: "Vital Signs", value: enc.vitals ? vitalsLine(enc.vitals).replace(/\.$/, "") : "None taken", tone: enc.vitals ? undefined : ("muted" as const) },
+    ...(meds.length ? [{ label: "Medicines", value: `${meds.slice(0, 3).join(", ")}${meds.length > 3 ? ` +${meds.length - 3}` : ""}` }] : []),
+  ];
+
   const seen = new Set<string>();
   const watch: Brief["watch"] = [];
   for (const f of [...runCds(ctx), ...attentionFor(enc, patient)]) {
@@ -63,7 +75,7 @@ export function buildBrief(enc: Encounter, patient: Patient, now: Date = new Dat
   next.push({ label: "Draft A SOAP Note", section: "soap" });
   if (enc.status === "discharged") next.push({ label: "Write The Discharge Summary", section: "documents" });
 
-  return { story, watch: watch.slice(0, 4), recent, next: next.slice(0, 3), sources: ["Visit", "Chief Complaints", "Diagnosis", "Allergies", "Vital Signs", "Medicines", "Results", "Notes"] };
+  return { story, facts, watch: watch.slice(0, 4), recent, next: next.slice(0, 3), sources: ["Visit", "Chief Complaints", "Diagnosis", "Allergies", "Vital Signs", "Medicines", "Results", "Notes"] };
 }
 
 const STEPS = ["Opening the chart", "Reading vital signs, results and notes", "Checking the safety rules", "Writing the brief"];
@@ -73,22 +85,18 @@ const briefed = new Set<string>();
 
 function Loading({ step }: { step: number }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-4 px-5 py-5" role="status" aria-live="polite">
-      <div className="relative flex size-14 shrink-0 items-center justify-center">
-        <span className="absolute inset-0 animate-spin rounded-full border-2 border-white/15 border-t-[var(--brand-mint)] [animation-duration:1.1s]" aria-hidden="true" />
-        <OnasiAiMark size={28} thinking className="text-[var(--brand-mint)]" />
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-3 px-5 py-5" role="status" aria-live="polite">
+      <div className="relative flex size-12 shrink-0 items-center justify-center">
+        <span className="absolute inset-0 animate-spin rounded-full border-2 border-foreground/10 border-t-[#03C1AC] [animation-duration:1.1s]" aria-hidden="true" />
+        <OnasiAiMark size={24} thinking />
       </div>
       <div className="min-w-0 flex-1 basis-64">
-        <p className="text-sm font-semibold text-white">{STEPS[Math.min(step, STEPS.length - 1)]}</p>
+        <p className="text-sm font-semibold text-foreground">{STEPS[Math.min(step, STEPS.length - 1)]}</p>
         <ol className="mt-2 flex gap-1.5" aria-hidden="true">
           {STEPS.map((_, i) => (
-            <li key={i} className={cn("h-1 flex-1 rounded-full transition-colors duration-300", i < step ? "bg-[var(--brand-mint)]" : i === step ? "animate-pulse bg-[var(--brand-mint)]/70" : "bg-white/15")} />
+            <li key={i} className={cn("h-1 flex-1 rounded-full transition-colors duration-300", i < step ? "bg-[#03C1AC]" : i === step ? "animate-pulse bg-[#03C1AC]/60" : "bg-foreground/10")} />
           ))}
         </ol>
-        <div className="mt-3 space-y-1.5" aria-hidden="true">
-          <div className="h-2.5 w-11/12 animate-pulse rounded bg-white/12" />
-          <div className="h-2.5 w-8/12 animate-pulse rounded bg-white/12 [animation-delay:150ms]" />
-        </div>
       </div>
     </div>
   );
@@ -126,18 +134,19 @@ export function AiChartBrief({ enc, patient, onGo, inModal = false }: { enc: Enc
   };
   const line = (i: number) => (reduce ? {} : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.08 * i, duration: 0.28 } });
 
+  const label = "text-xs font-medium text-muted-foreground";
   return (
-    <section aria-label={`Patient summary by ${ASSISTANT_NAME}`} className="overflow-hidden rounded-xl bg-[var(--brand-deep)] text-white shadow-sm">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/10 px-5 py-2.5">
-        <OnasiAiMark size={18} thinking={!ready} className="text-[var(--brand-mint)]" />
-        <h2 className="text-sm font-semibold">Patient summary by {ASSISTANT_NAME}</h2>
-        {dev && <span className="rounded border border-dashed border-white/40 px-1.5 py-0.5 text-xs text-white/80">Simulated</span>}
+    <section aria-label={`Patient summary by ${ASSISTANT_NAME}`} className={cn("glass-card overflow-hidden text-foreground", inModal ? "rounded-2xl" : "rounded-xl")}>
+      <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-border/70 px-5 py-3">
+        <OnasiAiMark size={18} thinking={!ready} />
+        <h2 className="text-sm font-semibold">Patient Summary</h2>
+        {dev && <span className="rounded border border-dashed border-border px-1.5 py-0.5 text-xs text-muted-foreground">Simulated</span>}
         {ready && (
           <div className={cn("ms-auto flex items-center gap-1", inModal && "me-8")}>
-            <button type="button" onClick={again} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
+            <button type="button" onClick={again} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
               <RotateCw className="size-3.5" aria-hidden="true" /> Write Again
             </button>
-            {!inModal && <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
+            {!inModal && <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
               {open ? "Hide" : "Show"} <ChevronDown className={cn("size-3.5 transition-transform", !open && "-rotate-90")} aria-hidden="true" />
             </button>}
           </div>
@@ -148,64 +157,72 @@ export function AiChartBrief({ enc, patient, onGo, inModal = false }: { enc: Enc
         <Loading step={step} />
       ) : open ? (
         <div className="px-5 py-4">
-          <motion.p {...line(0)} className="max-w-4xl text-[0.9375rem] leading-relaxed text-white/95">{brief.story}</motion.p>
+          <p className="sr-only">{brief.story}</p>
+          <motion.dl {...line(0)} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {brief.facts.map((f) => (
+              <div key={f.label} className="glass-row min-w-0 rounded-lg px-3 py-2">
+                <dt className={label}>{f.label}</dt>
+                <dd className={cn("mt-0.5 line-clamp-2 text-sm font-medium", f.tone === "danger" ? "text-destructive" : f.tone === "muted" ? "text-muted-foreground" : "text-foreground")} title={f.value}>{f.value}</dd>
+              </div>
+            ))}
+          </motion.dl>
 
-          <div className="mt-4 grid gap-x-8 gap-y-4 md:grid-cols-2">
+          <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
             <motion.div {...line(1)}>
-              <h3 className="text-xs font-semibold text-[var(--brand-mint)]">Watch</h3>
+              <h3 className={label}>Watch</h3>
               {brief.watch.length ? (
                 <ul className="mt-1.5 space-y-1.5">
                   {brief.watch.map((w, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-white/90">
-                      <AlertTriangle className={cn("mt-0.5 size-4 shrink-0", w.level === "high" ? "text-[#ff9a9a]" : "text-[#fbd38d]")} aria-hidden="true" />
-                      <span><span className="font-semibold">{w.level === "high" ? "Urgent. " : "Soon. "}</span>{w.text}</span>
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", w.level === "high" ? "bg-destructive" : "bg-warn")} aria-hidden="true" />
+                      <span><span className="sr-only">{w.level === "high" ? "Urgent: " : "Soon: "}</span>{w.text}</span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="mt-1.5 text-sm text-white/80">Nothing urgent found in the chart.</p>
+                <p className="mt-1.5 text-sm text-muted-foreground">Nothing urgent.</p>
               )}
             </motion.div>
             <motion.div {...line(2)}>
-              <h3 className="text-xs font-semibold text-[var(--brand-mint)]">Latest</h3>
+              <h3 className={label}>Latest</h3>
               {brief.recent.length ? (
                 <ul className="mt-1.5 space-y-1.5">
                   {brief.recent.map((r, i) => (
-                    <li key={i} className="flex items-baseline justify-between gap-3 text-sm text-white/90">
+                    <li key={i} className="flex items-baseline justify-between gap-3 text-sm">
                       <span className="min-w-0 truncate">{r.title}</span>
-                      <time className="shrink-0 text-xs text-white/65">{r.when}</time>
+                      <time className="shrink-0 text-xs tabular-nums text-muted-foreground">{r.when}</time>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="mt-1.5 text-sm text-white/80">Nothing recorded on this visit yet.</p>
+                <p className="mt-1.5 text-sm text-muted-foreground">Nothing recorded yet.</p>
               )}
             </motion.div>
           </div>
 
-          <motion.div {...line(3)} className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3.5">
-            <span className="text-xs font-semibold text-[var(--brand-mint)]">Next</span>
+          <motion.div {...line(3)} className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/70 pt-3.5">
             {brief.next.map((n) => (
-              <button key={n.section} type="button" onClick={() => go(n.section)} className="inline-flex h-8 items-center gap-1 rounded-lg bg-white/10 px-2.5 text-[0.8125rem] font-medium text-white hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-white">
+              <button key={n.section} type="button" onClick={() => go(n.section)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#03C1AC]/40 bg-[#39EDD5]/10 px-2.5 text-[0.8125rem] font-medium text-[#035D53] hover:bg-[#39EDD5]/20 focus-visible:outline-2 focus-visible:outline-ring dark:text-[#52FCE3]">
                 {n.label} <ChevronRight className="size-3.5" aria-hidden="true" />
               </button>
             ))}
             <div className="ms-auto flex items-center gap-1">
               {vote ? (
-                <span className="text-xs text-white/75">Thanks. Your answer is in the audit trail.</span>
+                <span className="text-xs text-muted-foreground">Thanks for the feedback.</span>
               ) : (
                 <>
-                  <span className="text-xs text-white/65">Was this useful?</span>
-                  <button type="button" onClick={() => rate("up")} aria-label="Useful" className="rounded-md p-1.5 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"><ThumbsUp className="size-4" /></button>
-                  <button type="button" onClick={() => rate("down")} aria-label="Not useful" className="rounded-md p-1.5 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"><ThumbsDown className="size-4" /></button>
+                  <button type="button" onClick={() => rate("up")} aria-label="Useful" title="Useful" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><ThumbsUp className="size-4" /></button>
+                  <button type="button" onClick={() => rate("down")} aria-label="Not useful" title="Not useful" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><ThumbsDown className="size-4" /></button>
                 </>
               )}
             </div>
           </motion.div>
-          <p className="mt-2.5 text-xs text-white/60">{AI_LABEL} Read from: {brief.sources.join(", ")}.</p>
+          <details className="mt-2 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none">AI draft, check before use. Sources</summary>
+            <p className="mt-1">Read from: {brief.sources.join(", ")}.</p>
+          </details>
         </div>
       ) : null}
     </section>
   );
 }
-

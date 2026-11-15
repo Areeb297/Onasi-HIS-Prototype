@@ -25,12 +25,12 @@ export function AiBriefModal({ enc, patient }: { enc: Encounter; patient: Patien
         <OnasiAiMark size={16} /> Patient Summary
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent showCloseButton={false} className="max-h-[90vh] gap-0 overflow-y-auto rounded-xl border-0 bg-transparent p-0 shadow-2xl sm:max-w-3xl">
+        <DialogContent showCloseButton={false} className="max-h-[90vh] gap-0 overflow-y-auto rounded-2xl border-0 bg-transparent p-0 shadow-2xl sm:max-w-2xl">
           <DialogTitle className="sr-only">Patient summary by {ASSISTANT_NAME}</DialogTitle>
           <DialogDescription className="sr-only">A short summary of this chart, written by the assistant. A clinician must review it.</DialogDescription>
           <div className="relative">
             <AiChartBrief enc={enc} patient={patient} onGo={() => setOpen(false)} inModal />
-            <DialogClose className="absolute right-3 top-2 rounded-md p-1.5 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white" aria-label="Close the summary">
+            <DialogClose className="absolute right-3 top-2.5 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring" aria-label="Close the summary">
               <X className="size-4" />
             </DialogClose>
           </div>
