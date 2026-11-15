@@ -40,7 +40,7 @@ describe("bed and worklist screens", () => {
     for (const mode of ["opd", "ipd", "er"] as const) {
       const out = html(h(WorklistPage, { mode }));
       expect(out, mode).toContain("Eligibility");
-      expect(out, mode).toContain("Sub-Department");
+      // Sub-Department now lives in the Filters drawer, which opens on demand.
     }
   });
 

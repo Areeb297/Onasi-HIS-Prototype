@@ -1,6 +1,8 @@
 import * as React from "react";
 import { ArrowLeft, ClipboardCheck, Plus, Save, Send, ShieldCheck, Trash2, UserCheck } from "lucide-react";
-import { IconAlertTriangle, IconCircleCheck, IconHandStop, IconOctagon } from "@tabler/icons-react";
+import {
+  IconAlertTriangle, IconCircleCheck, IconClipboardList, IconFileDescription, IconHandStop, IconHeartRateMonitor, IconOctagon, IconStack2, IconStethoscope, IconUsers, IconWallet,
+} from "@tabler/icons-react";
 import { ReviewDialog, useClaimSend } from "@/components/claims/ClaimParts";
 import { BrandChip, StatusChip, fmtDate, fmtDateTime } from "@/components/claims/RcmUi";
 import { CommitInput, ServiceLinesCard } from "@/components/claims/ServiceLinesCard";
@@ -76,14 +78,32 @@ function Fact({ label, children, id }: { label: string; children: React.ReactNod
   );
 }
 
+/** The worst review finding in each section, so a flagged section shows it on its edge and in its header. */
+const HitsContext = React.createContext<Map<string, Severity>>(new Map());
+
+const SECTION_ICON: Record<string, typeof IconUsers> = {
+  "claim-details": IconFileDescription, "claim-encounter": IconStethoscope, "claim-care-team": IconUsers, "claim-support": IconHeartRateMonitor,
+  "claim-dx": IconClipboardList, "claim-drg": IconStack2, "claim-financial": IconWallet,
+};
+const HIT_EDGE: Record<Severity, string> = { hard: "border-l-destructive", soft: "border-l-warn", warning: "border-l-move" };
+const HIT_TONE: Record<Severity, "danger" | "warn" | "info"> = { hard: "danger", soft: "warn", warning: "info" };
+
 function Section({ id, title, subtitle, right, children }: { id: string; title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
+  const hit = React.useContext(HitsContext).get(id);
+  const Icon = SECTION_ICON[id] ?? IconFileDescription;
   return (
     <section id={id} aria-labelledby={`${id}-title`} tabIndex={-1} className={cn("scroll-mt-48 rounded-2xl focus-visible:outline-none", flash)}>
-      <Card>
+      <Card className={cn(hit && "border-l-[3px]", hit && HIT_EDGE[hit])}>
         <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <div className="min-w-0">
-            <h2 id={`${id}-title`} className="text-[0.9375rem] font-semibold">{title}</h2>
-            {subtitle && <p className="mt-0.5 max-w-3xl text-[0.8125rem] text-muted-foreground">{subtitle}</p>}
+          <div className="flex min-w-0 items-start gap-3">
+            <span aria-hidden="true" className="glass-icon mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg"><Icon className="size-[1.05rem]" stroke={1.75} /></span>
+            <div className="min-w-0">
+              <h2 id={`${id}-title`} className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-semibold">
+                {title}
+                {hit && <Badge tone={HIT_TONE[hit]}>{SEVERITY_LABEL[hit]}</Badge>}
+              </h2>
+              {subtitle && <p className="mt-0.5 max-w-3xl text-[0.8125rem] text-muted-foreground">{subtitle}</p>}
+            </div>
           </div>
           {right && <div className="shrink-0">{right}</div>}
         </header>
@@ -216,6 +236,7 @@ export function ClaimPage() {
       {!allowed && <Card className="mb-4 border-warn/40 px-4 py-3 text-sm">You can read this claim. Changing and sending it needs the billing permission.</Card>}
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
+        <HitsContext.Provider value={sectionHits}>
         <div className="flex min-w-0 flex-col gap-4">
           {m.answer && <PayerAnswerCard m={m} />}
           <DetailsSection m={m} readOnly={readOnly} />
@@ -229,6 +250,7 @@ export function ClaimPage() {
           </section>
           <FinancialSection m={m} invoiceNumber={inv?.number} />
         </div>
+        </HitsContext.Provider>
         <aside className="min-w-0" aria-label="Review">
           <div className="xl:sticky xl:top-[10.75rem]">
             <ReviewPanel m={m} findings={claimFindings} onRun={() => runReview(visit)} />
@@ -369,12 +391,22 @@ function DetailsSection({ m, readOnly }: { m: ClaimModel; readOnly: boolean }) {
         <Field label="Service End" required><CommitInput type="date" label="Service End" value={m.end} disabled={readOnly} onCommit={(v) => save({ start: m.start, end: v })} /></Field>
       </div>
       <dl className="grid gap-4 border-t border-border p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Fact label="Payer">{m.payer}</Fact>
-        <Fact label="Eligibility">{el ? <>{el.status === "eligible" ? "Eligible" : "Not Eligible"} <span className="font-mono text-xs text-muted-foreground">{el.ref}</span></> : "Not Checked"}</Fact>
-        <Fact label="Prior Authorization" id="fact-preauth">
-          {au ? <>{au.status === "approved" ? "Approved" : au.status === "pended" ? "Waiting For Payer" : au.status === "denied" ? "Denied" : "Cancelled"} {au.authNumber && <span className="font-mono text-xs text-muted-foreground">{au.authNumber}</span>}</> : m.authNeeded ? <span className="text-warn">Required, Not Sent</span> : "Not Needed"}
+        <Fact label="Payer"><BrandChip>{m.payer}</BrandChip></Fact>
+        <Fact label="Eligibility">
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            {el ? <Badge tone={el.status === "eligible" ? "ok" : "danger"}>{el.status === "eligible" ? "Eligible" : "Not Eligible"}</Badge> : <Badge tone="warn">Not Checked</Badge>}
+            {el && <span className="font-mono text-xs text-muted-foreground">{el.ref}</span>}
+          </span>
         </Fact>
-        <Fact label="Claim Number">{cl ? <span className="font-mono text-xs">{cl.claimNumber}</span> : "Given When Sent"}</Fact>
+        <Fact label="Prior Authorization" id="fact-preauth">
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            {au
+              ? <Badge tone={au.status === "approved" ? "ok" : au.status === "pended" ? "info" : au.status === "denied" ? "danger" : "neutral"}>{au.status === "approved" ? "Approved" : au.status === "pended" ? "Waiting For Payer" : au.status === "denied" ? "Denied" : "Cancelled"}</Badge>
+              : m.authNeeded ? <Badge tone="warn">Required, Not Sent</Badge> : <Badge>Not Needed</Badge>}
+            {au?.authNumber && <span className="font-mono text-xs text-muted-foreground">{au.authNumber}</span>}
+          </span>
+        </Fact>
+        <Fact label="Claim Number">{cl ? <span className="font-mono text-xs font-semibold text-[#035d53] dark:text-[#39edd5]">{cl.claimNumber}</span> : <span className="text-muted-foreground">Given When Sent</span>}</Fact>
         {m.draft?.batch && <Fact label="Last Batch"><span className="font-mono text-xs">{m.draft.batch.id}</span> <span className="text-xs text-muted-foreground">{PRIORITY_LABEL[m.draft.batch.priority]}</span></Fact>}
         <Fact label="Last Saved">{m.draft?.savedAt ? <>{fmtDateTime(m.draft.savedAt)} <span className="text-xs text-muted-foreground">{m.draft.savedBy}</span></> : "Not saved yet"}</Fact>
       </dl>
@@ -565,6 +597,16 @@ function Row({ label, value, strong, minus }: { label: string; value: number; st
   );
 }
 
+function MoneyTile({ title, value, edge, valueClass, children }: { title: string; value: number; edge: string; valueClass?: string; children: React.ReactNode }) {
+  return (
+    <div className={cn("rounded-xl border border-border border-l-[3px] bg-card px-3.5 py-3", edge)}>
+      <p className="text-xs font-medium text-muted-foreground">{title}</p>
+      <p className={cn("mt-1 text-xl font-semibold tracking-tight", valueClass)}><Sar value={value} /></p>
+      <dl className="mt-2 border-t border-border/70 pt-1">{children}</dl>
+    </div>
+  );
+}
+
 function FinancialSection({ m, invoiceNumber }: { m: ClaimModel; invoiceNumber?: number }) {
   const t = m.totals;
   return (
@@ -573,14 +615,20 @@ function FinancialSection({ m, invoiceNumber }: { m: ClaimModel; invoiceNumber?:
       subtitle={invoiceNumber ? `From invoice #${invoiceNumber}. Read only: prices are set on the invoice.` : "From the visit charges. Read only."}
       right={invoiceNumber ? <Button size="sm" variant="ghost" onClick={() => navigate("/invoice", { visit: m.visit })}>Open Invoice</Button> : undefined}
     >
-      <div className="grid gap-x-8 px-4 py-2 sm:grid-cols-3">
-        <dl className="py-2"><Row label="Total Amount" value={t.gross} /><Row label="Discount" value={t.discount} minus /><Row label="Net Amount" value={t.taxable} strong /></dl>
-        <dl className="border-t border-border py-2 sm:border-t-0 sm:border-s sm:ps-8"><Row label="Patient Share" value={t.patientAmount} /><Row label="Patient VAT" value={t.patientTax} /><Row label="Insurance Share" value={t.insuranceAmount} strong /></dl>
-        <dl className="border-t border-border py-2 sm:border-t-0 sm:border-s sm:ps-8">
+      <div className="grid gap-3 p-4 sm:grid-cols-3">
+        <MoneyTile title="Claim Amount" value={t.taxable} edge="border-l-[#032c26] dark:border-l-[#39edd5]">
+          <Row label="Total Amount" value={t.gross} /><Row label="Discount" value={t.discount} minus />
+        </MoneyTile>
+        <MoneyTile title="Insurance Share" value={t.insuranceAmount} edge="border-l-[#03c1ac]" valueClass="text-[#035d53] dark:text-[#39edd5]">
+          <Row label="Patient Share" value={t.patientAmount} /><Row label="Patient VAT" value={t.patientTax} />
+        </MoneyTile>
+        <MoneyTile
+          title="Insurance Balance" value={t.insuranceBalance}
+          edge={t.insuranceBalance > 0.004 ? "border-l-warn" : "border-l-ok"} valueClass={t.insuranceBalance > 0.004 ? "text-warn" : "text-ok"}
+        >
           {m.fin.claim?.approved !== undefined && <Row label="Approved By Payer" value={m.fin.claim.approved} />}
           <Row label="Paid By Payer" value={t.insurancePaid} />
-          <Row label="Insurance Balance" value={t.insuranceBalance} strong />
-        </dl>
+        </MoneyTile>
       </div>
     </Section>
   );

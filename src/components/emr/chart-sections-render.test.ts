@@ -59,8 +59,7 @@ describe("chart sections render", () => {
     const html = renderToString(h(ProgressNotesSection, { enc: enc() }));
     expect(html).toContain("Reviewed on the ward round.");
     expect(html).toContain("Active");
-    expect(html).toContain("Delete note");
-    expect(html).toContain("Edit note");
+    // Edit and Delete Note now sit in the row actions menu, which renders on open.
   });
 
   it("renders a SOAP note with its structured parts, Download and the note history", () => {

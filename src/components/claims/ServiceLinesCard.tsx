@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { IconListDetails } from "@tabler/icons-react";
 import { Sar } from "@/components/invoice/InvoiceParts";
 import { Badge, Button, Card, Empty, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { addProcedureLine, removeExtraLine, saveLine, type ClaimModel, type ClaimServiceLine, type CodeSystem, type Finding, type LineEdit } from "@/lib/claims";
@@ -92,11 +93,14 @@ export function ServiceLinesCard({ m, findings, readOnly }: { m: ClaimModel; fin
 
   return (
     <Card>
-      <header className="border-b border-border px-4 py-3">
+      <header className="flex items-start gap-3 border-b border-border px-4 py-3">
+        <span aria-hidden="true" className="glass-icon mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg"><IconListDetails className="size-[1.05rem]" stroke={1.75} /></span>
+        <div className="min-w-0">
         <h2 className="text-[0.9375rem] font-semibold">Service Lines</h2>
         <p className="mt-0.5 max-w-3xl text-[0.8125rem] text-muted-foreground">
           One line per consultation, test, exam and medicine on the invoice, at the invoice price. Codes are SBS, or ACHI for a procedure. Tick the numbered diagnoses and care team members each line is for.
         </p>
+        </div>
       </header>
 
       <div className="hidden md:block">

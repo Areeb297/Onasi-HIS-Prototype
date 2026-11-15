@@ -203,7 +203,7 @@ describe("screens", () => {
     const h = React.createElement;
     const r = req("P012");
     const page = renderToString(h(AdmissionRequestsPage));
-    expect(page).toContain("Admission Approval Worklist");
+    expect(page).toContain("Admission Requests");
     expect(page).toContain("AR-1001");
     expect(renderToString(h(AdmissionRequestForm, { onClose() {}, patientId: "P008" }))).toContain("Admission Diagnosis (ICD-10-AM)");
     const approve = renderToString(h(ApproveDialog, { request: r, onClose() {} }));

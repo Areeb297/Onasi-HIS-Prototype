@@ -8,7 +8,8 @@ import {
 } from "@/lib/claims";
 import { visitTimeline } from "@/lib/rcm-transactions";
 import { navigate } from "@/lib/router";
-import { patientName } from "@/lib/store";
+import { getState, patientName } from "@/lib/store";
+import { insurerOf } from "@/lib/invoice";
 import { pushToast } from "@/lib/toast";
 import { ReviewCounts } from "./ClaimParts";
 import { BrandChip, StatusChip, fmtDate } from "./RcmUi";
@@ -143,41 +144,63 @@ export function PollRequestDialog({ open, onClose, payers }: { open: boolean; on
   );
 }
 
-/** Create Claim / PreAuth: pick an insured visit, then the claim form opens for it. */
+/**
+ * Create Claim / PreAuth: find the patient's insured visit and open its claim. Every insured visit is listed (a claim
+ * already sent opens as it is); a cash patient who matches the search is shown with the reason there is no claim.
+ */
 export function CreateClaimDialog({ open, onClose, rows }: { open: boolean; onClose: () => void; rows: WorklistRow[] }) {
   const [q, setQ] = React.useState("");
   React.useEffect(() => { if (open) setQ(""); }, [open]);
-  const open_ = rows
-    .filter((r) => !r.m.fin.claim || r.m.fin.claim.status === "rejected" || r.m.fin.claim.status === "cancelled")
-    .filter((r) => !q.trim() || `${patientName(r.patient)} ${r.patient.mrn} ${r.visit}`.toLowerCase().includes(q.trim().toLowerCase()))
-    .sort((a, b) => b.visitAt.localeCompare(a.visitAt));
+  const term = q.trim().toLowerCase();
+  const hit = (p: WorklistRow["patient"], visit = "") => !term || `${patientName(p)} ${p.mrn} ${p.nationalId} ${visit}`.toLowerCase().includes(term);
+  const sentOf = (r: WorklistRow) => !!r.m.fin.claim && r.m.fin.claim.status !== "rejected" && r.m.fin.claim.status !== "cancelled";
+  const visits = rows.filter((r) => hit(r.patient, r.visit)).sort((a, b) => Number(sentOf(a)) - Number(sentOf(b)) || b.visitAt.localeCompare(a.visitAt));
+  const insured = new Set(rows.map((r) => r.patient.id));
+  const cash = term ? getState().patients.filter((p) => !p.mergedInto && !insured.has(p.id) && !insurerOf(p) && hit(p)).slice(0, 5) : [];
   return (
-    <Dialog open={open} onClose={onClose} wide title="Create Claim / PreAuth" subtitle="Choose the insured visit. The claim opens with its diagnoses, care team and invoice lines filled in." footer={<Button onClick={onClose}>Cancel</Button>}>
+    <Dialog open={open} onClose={onClose} wide title="Create Claim / PreAuth" subtitle="Find the patient and choose the insured visit. The claim opens with its diagnoses, care team and invoice lines filled in." footer={<Button onClick={onClose}>Cancel</Button>}>
       <label className="relative block">
         <span className="sr-only">Search patient or visit</span>
         <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input autoFocus className="pl-9" placeholder="Patient name, MRN or visit" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input autoFocus className="pl-9" placeholder="Patient name, MRN, ID number or visit" value={q} onChange={(e) => setQ(e.target.value)} />
       </label>
-      <ul className="mt-3 flex max-h-[50vh] flex-col gap-1.5 overflow-y-auto">
-        {open_.length === 0 && <li className="px-2 py-8 text-center text-sm text-muted-foreground">No insured visit without a claim matches.</li>}
-        {open_.map((r) => (
-          <li key={r.visit}>
-            <button
-              type="button"
-              onClick={() => { onClose(); navigate("/claim", { visit: r.visit }); }}
-              className={cn("flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-muted/60",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
-            >
-              <span className="min-w-0">
-                <span className="block text-sm font-medium">{patientName(r.patient)}</span>
-                <span className="block text-xs text-muted-foreground">MRN {r.patient.mrn}, visit {r.visit}, {fmtDate(r.visitAt)}</span>
-              </span>
-              <span className="flex flex-wrap items-center gap-1.5">
-                <BrandChip>{r.payer}</BrandChip>
-                <StatusChip status={r.status} />
-                <Sar value={r.m.net} className="text-sm font-semibold" />
-              </span>
-            </button>
+      <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">{visits.length} insured visit{visits.length === 1 ? "" : "s"}{term ? " match" : ""}.</p>
+      <ul className="mt-2 flex max-h-[50vh] flex-col gap-1.5 overflow-y-auto">
+        {visits.length === 0 && !cash.length && (
+          <li className="px-2 py-8 text-center text-sm text-muted-foreground">
+            {rows.length ? "No patient or visit matches. Try the MRN or the visit number." : "No insured visits yet. Register the patient with an insurance card first."}
+          </li>
+        )}
+        {visits.map((r) => {
+          const sent = sentOf(r);
+          return (
+            <li key={r.visit}>
+              <button
+                type="button"
+                onClick={() => { onClose(); navigate("/claim", { visit: r.visit }); }}
+                className={cn("flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-muted/60",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{patientName(r.patient)}</span>
+                  <span className="block text-xs text-muted-foreground">MRN {r.patient.mrn}, visit {r.visit}, {fmtDate(r.visitAt)}{sent ? `, claim ${r.m.fin.claim!.claimNumber}` : ""}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <BrandChip>{r.payer}</BrandChip>
+                  <StatusChip status={r.status} />
+                  <Sar value={r.m.net} className="text-sm font-semibold" />
+                </span>
+              </button>
+            </li>
+          );
+        })}
+        {cash.map((p) => (
+          <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-border px-3 py-2.5">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{patientName(p)}</span>
+              <span className="block text-xs text-muted-foreground">MRN {p.mrn}. Cash patient: no insurance on file, so visits are billed on the invoice, not by a claim.</span>
+            </span>
+            <Badge>Cash</Badge>
           </li>
         ))}
       </ul>

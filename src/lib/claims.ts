@@ -19,6 +19,7 @@ import { can, currentUser } from "./session";
 import { getState, patientName } from "./store";
 import { claimReadiness, type ClaimLine as VitalClaimLine } from "./vitals";
 import { DEMO_MARK, demoTargetOf } from "./rcm-demo";
+import { activeRuleSet, evaluateConditions, ruleApplies, type ClaimFacts, type FieldMap, type Rule } from "./rule-engine";
 import { buildDemoClaims, type DemoClaimInput, type PayerAnswer } from "./rcm-demo-claims";
 
 export type { AnswerError, AnswerLine, PayerAnswer } from "./rcm-demo-claims";
@@ -381,11 +382,15 @@ export type RuleId = "no-principal-dx" | "many-principal-dx" | "no-chief-complai
 export interface Finding {
   /** Rule id, plus the line key for line rules. Soft stops are acknowledged by this id. */
   id: string;
-  rule: RuleId;
+  /** The built-in check (RuleId) or, for a condition rule, the rule's id in the rule engine. */
+  rule: RuleId | (string & {});
   severity: Severity;
   text: string;
   fix: string;
   lineKey?: string;
+  /** The rule engine rule that produced the finding, and its NPHIES code when it has one. */
+  ruleId?: string;
+  nphiesCode?: string;
 }
 
 export interface ReviewInput {
@@ -397,34 +402,83 @@ export interface ReviewInput {
   authNeeded: boolean;
   authStatus?: AuthStatus;
   lines: { key: string; seq: number; text: string; unitCost: number; dxSeqs: number[] }[];
+  /** Claim type, for rules limited to some claim types. */
+  claimType?: string;
+  /** Field values for the condition rules of the rule engine. Without them only the built-in checks run. */
+  facts?: ClaimFacts;
 }
 
 /**
+ * Runs the active rules of the rule engine (rule-engine.ts). The built-in checks keep their own wording; their severity,
+ * trigger, claim types and on/off come from their rule. Condition rules run on the claim facts.
  * Hard Stop blocks sending. Soft Stop needs the biller to confirm with a reason. Warning is shown only.
- * The prior authorization check applies to the claim only.
+ * Prior authorization approval is checked for the claim only, whatever the rule's trigger.
  */
-export function reviewClaim(r: ReviewInput, use: ClaimUse): Finding[] {
+export function reviewClaim(r: ReviewInput, use: ClaimUse, set: { rules: Rule[]; fields: FieldMap[] } = activeRuleSet()): Finding[] {
   const out: Finding[] = [];
-  const add = (f: Omit<Finding, "id"> & { id?: string }) => out.push({ ...f, id: f.id ?? f.rule });
+  const rules = set.rules.filter((x) => ruleApplies(x, use, r.claimType));
+  const add = (rule: RuleId, f: Omit<Finding, "id" | "rule" | "severity"> & { id?: string }) => {
+    const def = rules.find((x) => x.check === rule);
+    if (def) out.push({ ...f, id: f.id ?? rule, rule, severity: def.severity, ruleId: def.id, nphiesCode: def.nphiesCode });
+  };
   const principal = r.dx.filter((d) => d.type === "principal").length;
-  if (principal === 0) add({ rule: "no-principal-dx", severity: "hard", text: "There is no principal diagnosis.", fix: "Set one diagnosis to Principal in the Diagnoses section, or add it in the chart." });
-  if (principal > 1) add({ rule: "many-principal-dx", severity: "hard", text: `${principal} diagnoses are marked Principal. Only one is allowed.`, fix: "Change the others to Secondary." });
-  if (!r.chiefComplaint) add({ rule: "no-chief-complaint", severity: "hard", text: "The chief complaint is missing.", fix: "Record the chief complaint in the chart." });
+  if (principal === 0) add("no-principal-dx", { text: "There is no principal diagnosis.", fix: "Set one diagnosis to Principal in the Diagnoses section, or add it in the chart." });
+  if (principal > 1) add("many-principal-dx", { text: `${principal} diagnoses are marked Principal. Only one is allowed.`, fix: "Change the others to Secondary." });
+  if (!r.chiefComplaint) add("no-chief-complaint", { text: "The chief complaint is missing.", fix: "Record the chief complaint in the chart." });
   if (r.vitalsTotal > 0 && r.vitalsMissing.length >= r.vitalsTotal) {
-    add({ rule: "no-vitals", severity: "hard", text: "No vital signs are recorded for this visit.", fix: "Record the vital signs in the chart, or an absence reason for each one." });
+    add("no-vitals", { text: "No vital signs are recorded for this visit.", fix: "Record the vital signs in the chart, or an absence reason for each one." });
   } else if (r.vitalsMissing.length) {
-    add({ rule: "vitals-missing", severity: "soft", text: `Vital signs missing: ${r.vitalsMissing.join(", ")}.`, fix: "Record each one in the chart, or an absence reason. The payer may reject the claim without them." });
+    add("vitals-missing", { text: `Vital signs missing: ${r.vitalsMissing.join(", ")}.`, fix: "Record each one in the chart, or an absence reason. The payer may reject the claim without them." });
   }
   if (use === "claim" && r.authNeeded && r.authStatus !== "approved") {
     const state = !r.authStatus ? "was not requested" : r.authStatus === "pended" ? "is still waiting for the payer" : r.authStatus === "denied" ? "was denied" : "was cancelled";
-    add({ rule: "auth-not-approved", severity: "hard", text: `This visit needs prior authorization and it ${state}.`, fix: "Send Prior Authorization and wait for the approval before sending the claim." });
+    add("auth-not-approved", { text: `This visit needs prior authorization and it ${state}.`, fix: "Send Prior Authorization and wait for the approval before sending the claim." });
   }
   for (const l of r.lines) {
-    if (!l.dxSeqs.length) add({ id: `line-no-dx:${l.key}`, rule: "line-no-dx", severity: "soft", lineKey: l.key, text: `Line ${l.seq}, ${l.text}, is not linked to a diagnosis.`, fix: "Tick the diagnosis this service was for." });
-    if (!(l.unitCost > 0)) add({ id: `line-zero-cost:${l.key}`, rule: "line-zero-cost", severity: "warning", lineKey: l.key, text: `Line ${l.seq}, ${l.text}, has no cost.`, fix: "The invoice has no price for it, so the payer pays nothing. Bill it on the invoice or remove the line." });
+    if (!l.dxSeqs.length) add("line-no-dx", { id: `line-no-dx:${l.key}`, lineKey: l.key, text: `Line ${l.seq}, ${l.text}, is not linked to a diagnosis.`, fix: "Tick the diagnosis this service was for." });
+    if (!(l.unitCost > 0)) add("line-zero-cost", { id: `line-zero-cost:${l.key}`, lineKey: l.key, text: `Line ${l.seq}, ${l.text}, has no cost.`, fix: "The invoice has no price for it, so the payer pays nothing. Bill it on the invoice or remove the line." });
+  }
+  if (r.facts) {
+    for (const rule of rules.filter((x) => !x.check && x.conditions?.length)) {
+      for (const hit of evaluateConditions(rule.conditions!, r.facts, set.fields)) {
+        out.push({
+          id: hit.lineKey ? `rule:${rule.id}:${hit.lineKey}` : `rule:${rule.id}`, rule: rule.id, ruleId: rule.id, nphiesCode: rule.nphiesCode, severity: rule.severity, lineKey: hit.lineKey,
+          text: hit.seq ? `Line ${hit.seq}, ${hit.text}: ${rule.message}` : rule.message, fix: rule.fix,
+        });
+      }
+    }
   }
   const rank: Record<Severity, number> = { hard: 0, soft: 1, warning: 2 };
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
+}
+
+const dayGap = (a?: string, b?: string) => (a ? Math.max(0, Math.round(((b ? new Date(b) : new Date()).getTime() - new Date(a).getTime()) / 86_400_000)) : 0);
+const ageOn = (dob: string, on: Date) => {
+  const d = new Date(`${dob}T00:00:00`);
+  let age = on.getFullYear() - d.getFullYear();
+  if (on.getMonth() < d.getMonth() || (on.getMonth() === d.getMonth() && on.getDate() < d.getDate())) age -= 1;
+  return age;
+};
+
+/** The values the condition rules read, from the built claim. The keys are the rule engine's field keys. */
+export function claimFacts(m: ClaimModel): ClaimFacts {
+  const el = m.fin.eligibility?.status;
+  const au = m.fin.authorization?.status;
+  return {
+    claim: {
+      "claim.type": m.type, "claim.subType": m.subType, "claim.priority": m.priority, "claim.payer": m.payer, "claim.net": m.net, "claim.insurance": m.totals.insuranceAmount,
+      "claim.lineCount": m.lines.length, "claim.end": m.end, "dx.count": m.dx.length, "dx.principalCount": m.dx.filter((d) => d.type === "principal").length,
+      "dx.codes": m.dx.map((d) => d.code).join(" "), "careTeam.count": m.careTeam.length, "careTeam.primaryCount": m.careTeam.filter((c) => c.role === "primary").length,
+      "encounter.class": m.enc.cls, "encounter.lengthOfStay": m.enc.cls === "I" ? dayGap(m.enc.admitAt, m.enc.dischargeAt) : 0,
+      "encounter.triage": m.enc.ed?.ctas ? `CTAS ${m.enc.ed.ctas}` : "", "eligibility.status": el === "eligible" ? "Eligible" : el === "not-eligible" ? "Not Eligible" : "",
+      "auth.status": au ? (au === "approved" ? "Approved" : au === "pended" ? "Pended" : au === "denied" ? "Denied" : "Cancelled") : "",
+      "patient.age": ageOn(m.patient.dob, new Date()), "patient.sex": m.patient.sex, "complaint.text": m.chart.find((l) => l.key === "complaint")?.value ?? "",
+    },
+    lines: m.lines.map((l) => ({
+      key: l.key, seq: l.seq, text: l.text,
+      values: { "line.system": l.system, "line.code": l.code, "line.kind": l.kind, "line.quantity": l.quantity, "line.unitCost": l.unitCost, "line.net": l.net, "line.dxLinks": l.dxSeqs.length },
+    })),
+  };
 }
 
 export function reviewInputOf(m: ClaimModel): ReviewInput {
@@ -437,6 +491,8 @@ export function reviewInputOf(m: ClaimModel): ReviewInput {
     authNeeded: m.authNeeded,
     authStatus: m.fin.authorization?.status,
     lines: m.lines,
+    claimType: m.type,
+    facts: claimFacts(m),
   };
 }
 

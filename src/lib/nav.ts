@@ -109,6 +109,8 @@ export const NAV: NavGroup[] = [
       m("daman-dashboard", "Daman Dashboard", "billing"),
       { id: "billing", label: "Billing Worklist", path: "/billing", perm: "billing" },
       { id: "transactions", label: "Submitted Transactions", path: "/transactions", perm: "billing" },
+      { id: "rule-engine", label: "Rule Engine", path: "/rule-engine", perm: "billing" },
+      { id: "field-mapping", label: "Field Mapping", path: "/field-mapping", perm: "billing" },
       m("rejection-management", "Rejection Management", "billing"),
       m("fwa-management", "FWA Management", "billing"), m("denial-management", "Denial Management", "billing"),
       m("ar-management", "AR Management", "billing"), m("payment-reconciliations", "Payment Reconciliations", "billing"),
@@ -148,7 +150,7 @@ export const NAV: NavGroup[] = [
     pages: [
       m("lookup", "Lookup"), m("module", "Module"), m("page", "Page"), m("clinical-integrations", "Clinical Integrations"),
       m("fee-scheduler", "Fee Scheduler"), m("tax-registration", "Tax Registration"), m("loinc-mapping", "LOINC Code Mapping"),
-      m("client-diagnoses", "Client Diagnoses"), m("rule-engine", "Rule Engine"), m("rule-engine-field-mapping", "Rule Engine Field Mapping"),
+      m("client-diagnoses", "Client Diagnoses"), 
       m("code-type", "Code Type"), m("code", "Code"), m("whatsapp-templates", "WhatsApp Templates"), m("patient-education-materials", "Patient Education Materials"),
     ],
   },

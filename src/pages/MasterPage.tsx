@@ -207,7 +207,7 @@ function EditSheet({ def, open, initial, rows, index, onClose, onSave }: { def: 
   const [v, setV] = React.useState<Row>(initial);
   const [tried, setTried] = React.useState(false);
   const [confirmClose, setConfirmClose] = React.useState(false);
-  const body = React.useRef<HTMLDivElement>(null);
+  const body = React.useRef<HTMLFormElement>(null);
   React.useEffect(() => { if (open) { setV(initial); setTried(false); setConfirmClose(false); } }, [open, initial]);
 
   const dirty = isDirty(initial, v);
