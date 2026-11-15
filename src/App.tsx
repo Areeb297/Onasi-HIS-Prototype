@@ -25,6 +25,14 @@ import { ReclassifiedVisitsPage } from "@/pages/ReclassifiedVisitsPage";
 import { WardViewPage } from "@/pages/WardViewPage";
 import { BillingWorklistPage } from "@/pages/BillingWorklistPage";
 import { ClaimPage } from "@/pages/ClaimPage";
+import { ArPage } from "@/pages/ArPage";
+import { ClaimImportPage } from "@/pages/ClaimImportPage";
+import { DenialsPage } from "@/pages/DenialsPage";
+import { FwaPage } from "@/pages/FwaPage";
+import { ReconciliationPage } from "@/pages/ReconciliationPage";
+import { RejectionsPage } from "@/pages/RejectionsPage";
+import { TransactionDetailPage } from "@/pages/TransactionDetailPage";
+import { TransactionsPage } from "@/pages/TransactionsPage";
 import { PharmacyHomePage } from "@/pages/PharmacyHomePage";
 import { PharmacyStockPage } from "@/pages/PharmacyStockPage";
 import { LogPage } from "@/pages/LogPage";
@@ -34,6 +42,9 @@ import { DamanDashboardPage } from "@/pages/DamanDashboardPage";
 import { AdmissionRequestsPage } from "@/pages/AdmissionRequestsPage";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { AppointmentsPage } from "@/pages/AppointmentsPage";
+import { AutomationBuilderPage } from "@/pages/AutomationBuilderPage";
+import { AutomationRunHistoryPage, AutomationsPage } from "@/pages/AutomationsPage";
+import { AutomationMonitor } from "@/lib/automation-engine";
 import { NphiesClinicalPage } from "@/pages/NphiesClinicalPage";
 import { NphiesFinancialPage } from "@/pages/NphiesFinancialPage";
 import { PatientsPage } from "@/pages/PatientsPage";
@@ -45,7 +56,7 @@ import { SpecPage } from "@/pages/SpecPage";
 import { TheatreListPage } from "@/pages/TheatreListPage";
 import { WorklistPage } from "@/pages/WorklistPage";
 
-import { setDevMode, useDevMode } from "@/lib/devmode";
+import { canUseDevMode, isDevMode, setDevMode, useDevMode } from "@/lib/devmode";
 import { NAV, type NavGroup, type NavPage } from "@/lib/nav";
 import { navigate, useRoute } from "@/lib/router";
 import { can, ROLES, switchUser, USERS, lockScreen, useSession } from "@/lib/session";
@@ -260,11 +271,22 @@ function Palette() {
 function Page() {
   const route = useRoute();
   const path = route.path;
+  // The developer tools (ADT event forms, test runner, message log, timelines, segment table) belong to Developer View,
+  // which only the System Administrator may use. Anyone else opening them by link goes to the dashboard.
+  const devPage = path.startsWith("/event/") || ["/runner", "/log", "/spec", "/encounters"].includes(path);
+  if (devPage && !isDevMode()) return <DashboardPage />;
   if (path.startsWith("/event/")) {
     const id = path.replace("/event/", "") as EventId;
     if (EVENT_BY_ID[id]) return <ScenarioPage key={`${id}?${route.params.toString()}`} eventId={id} />;
   }
   if (path === "/m/daman-dashboard") return <DamanDashboardPage />;
+  // RCM worklists built as real screens; their sidebar entries keep the /m/ paths.
+  if (path === "/m/rejection-management") return <RejectionsPage />;
+  if (path === "/m/denial-management") return <DenialsPage />;
+  if (path === "/m/fwa-management") return <FwaPage />;
+  if (path === "/m/ar-management" || path === "/m/ar-cases") return <ArPage />;
+  if (path === "/m/payment-reconciliations" || path === "/m/manual-payments") return <ReconciliationPage />;
+  if (path === "/m/claim-import" || path === "/m/manual-responses") return <ClaimImportPage />;
   if (path.startsWith("/m/")) return <MasterPage key={path} id={path.replace("/m/", "")} />;
   switch (path) {
     case "/dashboard": return <DashboardPage />;
@@ -276,6 +298,9 @@ function Page() {
     case "/confidential": return <ConfidentialPage />;
     case "/registration": return <RegistrationPage />;
     case "/beds": return <BedBoardPage />;
+    case "/automations": return <AutomationsPage />;
+    case "/automations/history": return <AutomationRunHistoryPage />;
+    case "/automations/builder": return <AutomationBuilderPage />;
     case "/ward-view": return <WardViewPage />;
     case "/reclassified": return <ReclassifiedVisitsPage />;
     case "/invoices": return <InvoiceWorklistPage />;
@@ -290,6 +315,8 @@ function Page() {
     case "/pharmacy/stock": return <PharmacyStockPage />;
     case "/billing": return <BillingWorklistPage />;
     case "/claim": return <ClaimPage />;
+    case "/transactions": return <TransactionsPage />;
+    case "/transaction": return <TransactionDetailPage />;
     case "/audit": return <AuditPage />;
     case "/access": return <AccessPage />;
     case "/compliance": return <CompliancePage />;
@@ -356,7 +383,7 @@ export default function App() {
             <DisplayMenu />
             <FullScreenButton />
             <Button size="sm" onClick={lockScreen} title="Lock the screen" aria-label="Lock the screen"><Lock className="size-4" /><span className="hidden sm:inline">Lock</span></Button>
-            <div role="group" aria-label="View" className="flex shrink-0 rounded-lg border border-border bg-muted p-0.5">
+            {canUseDevMode() && <div role="group" aria-label="View" className="flex shrink-0 rounded-lg border border-border bg-muted p-0.5">
               {([[false, "HIS", " View"], [true, "Developer", " View"]] as const).map(([v, label, rest]) => (
                 <button
                   key={label}
@@ -367,7 +394,7 @@ export default function App() {
                   {label}<span className="hidden sm:inline">{rest}</span>
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
         </header>
         <div className="mx-auto flex min-h-[calc(100%-3.25rem)] max-w-[1500px] flex-col px-4 pb-20 pt-5 sm:px-6">
@@ -381,6 +408,7 @@ export default function App() {
       <Palette />
       <AiAssistant />
       <ToastHost />
+      <AutomationMonitor />
       <IdleLock />
     </div>
   );

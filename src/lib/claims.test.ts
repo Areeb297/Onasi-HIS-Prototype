@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  addProcedureLine, claimFor, claimStatusOf, confirmSoftStops, estimateDrg, insuredVisits, resetClaims, reviewClaim, reviewModel, saveDx, saveLine,
-  sendFromClaim, sendOptions, unconfirmedSoftStops, type ReviewInput,
+  addProcedureLine, batchCheck, billingRows, claimFor, claimStatusOf, confirmSoftStops, EMPTY_WORKLIST_FILTER, estimateDrg, filterRows, insuredVisits, itemCounts, ITEM_CHIPS,
+  pollRequest, pollTargets, resetClaims, reviewClaim, reviewModel, saveClaim, saveDx, saveHeader, saveLine, sendFromClaim, sendOptions, sortRows, submitBatch,
+  unconfirmedSoftStops, type ReviewInput,
 } from "./claims";
 import { resetInvoices } from "./invoice";
 import { caseOf, estimateCharge, resetFinancial, runFinancial } from "./nphies-financial";
@@ -212,5 +213,145 @@ describe("claim from the visit", () => {
     switchUser("U2");
     const r = saveDx(enc.visitNumber, "X", { type: "secondary" });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe("billing worklist", () => {
+  const TAWUNIYA = { ...CARD, payer: "Tawuniya" };
+  beforeEach(() => {
+    switchUser("U9");
+    replaceState(seedState());
+    insureAllBut(["P001"]);
+    resetFinancial();
+    resetInvoices();
+    resetClaims();
+  });
+
+  /** Moves one patient to another payer, so a selection can mix payers. */
+  const otherPayer = (patientId: string) => {
+    const s = getState();
+    replaceState({ ...s, patients: s.patients.map((p) => (p.id === patientId ? { ...p, extra: { ...p.extra, insurance: TAWUNIYA } } : p)) });
+  };
+
+  it("counts item chips: Dx from the diagnoses, Consult or Stay for the visit line, one per test, exam and medicine", () => {
+    const lines = [{ kind: "visit" as const }, { kind: "lab" as const }, { kind: "lab" as const }, { kind: "rad" as const }, { kind: "rx" as const }, { kind: "proc" as const }];
+    const c = itemCounts({ dx: [1, 2, 3], lines, enc: { cls: "O" } });
+    expect(c.total).toBe(6);
+    expect(c.chips).toEqual({ dx: 3, proc: 1, consult: 1, stay: 0, lab: 2, rad: 1, rx: 1, pkg: 0 });
+    expect(itemCounts({ dx: [], lines: [{ kind: "visit" }], enc: { cls: "I" } }).chips).toMatchObject({ stay: 1, consult: 0 });
+    // The real rows agree with their claim.
+    for (const r of billingRows()) {
+      expect(r.items.total).toBe(r.m.lines.length);
+      expect(r.items.chips.dx).toBe(r.m.dx.length);
+    }
+  });
+
+  it("never labels a chip as E&M or CPT", () => {
+    expect(ITEM_CHIPS.map((c) => c.short)).toEqual(["Dx", "Proc", "Consult", "Stay", "Lab", "Rad", "Rx", "Pkg"]);
+    expect(ITEM_CHIPS.some((c) => /E&?M\b|CPT/i.test(`${c.short} ${c.full}`))).toBe(false);
+  });
+
+  it("filters by patient, payer, type, status and visit date", () => {
+    otherPayer(insuredVisits()[0].patient.id);
+    const rows = billingRows();
+    const f = EMPTY_WORKLIST_FILTER;
+    expect(filterRows(rows, f)).toHaveLength(rows.length);
+    const first = rows[0];
+    expect(filterRows(rows, { ...f, patient: first.patient.mrn }).every((r) => r.patient.mrn === first.patient.mrn)).toBe(true);
+    expect(filterRows(rows, { ...f, patient: first.visit.toLowerCase() }).map((r) => r.visit)).toContain(first.visit);
+    expect(filterRows(rows, { ...f, payer: "Tawuniya" }).length).toBeGreaterThan(0);
+    expect(filterRows(rows, { ...f, payer: "Tawuniya" }).every((r) => r.payer === "Tawuniya")).toBe(true);
+    expect(filterRows(rows, { ...f, type: "institutional" }).every((r) => r.m.type === "institutional")).toBe(true);
+    expect(filterRows(rows, { ...f, status: "Not Started" })).toHaveLength(rows.length);
+    expect(filterRows(rows, { ...f, status: "Claim Approved" })).toHaveLength(0);
+    expect(filterRows(rows, { ...f, from: "2999-01-01" })).toHaveLength(0);
+    expect(filterRows(rows, { ...f, to: "2000-01-01" })).toHaveLength(0);
+    const day = rows[0].visitAt.slice(0, 10);
+    const sameDay = filterRows(rows, { ...f, from: day, to: day });
+    expect(sameDay.length).toBeGreaterThan(0);
+    expect(sameDay.every((r) => r.visitAt.startsWith(day))).toBe(true);
+  });
+
+  it("sorts by visit date and net amount", () => {
+    const rows = billingRows();
+    const desc = sortRows(rows, "visit-desc").map((r) => r.visitAt);
+    expect(desc).toEqual([...desc].sort().reverse());
+    const net = sortRows(rows, "net-desc").map((r) => r.m.net);
+    expect(net).toEqual([...net].sort((a, b) => b - a));
+  });
+
+  it("a batch needs a selection and one payer", () => {
+    const rows = billingRows();
+    expect(batchCheck([], "review")).toMatchObject({ ok: false, why: "Select at least one claim." });
+    const two = rows.slice(0, 2);
+    expect(batchCheck(two, "review")).toMatchObject({ ok: true, payer: "Bupa Arabia" });
+    otherPayer(two[0].patient.id);
+    const mixed = billingRows().filter((r) => two.some((t) => t.visit === r.visit));
+    const r = batchCheck(mixed, "review");
+    expect(r.ok).toBe(false);
+    expect(r.why).toContain("one payer");
+    expect(batchCheck(mixed, "submit").ok).toBe(false);
+  });
+
+  it("Submit Batch only takes claims that are ready, and says why the others are skipped", () => {
+    const rows = billingRows();
+    const none = batchCheck(rows.slice(0, 2), "submit");
+    expect(none.ok).toBe(false);
+    expect(none.skipped).toHaveLength(2);
+    expect(none.skipped[0].why).toContain("eligibility");
+    const op = rows.find((r) => r.enc.cls === "O" && !r.m.authNeeded)!;
+    const other = rows.find((x) => x.visit !== op.visit && x.payer === op.payer)!;
+    runFinancial(op.visit, "eligibility");
+    const res = batchCheck(billingRows().filter((r) => r.visit === op.visit || r.visit === other.visit), "submit");
+    expect(res.ok).toBe(true);
+    expect(res.ready).toEqual([op.visit]);
+    expect(res.skipped.map((s) => s.visit)).toEqual([other.visit]);
+  });
+
+  it("Submit Batch sends through NPHIES Financial, holds back a claim with a Hard Stop, and sets the priority", () => {
+    const op = billingRows().find((r) => r.enc.cls === "O" && !r.m.authNeeded)!;
+    runFinancial(op.visit, "eligibility");
+    const before = caseOf(op.visit).messages.length;
+    const hard = reviewModel(claimFor(op.visit)!, "claim").some((f) => f.severity === "hard");
+    const r = submitBatch([op.visit], "stat");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    if (hard) {
+      expect(r.value.sent).toEqual([]);
+      expect(r.value.held[0].why).toContain("Hard Stop");
+      expect(caseOf(op.visit).messages.length).toBe(before);
+    } else {
+      expect(r.value.sent).toEqual([op.visit]);
+    }
+    const m = claimFor(op.visit)!;
+    expect(m.priority).toBe("stat");
+    expect(m.draft?.batch?.id).toBe(r.value.batchId);
+  });
+
+  it("Poll Request asks only for answers still owed", () => {
+    expect(pollTargets()).toEqual([]);
+    expect(pollRequest().ok).toBe(false);
+    const ip = billingRows().find((r) => r.enc.cls === "I")!;
+    runFinancial(ip.visit, "eligibility");
+    runFinancial(ip.visit, "authorization");
+    if (caseOf(ip.visit).authorization?.status === "pended") {
+      expect(pollTargets(ip.payer).map((t) => t.action)).toEqual(["poll-auth"]);
+      expect(pollRequest(ip.payer).ok).toBe(true);
+      expect(caseOf(ip.visit).authorization?.status).toBe("approved");
+    } else {
+      expect(pollTargets(ip.payer)).toEqual([]);
+    }
+    expect(pollTargets("Nobody")).toEqual([]);
+  });
+
+  it("Save records who checked the claim, and the accounting date follows the claim date", () => {
+    const { enc } = insuredVisits()[0];
+    const m = claimFor(enc.visitNumber)!;
+    expect(m.accountingDate).toBe(m.claimDate);
+    expect(saveClaim(enc.visitNumber).ok).toBe(true);
+    expect(claimFor(enc.visitNumber)!.draft?.savedAt).toBeTruthy();
+    expect(saveHeader(enc.visitNumber, { accountingDate: "" }).ok).toBe(false);
+    switchUser("U2");
+    expect(saveClaim(enc.visitNumber).ok).toBe(false);
   });
 });

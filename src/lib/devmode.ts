@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { can, onSessionChange } from "./session";
 
 const KEY = "nphies-adt-devmode";
 const listeners = new Set<() => void>();
@@ -24,14 +25,21 @@ export function setDevMode(on: boolean) {
   listeners.forEach((l) => l());
 }
 
+/** Only the System Administrator may use Developer View. Every other role always sees HIS View. */
+export const canUseDevMode = (): boolean => can("admin");
+
+/** The view in force now: the saved choice, but only for a user who may use Developer View. */
+export const isDevMode = (): boolean => value && canUseDevMode();
+
 /** true = Developer View (HL7 messages and field mapping shown). false = HIS View (what staff see). */
 export function useDevMode(): boolean {
   return useSyncExternalStore(
     (cb) => {
       listeners.add(cb);
-      return () => listeners.delete(cb);
+      const off = onSessionChange(cb);
+      return () => { listeners.delete(cb); off(); };
     },
-    () => value,
-    () => value,
+    isDevMode,
+    isDevMode,
   );
 }

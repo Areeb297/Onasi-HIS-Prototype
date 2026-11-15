@@ -90,7 +90,9 @@ export interface LineEdit {
 /** A service line added by the biller, such as a procedure from the chart. It has no price on the invoice. */
 export interface ExtraLine { key: string; system: CodeSystem; code: string; text: string; start: string }
 export interface SoftStopAck { at: string; by: string; reason: string; ids: string[] }
-export interface SendLog { at: string; by: string; use: ClaimUse; action: FinAction; amount: number }
+export interface SendLog { at: string; by: string; use: ClaimUse; action: FinAction; amount: number; batchId?: string }
+/** The last batch the claim was sent in, from the Billing Worklist. */
+export interface BatchRef { id: string; at: string; priority: ClaimPriority; by: string }
 
 export interface ClaimDraft {
   visit: string;
@@ -98,6 +100,12 @@ export interface ClaimDraft {
   subType?: ClaimSubType;
   priority?: ClaimPriority;
   claimDate?: string;
+  /** The day the claim is booked in the accounts. Defaults to the claim date. */
+  accountingDate?: string;
+  /** When the biller last pressed Save. Edits are kept as they are made; Save marks the claim as checked. */
+  savedAt?: string;
+  savedBy?: string;
+  batch?: BatchRef;
   start?: string;
   end?: string;
   careTeam?: CareTeamMember[];
@@ -154,6 +162,7 @@ export interface ClaimModel {
   subType: ClaimSubType;
   priority: ClaimPriority;
   claimDate: string;
+  accountingDate: string;
   start: string;
   end: string;
   careTeam: ClaimCare[];
@@ -308,7 +317,7 @@ export function buildClaim(i: BuildInput): ClaimModel {
   return {
     visit: enc.visitNumber, enc, patient, payer: i.invoice.insurer ?? payerOf(patient),
     type: draft?.type ?? head.type, subType: draft?.subType ?? head.subType, priority: draft?.priority ?? head.priority,
-    claimDate: draft?.claimDate ?? today, start: draft?.start ?? (dateOnly(enc.admitAt ?? enc.ed?.arrivalAt) || today), end,
+    claimDate: draft?.claimDate ?? today, accountingDate: draft?.accountingDate ?? draft?.claimDate ?? today, start: draft?.start ?? (dateOnly(enc.admitAt ?? enc.ed?.arrivalAt) || today), end,
     careTeam, dx, chart: i.chart, support: draft?.support ?? [], lines, totals: view.totals, net: view.totals.taxable,
     authNeeded, fin: i.fin,
     drg: enc.cls === "I" ? estimateDrg(dx, dateOnly(enc.admitAt) || today, dateOnly(enc.dischargeAt) || today) : null,
@@ -551,12 +560,13 @@ const nameFor = (visit: string) => {
   return patientName(his.patients.find((p) => p.id === enc?.patientId));
 };
 
-export type HeaderPatch = Partial<Pick<ClaimDraft, "type" | "subType" | "priority" | "claimDate" | "start" | "end">>;
+export type HeaderPatch = Partial<Pick<ClaimDraft, "type" | "subType" | "priority" | "claimDate" | "accountingDate" | "start" | "end">>;
 
 export function saveHeader(visit: string, patch: HeaderPatch): ActionResult {
   const no = editable(visit, `Claim header, visit ${visit}`);
   if (no) return no;
   if (patch.start && patch.end && patch.end < patch.start) return { ok: false, problems: ["The service end date is before the start date."] };
+  if (patch.claimDate === "" || patch.accountingDate === "") return { ok: false, problems: ["The date cannot be empty."] };
   upsertDraft(visit, (d) => ({ ...d, ...patch }));
   audit("update", `Claim header, visit ${visit}`, { patient: nameFor(visit), detail: Object.keys(patch).join(", ") });
   return { ok: true };
@@ -659,7 +669,7 @@ export function confirmSoftStops(visit: string, ids: string[], reason: string): 
  * Sends prior authorization or the claim through NPHIES Financial (runFinancial). A request is sent only when the
  * review has no hard stop and every soft stop is confirmed. Checking for an answer is never held back.
  */
-export function sendFromClaim(visit: string, use: ClaimUse, today: Date = new Date()): ActionResult {
+export function sendFromClaim(visit: string, use: ClaimUse, today: Date = new Date(), batchId?: string): ActionResult {
   if (!can("billing")) return denied(`Claim send, visit ${visit}`);
   const m = claimFor(visit, today);
   if (!m) return { ok: false, problems: ["This visit was not found."] };
@@ -677,8 +687,206 @@ export function sendFromClaim(visit: string, use: ClaimUse, today: Date = new Da
   }
   const ok = runFinancial(visit, opt.action);
   if (!ok) return { ok: false, problems: ["NPHIES Financial did not run this step."] };
-  upsertDraft(visit, (d) => ({ ...d, sends: [...(d.sends ?? []), { at: new Date().toISOString(), by: who(), use, action: opt.action!, amount: m.net }].slice(-30) }));
+  upsertDraft(visit, (d) => ({ ...d, sends: [...(d.sends ?? []), { at: new Date().toISOString(), by: who(), use, action: opt.action!, amount: m.net, ...(batchId ? { batchId } : {}) }].slice(-30) }));
   return { ok: true };
+}
+
+/** Save on the claim form. Every edit is already kept; Save records who checked the claim and when. */
+export function saveClaim(visit: string): ActionResult {
+  const no = editable(visit, `Claim save, visit ${visit}`);
+  if (no) return no;
+  upsertDraft(visit, (d) => ({ ...d, savedAt: new Date().toISOString(), savedBy: who() }));
+  audit("update", `Claim saved, visit ${visit}`, { patient: nameFor(visit) });
+  return { ok: true };
+}
+
+/* ---------- billing worklist ---------- */
+
+/**
+ * Item chips of a worklist row. The HIS shows Dx, Proc, EnM, Lab, Rad, Rx and Pkg. Saudi hospitals bill a consultation
+ * with an SBS code, not a US E&M level, so EnM is shown as Consult. The inpatient stay line has its own chip.
+ * Packages are not modelled here, so Pkg stays at zero.
+ */
+export type ItemChip = "dx" | "proc" | "consult" | "stay" | "lab" | "rad" | "rx" | "pkg";
+export const ITEM_CHIPS: { key: ItemChip; short: string; full: string }[] = [
+  { key: "dx", short: "Dx", full: "Diagnoses (ICD-10-AM)" },
+  { key: "proc", short: "Proc", full: "Procedures (ACHI)" },
+  { key: "consult", short: "Consult", full: "Consultations" },
+  { key: "stay", short: "Stay", full: "Inpatient stay" },
+  { key: "lab", short: "Lab", full: "Laboratory tests" },
+  { key: "rad", short: "Rad", full: "Radiology exams" },
+  { key: "rx", short: "Rx", full: "Medicines" },
+  { key: "pkg", short: "Pkg", full: "Packages" },
+];
+
+export interface ItemCounts { total: number; chips: Record<ItemChip, number> }
+
+/** Total Items is the number of service lines. Dx counts the claim diagnoses, which are not service lines. */
+export function itemCounts(m: { dx: unknown[]; lines: Pick<ClaimServiceLine, "kind">[]; enc: Pick<Encounter, "cls"> }): ItemCounts {
+  const chips: Record<ItemChip, number> = { dx: m.dx.length, proc: 0, consult: 0, stay: 0, lab: 0, rad: 0, rx: 0, pkg: 0 };
+  for (const l of m.lines) {
+    if (l.kind === "visit") chips[m.enc.cls === "I" ? "stay" : "consult"] += 1;
+    else chips[l.kind] += 1;
+  }
+  return { total: m.lines.length, chips };
+}
+
+export interface WorklistRow {
+  visit: string;
+  enc: Encounter;
+  patient: Patient;
+  payer: string;
+  m: ClaimModel;
+  status: { label: string; tone: StatusTone };
+  findings: Finding[];
+  options: ReturnType<typeof sendOptions>;
+  /** Local date-time the visit started: admission, arrival or registration. */
+  visitAt: string;
+  invoiceNumber?: number;
+  items: ItemCounts;
+}
+
+/** One row per insured visit, newest first. */
+export function billingRows(fin = getFinancial(), today: Date = new Date()): WorklistRow[] {
+  return insuredVisits().map(({ enc, patient, payer }) => {
+    const m = claimFor(enc.visitNumber, today)!;
+    return {
+      visit: enc.visitNumber, enc, patient, payer, m,
+      status: claimStatusOf(m.fin), findings: reviewModel(m, "claim"), options: sendOptions(enc, fin),
+      visitAt: enc.admitAt ?? enc.ed?.arrivalAt ?? "", invoiceNumber: invoiceOf(enc.visitNumber)?.number || undefined,
+      items: itemCounts(m),
+    };
+  });
+}
+
+export interface WorklistFilter { patient: string; payer: string; type: "" | ClaimType; status: string; from: string; to: string }
+export const EMPTY_WORKLIST_FILTER: WorklistFilter = { patient: "", payer: "", type: "", status: "", from: "", to: "" };
+export type WorklistSort = "visit-desc" | "visit-asc" | "patient" | "payer" | "net-desc" | "net-asc";
+export const WORKLIST_SORT_LABEL: Record<WorklistSort, string> = {
+  "visit-desc": "Newest First", "visit-asc": "Oldest First", patient: "Patient Name", payer: "Payer", "net-desc": "Highest Net", "net-asc": "Lowest Net",
+};
+
+type FilterableRow = Pick<WorklistRow, "visit" | "payer" | "status" | "visitAt"> & { patient: Patient; m: Pick<ClaimModel, "type" | "net" | "fin"> };
+
+/** Patient search matches the name, MRN, visit number, invoice number or claim number. Dates compare the visit day. */
+export function filterRows<R extends FilterableRow & { invoiceNumber?: number }>(rows: R[], f: WorklistFilter): R[] {
+  const q = f.patient.trim().toLowerCase();
+  return rows.filter((r) => {
+    const day = r.visitAt.slice(0, 10);
+    if (q && !`${patientName(r.patient)} ${r.patient.mrn} ${r.visit} ${r.invoiceNumber ?? ""} ${r.m.fin.claim?.claimNumber ?? ""}`.toLowerCase().includes(q)) return false;
+    if (f.payer && r.payer !== f.payer) return false;
+    if (f.type && r.m.type !== f.type) return false;
+    if (f.status && r.status.label !== f.status) return false;
+    if (f.from && (!day || day < f.from)) return false;
+    if (f.to && (!day || day > f.to)) return false;
+    return true;
+  });
+}
+
+export function sortRows<R extends FilterableRow>(rows: R[], sort: WorklistSort): R[] {
+  const by: Record<WorklistSort, (a: R, b: R) => number> = {
+    "visit-desc": (a, b) => b.visitAt.localeCompare(a.visitAt),
+    "visit-asc": (a, b) => a.visitAt.localeCompare(b.visitAt),
+    patient: (a, b) => patientName(a.patient).localeCompare(patientName(b.patient)),
+    payer: (a, b) => a.payer.localeCompare(b.payer) || b.visitAt.localeCompare(a.visitAt),
+    "net-desc": (a, b) => b.m.net - a.m.net,
+    "net-asc": (a, b) => a.m.net - b.m.net,
+  };
+  return [...rows].sort((a, b) => by[sort](a, b) || a.visit.localeCompare(b.visit));
+}
+
+/** Which bulk action a selection allows. Both need one payer; Submit also needs claims that can be sent now. */
+export interface BatchCheck {
+  ok: boolean;
+  why: string;
+  payer?: string;
+  /** Visits the action will run on. */
+  ready: string[];
+  /** Visits it will skip, with the reason. */
+  skipped: { visit: string; why: string }[];
+}
+
+export function batchCheck(rows: Pick<WorklistRow, "visit" | "payer" | "options">[], kind: "review" | "submit"): BatchCheck {
+  if (!rows.length) return { ok: false, why: "Select at least one claim.", ready: [], skipped: [] };
+  const payers = [...new Set(rows.map((r) => r.payer))];
+  if (payers.length > 1) {
+    const named = payers.length === 2 ? `${payers[0]} and ${payers[1]}` : `${payers.length} payers`;
+    return { ok: false, why: `A batch goes to one payer. The selection has claims for ${named}.`, ready: [], skipped: [] };
+  }
+  const payer = payers[0];
+  if (kind === "review") return { ok: true, why: "", payer, ready: rows.map((r) => r.visit), skipped: [] };
+  const ready: string[] = [];
+  const skipped: BatchCheck["skipped"] = [];
+  for (const r of rows) {
+    const c = r.options.claim;
+    if (c.enabled && c.action === "claim") ready.push(r.visit);
+    else skipped.push({ visit: r.visit, why: c.enabled ? `${c.label} first. It is not a new claim to send.` : c.why || "Nothing can be sent at this step." });
+  }
+  if (!ready.length) return { ok: false, why: "None of the selected claims can be sent now.", payer, ready, skipped };
+  return { ok: true, why: "", payer, ready, skipped };
+}
+
+export interface BatchResult { batchId: string; sent: string[]; held: { visit: string; why: string }[] }
+
+/**
+ * Submit Batch Request: sends the ready claims of one payer through sendFromClaim, so each still passes its own review.
+ * The priority is set on every claim of the batch. A claim with a Hard Stop or an unconfirmed Soft Stop is held back.
+ */
+export function submitBatch(visits: string[], priority: ClaimPriority, today: Date = new Date()): { ok: true; value: BatchResult } | { ok: false; problems: string[] } {
+  if (!can("billing")) {
+    denied("Claim batch");
+    return { ok: false, problems: ["Your role cannot send claims. This needs the billing permission."] };
+  }
+  const fin = getFinancial();
+  const rows = visits.map((v) => claimFor(v, today)).filter((m): m is ClaimModel => !!m);
+  const check = batchCheck(rows.map((m) => ({ visit: m.visit, payer: m.payer, options: sendOptions(m.enc, fin) })), "submit");
+  if (!check.ok) return { ok: false, problems: [check.why] };
+  const s = store.get();
+  store.set({ ...s, seq: s.seq + 1 });
+  const batchId = `BAT-${String(s.seq + 1).padStart(5, "0")}`;
+  const at = new Date().toISOString();
+  const sent: string[] = [];
+  const held: BatchResult["held"] = [...check.skipped];
+  for (const visit of check.ready) {
+    const m = rows.find((x) => x.visit === visit)!;
+    if (!m.locked) upsertDraft(visit, (d) => ({ ...d, priority, batch: { id: batchId, at, priority, by: who() } }));
+    const r = sendFromClaim(visit, "claim", today, batchId);
+    if (r.ok) sent.push(visit);
+    else held.push({ visit, why: r.blocked ? `Hard Stop: ${r.problems[0]}` : r.needsConfirm ? "Soft Stops need a reason. Open the claim to confirm them." : r.problems[0] ?? "Not sent." });
+  }
+  audit("send-fhir", `Claim batch ${batchId}`, { detail: `Payer ${check.payer}, priority ${PRIORITY_LABEL[priority]}, ${sent.length} sent, ${held.length} held back` });
+  return { ok: true, value: { batchId, sent, held } };
+}
+
+/** Review Batch: runs the review on each claim and returns the counts per claim. */
+export function reviewBatch(visits: string[], today: Date = new Date()): { visit: string; findings: Finding[] }[] {
+  return visits.flatMap((visit) => {
+    const r = runReview(visit, today);
+    return r ? [{ visit, findings: r.claim }] : [];
+  });
+}
+
+const POLL_ACTIONS: FinAction[] = ["poll-auth", "poll-claim", "poll-payment"];
+
+/** Answers the payer still owes: queued prior authorizations and claims, and approved claims waiting for payment advice. */
+export function pollTargets(payer = ""): { visit: string; action: FinAction; label: string }[] {
+  const fin = getFinancial();
+  return insuredVisits()
+    .filter((v) => !payer || v.payer === payer)
+    .flatMap(({ enc }) => stepViews(enc, fin).flatMap((view) => {
+      const action = finActionFor(view);
+      return action && POLL_ACTIONS.includes(action) ? [{ visit: enc.visitNumber, action, label: `${view.label}: ${view.status}` }] : [];
+    }));
+}
+
+/** Poll Request: asks NPHIES for every answer waiting for the chosen payer, through NPHIES Financial. */
+export function pollRequest(payer = ""): ActionResult & { polled?: number } {
+  if (!can("billing")) return denied("Poll request");
+  const targets = pollTargets(payer);
+  if (!targets.length) return { ok: false, problems: [payer ? `Nothing is waiting for an answer from ${payer}.` : "Nothing is waiting for a payer answer."] };
+  let polled = 0;
+  for (const t of targets) if (runFinancial(t.visit, t.action)) polled += 1;
+  return { ok: true, polled };
 }
 
 /** Eligibility comes first in NPHIES Financial. Offered on the claim so the biller does not have to leave it. */

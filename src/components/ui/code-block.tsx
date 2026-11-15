@@ -38,7 +38,7 @@ function HighlightLine({ line }: { line: string }) {
   const parts = rest.split(/(\||\^|~)/);
   return (
     <>
-      <span className={cn("font-semibold", id.startsWith("Z") ? "text-chart-3" : "text-primary")} style={id.startsWith("Z") ? { color: "#b18cfe" } : undefined}>
+      <span className={cn("font-semibold", id.startsWith("Z") ? "text-[#035D53] dark:text-[#52FCE3]" : "text-primary")}>
         {id}
       </span>
       {parts.map((p, i) =>

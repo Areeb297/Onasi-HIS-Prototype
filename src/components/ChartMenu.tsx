@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ChevronDown, Minus, Plus, Search } from "lucide-react";
 import { Input, cn } from "@/components/ui/primitives";
-import { EMR_FORM_BY_ID } from "@/lib/emr-forms";
+import { EMR_FORM_BY_ID, fitsSex } from "@/lib/emr-forms";
 import { EMR_GROUPS, EMR_MENU, type EmrGroup } from "@/lib/emr-menu";
 import { useDevMode } from "@/lib/devmode";
 import { ageYears, fitsAge } from "@/lib/flowsheet";
@@ -24,8 +24,11 @@ export function ChartMenu({ active, visit, onPick }: { active: string; visit: st
   const query = q.trim().toLowerCase();
   // Age-appropriate tools only: a tool made for the other age group is hidden, unless it already has records.
   const enc = his.encounters.find((e) => e.visitNumber === visit);
-  const dob = his.patients.find((p) => p.id === enc?.patientId)?.dob;
-  const forAge = (id: string) => !dob || fitsAge(EMR_FORM_BY_ID[id], ageYears(dob)) || getFormRecords(visit, id).length > 0;
+  const pt = his.patients.find((p) => p.id === enc?.patientId);
+  const dob = pt?.dob;
+  // Age- and sex-appropriate tools only (no pregnancy forms for a man), unless the form already has records.
+  const forAge = (id: string) =>
+    ((!dob || fitsAge(EMR_FORM_BY_ID[id], ageYears(dob))) && fitsSex(EMR_FORM_BY_ID[id], pt?.sex)) || getFormRecords(visit, id).length > 0;
 
   return (
     <nav aria-label="Chart sections" className="h-fit max-h-[calc(100vh-14rem)] overflow-y-auto rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)] p-2 lg:sticky lg:top-44">

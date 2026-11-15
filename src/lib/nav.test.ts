@@ -9,7 +9,7 @@ import { FRAMEWORKS } from "./compliance-data";
 const ROUTES = new Set([
   "/patients", "/confidential", "/registration", "/opd", "/ipd", "/er", "/beds", "/lab", "/radiology", "/theatre", "/pharmacy/dispense",
   "/audit", "/compliance", "/ai-governance", "/nphies-clinical", "/nphies-financial", "/agents", "/dashboard", "/access", "/runner", "/log", "/encounters", "/spec",
-  "/appointments", "/admission-requests", "/invoices", "/pharmacy", "/pharmacy/stock", "/billing", "/ward-view", "/reclassified",
+  "/appointments", "/admission-requests", "/invoices", "/pharmacy", "/pharmacy/stock", "/billing", "/ward-view", "/reclassified", "/automations", "/automations/history", "/transactions",
 ]);
 
 describe("menu", () => {

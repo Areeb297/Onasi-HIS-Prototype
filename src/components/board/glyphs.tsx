@@ -129,7 +129,7 @@ export function PillStrip({ left, className, label }: { left: number; className?
   );
 }
 
-/** A red dot that pulses. Used when a result is critical. */
+/** A red dot that pulses. Red is the standard colour for a critical result, so it stays the danger red and not a brand colour. */
 export function CriticalPulse({ text = "Critical" }: { text?: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md bg-destructive/12 px-1.5 py-1 text-xs font-semibold leading-none text-destructive" role="status">

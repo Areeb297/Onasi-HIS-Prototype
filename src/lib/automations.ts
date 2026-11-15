@@ -276,7 +276,7 @@ export function nodeTitle(n: FlowNode): string {
     case "wait": return s.minutes ? `Wait ${minutesWords(s.minutes)}` : "Set The Wait";
     case "approval": return s.role ? `${roleLabel(s.role)} Approves` : "Choose Who Approves";
     case "branch": return "Run Every Path";
-    case "end": return "End";
+    case "end": return s.note?.trim() ? s.note.trim() : "Flow Ends";
   }
 }
 
@@ -298,7 +298,7 @@ export function nodeDetail(n: FlowNode): string {
     case "wait": return "The flow pauses, then goes on.";
     case "approval": return s.note || "Nothing after this runs until approved.";
     case "branch": return "Each path runs on its own.";
-    case "end": return s.note || "Nothing more happens.";
+    case "end": return "Nothing more happens.";
   }
 }
 

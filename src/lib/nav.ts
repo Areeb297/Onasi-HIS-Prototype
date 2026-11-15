@@ -1,6 +1,6 @@
 import {
   IconActivity, IconBed, IconBuildingHospital, IconCalendar, IconCash, IconClipboardHeart, IconDeviceDesktopAnalytics,
-  IconFlask, IconHeartbeat, IconId, IconLock, IconPill, IconPlayerPlay, IconReportMedical, IconSettings, IconShieldCheck,
+  IconFlask, IconHeartbeat, IconId, IconLock, IconPill, IconPlayerPlay, IconReportMedical, IconRoute, IconSettings, IconShieldCheck,
   IconStethoscope, IconUsers, IconUserShield, IconXboxX, IconBuildingBank, IconFileInvoice, IconHeartRateMonitor, IconTool,
   IconCloudUpload, IconRadioactive, IconScissors, IconNotebook, IconTable, IconListDetails, IconSchool, IconRobot, IconFolders,
 } from "@tabler/icons-react";
@@ -106,13 +106,14 @@ export const NAV: NavGroup[] = [
   {
     id: "rcm", label: "RCM", icon: IconCash, color: "text-ok", perm: "billing",
     pages: [
-      m("daman-dashboard", "Daman Dashboard", "billing"), m("submitted-transactions", "Submitted Transactions", "billing"),
-      m("new-transactions", "New Transactions", "billing"), m("rejection-management", "Rejection Management", "billing"),
+      m("daman-dashboard", "Daman Dashboard", "billing"),
+      { id: "billing", label: "Billing Worklist", path: "/billing", perm: "billing" },
+      { id: "transactions", label: "Submitted Transactions", path: "/transactions", perm: "billing" },
+      m("rejection-management", "Rejection Management", "billing"),
       m("fwa-management", "FWA Management", "billing"), m("denial-management", "Denial Management", "billing"),
       m("ar-management", "AR Management", "billing"), m("payment-reconciliations", "Payment Reconciliations", "billing"),
       m("claim-import", "Claim Import", "billing"), m("refer-patient", "Refer Patient", "billing"),
       m("ar-cases", "AR Cases", "billing"), m("manual-payments", "Manual Payments", "billing"), m("manual-responses", "Manual Responses", "billing"),
-      { id: "billing", label: "Billing Worklist", path: "/billing", perm: "billing" },
       { id: "nphies-financial", label: "NPHIES Financial", path: "/nphies-financial", perm: "billing" },
     ],
   },
@@ -185,6 +186,13 @@ export const NAV: NavGroup[] = [
   {
     id: "roles", label: "Role Permissions", icon: IconLock, color: "text-cancel", perm: "admin",
     pages: [m("role", "Role"), m("role-module", "Role Module"), m("role-rights", "Role Rights"), { id: "access", label: "Access Matrix", path: "/access", perm: "admin" }],
+  },
+  {
+    id: "automations", label: "Automations", icon: IconRoute, color: "text-admit", perm: "patient.read",
+    pages: [
+      { id: "automations", label: "Automations", path: "/automations", perm: "admin" },
+      { id: "automation-history", label: "Run History", path: "/automations/history", perm: "patient.read" },
+    ],
   },
   {
     id: "governance", label: "Governance", icon: IconShieldCheck, color: "text-ok", perm: "audit.read",

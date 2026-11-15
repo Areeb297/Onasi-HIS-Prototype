@@ -120,6 +120,12 @@ export function hasGlass(patientId: string): boolean {
   return (state.glass[patientId] ?? 0) > Date.now();
 }
 
+/** Calls back whenever the signed-in user or the session changes. Returns the unsubscribe function. */
+export function onSessionChange(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+}
+
 export function useSession(): State & { user: DemoUser; role: Role } {
   const s = useSyncExternalStore(
     (cb) => {
