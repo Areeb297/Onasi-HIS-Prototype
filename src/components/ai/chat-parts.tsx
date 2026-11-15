@@ -19,6 +19,9 @@ export const MAX_CHARS = 500;
 /** The one filled button colour in the assistant: Dark Green, Cyan in dark mode. */
 export const BRAND_BTN =
   "inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#032C26] font-medium text-white shadow-[0_4px_14px_-8px_rgba(3,44,38,0.6)] transition-colors hover:bg-[#0a4036] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-40 dark:bg-[#39EDD5] dark:text-[#032C26] dark:hover:bg-[#52FCE3]";
+/** The send button: a light cyan outline while empty, filled Cyan with a Dark Green arrow once there is text. */
+const SEND_BTN =
+  "inline-flex items-center justify-center bg-[#03C1AC] text-[#032C26] transition-colors hover:bg-[#39EDD5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:border disabled:border-[#39EDD5]/70 disabled:bg-transparent disabled:text-[#03C1AC] disabled:hover:bg-transparent dark:disabled:border-[#39EDD5]/35 dark:disabled:text-[#39EDD5]/70";
 /** A quiet outline button on glass. */
 export const GLASS_BTN =
   "inline-flex items-center justify-center gap-1.5 rounded-lg border border-[rgba(20,32,28,0.12)] bg-white/70 font-medium text-[#032C26] transition-colors hover:border-[#03C1AC]/60 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-foreground dark:hover:bg-white/10";
@@ -104,13 +107,36 @@ export function ChatThread({ children, label, stick, className, innerClassName }
   );
 }
 
+/* ---------- The Onasi mark on a light tile ---------- */
+
+const TILE = {
+  xs: "size-8 rounded-full",
+  sm: "size-9 rounded-xl",
+  md: "size-10 rounded-xl",
+  lg: "size-11 rounded-xl",
+  xl: "size-14 rounded-2xl",
+} as const;
+const MARK = { xs: 18, sm: 22, md: 24, lg: 26, xl: 32 } as const;
+
+/**
+ * The mint Onasi mark on a white tile with a thin cyan border (a deep green tile in dark mode). The tile may carry a
+ * shadow; the logo itself never does (brand rule).
+ */
+export function MarkTile({ size = "sm", className }: { size?: keyof typeof TILE; className?: string }) {
+  return (
+    <span aria-hidden="true" className={cn("flex shrink-0 items-center justify-center bg-white ring-1 ring-[#39EDD5]/70 dark:bg-[#0d2a24] dark:ring-[#39EDD5]/30", TILE[size], className)}>
+      <OnasiAiMark size={MARK[size]} />
+    </span>
+  );
+}
+
 /* ---------- Messages ---------- */
 
-/** The user's message: a Dark Green bubble on the right. The time shows on hover, and always on touch screens. */
+/** The user's message: a Minty White bubble with Dark Green text on the right (13:1 contrast). The time shows on hover, and always on touch screens. */
 export function UserMessage({ text, at }: { text: string; at?: string }) {
   return (
     <div className="group flex flex-col items-end gap-1">
-      <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-ee-md bg-[#032C26] px-4 py-2.5 text-[0.9375rem] leading-relaxed text-white shadow-[0_6px_18px_-12px_rgba(3,44,38,0.7)] dark:bg-[#0f3d35] dark:ring-1 dark:ring-[#39EDD5]/20">
+      <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-ee-md bg-[#DAF0E4] px-4 py-2.5 text-[0.9375rem] leading-relaxed text-[#032C26] ring-1 ring-[#032C26]/[0.06] dark:bg-[#143f37] dark:text-[#E6F3EE] dark:ring-[#39EDD5]/20">
         <span className="sr-only">You said: </span>{text}
       </p>
       {at && <time dateTime={at} className="px-1 text-xs tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">{clock(at)}</time>}
@@ -119,12 +145,10 @@ export function UserMessage({ text, at }: { text: string; at?: string }) {
 }
 
 /** The assistant's side: the Onasi mark on the left, the reply beside it. */
-export function AssistantMessage({ children, thinking = false }: { children: React.ReactNode; thinking?: boolean }) {
+export function AssistantMessage({ children }: { children: React.ReactNode; thinking?: boolean }) {
   return (
     <div className="group flex items-start gap-2.5 sm:gap-3">
-      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#032C26] ring-2 ring-white/70 dark:ring-white/10" aria-hidden="true">
-        <OnasiAiMark size={18} thinking={thinking} />
-      </span>
+      <MarkTile size="xs" className="mt-0.5" />
       <div className="min-w-0 flex-1 space-y-2.5">{children}</div>
     </div>
   );
@@ -264,12 +288,13 @@ export function Composer({ value, onChange, onSend, placeholder, label = `Ask ${
           onChange={(e) => onChange(e.target.value.slice(0, MAX_CHARS))}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
           rows={1}
+          style={{ outline: "none" }} // the form shows the focus ring; the global :focus-visible outline would double it
           aria-label={label}
           aria-describedby={`${id}-count ${id}-keys`}
           placeholder={placeholder}
           className="field-sizing-content max-h-40 min-h-11 flex-1 resize-none bg-transparent px-3 py-2.5 text-[0.9375rem] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none"
         />
-        <button type="submit" disabled={!value.trim() || busy} aria-label="Send" title="Send (Enter)" className={cn(BRAND_BTN, "mb-0.5 me-0.5 size-10 shrink-0 rounded-xl")}>
+        <button type="submit" disabled={!value.trim() || busy} aria-label="Send" title="Send (Enter)" className={cn(SEND_BTN, "mb-0.5 me-0.5 size-10 shrink-0 rounded-xl")}>
           <IconArrowUp className="size-5" stroke={2.25} aria-hidden="true" />
         </button>
       </div>
@@ -293,9 +318,7 @@ export function ChatWelcome({ onAsk, compact = false, title = `Welcome to ${ASSI
   return (
     <div className={cn("mx-auto w-full max-w-3xl", compact ? "pt-2" : "pt-4 sm:pt-10")}>
       <div className={cn("flex items-center gap-3", !compact && "flex-col text-center")}>
-        <span className={cn("flex shrink-0 items-center justify-center rounded-2xl bg-[#032C26] shadow-[0_10px_30px_-16px_rgba(3,44,38,0.8)]", compact ? "size-11" : "size-14")}>
-          <OnasiAiMark size={compact ? 26 : 32} />
-        </span>
+        <MarkTile size={compact ? "lg" : "xl"} />
         <h2 className={cn("font-semibold tracking-tight text-[#032C26] dark:text-foreground", compact ? "text-lg" : "text-2xl")}>{title}</h2>
       </div>
       <ul className={cn("space-y-2.5", compact ? "mt-5" : "mt-8")} aria-label="Topics">

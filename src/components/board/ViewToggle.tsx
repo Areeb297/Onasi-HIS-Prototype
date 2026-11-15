@@ -1,6 +1,5 @@
 import * as React from "react";
-import { IconLayoutKanban, IconTable } from "@tabler/icons-react";
-import { cn } from "@/lib/utils";
+import { GlassPillSwitch } from "@/components/ui/glass";
 
 export type WorklistView = "board" | "table";
 
@@ -24,30 +23,9 @@ export function useWorklistView(key: string): [WorklistView, (v: WorklistView) =
   return [view, set];
 }
 
-/** Board or Table. */
+/** Board or Table, as the app's frosted pill switch. */
 export function ViewToggle({ value, onChange }: { value: WorklistView; onChange: (v: WorklistView) => void }) {
-  const opts: { id: WorklistView; label: string; icon: React.ReactNode }[] = [
-    { id: "board", label: "Board", icon: <IconLayoutKanban className="size-4" stroke={1.75} /> },
-    { id: "table", label: "Table", icon: <IconTable className="size-4" stroke={1.75} /> },
-  ];
   return (
-    <div role="radiogroup" aria-label="Worklist view" className="inline-flex rounded-lg border border-border bg-muted/60 p-0.5">
-      {opts.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          role="radio"
-          aria-checked={value === o.id}
-          onClick={() => onChange(o.id)}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-            value === o.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.icon}
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <GlassPillSwitch label="Worklist view" options={["Board", "Table"] as const} value={value === "board" ? "Board" : "Table"} onChange={(v) => onChange(v === "Board" ? "board" : "table")} />
   );
 }

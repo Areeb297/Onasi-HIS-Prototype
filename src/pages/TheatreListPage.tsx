@@ -73,7 +73,7 @@ export function TheatreListPage() {
         {FILTERS.filter((f) => f.id !== "all").map((f) => (
           <KpiTile key={f.id} icon={FILTER_ICON[f.id]} label={f.label} value={theatre.cases.filter(f.test).length}
             note={filter === f.id ? "Shown below" : `Show ${f.label.toLowerCase()}`} tone={filter === f.id ? "ok" : undefined}
-            className={filter === f.id ? "ring-2 ring-[#03C1AC]/60" : undefined} onClick={() => setFilter(filter === f.id ? "all" : f.id)} />
+            className={filter === f.id ? "outline-2 outline-offset-0 outline-[#03C1AC]" : undefined} onClick={() => setFilter(filter === f.id ? "all" : f.id)} />
         ))}
       </KpiStrip>
 

@@ -191,7 +191,7 @@ export function WardViewPage() {
                     <h3 className="mb-2 text-xs font-semibold text-muted-foreground">Floor {fl || "Not set"}</h3>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                       {roomsOf(beds).filter((r) => r.floor === fl).map((r) => (
-                        <div key={r.key} className="rounded-xl border border-border bg-muted/30 p-2.5">
+                        <div key={r.key} className="glass-row rounded-xl p-2.5">
                           <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
                             <span className="text-sm font-semibold">Room {r.room}</span>
                             <span className="flex items-center gap-1">

@@ -17,49 +17,27 @@ type Fmt = (v: unknown) => string;
 /** Index of the largest value, for highlighting. */
 const maxIndex = (data: Row[], key: string) => data.reduce((best, r, i) => (Number(r[key]) > Number(data[best]?.[key] ?? -Infinity) ? i : best), 0);
 
-/** Bar gradients: gently graded cyan for every bar, deep teal for the one highlighted bar. Vertical for columns. */
-function HlGradient({ id, horizontal }: { id: string; horizontal?: boolean }) {
-  const dir = { x1: "0", y1: horizontal ? "0" : "1", x2: horizontal ? "1" : "0", y2: "0" };
-  return (
-    <defs>
-      <linearGradient id={id} {...dir}>
-        <stop offset="0%" stopColor="var(--hl-from)" />
-        <stop offset="100%" stopColor="var(--hl-to)" />
-      </linearGradient>
-      <linearGradient id={`${id}b`} {...dir}>
-        <stop offset="0%" stopColor="var(--bar-from)" />
-        <stop offset="100%" stopColor="var(--bar-to)" />
-      </linearGradient>
-    </defs>
-  );
-}
-
-/** Fill for one bar: graded cyan, deep teal with a faint glow for the highlighted bar, or the given colours. */
-function barCells(data: Row[], hl: number | null, grad: string, colors?: string[]) {
-  return data.map((_, i) => {
-    if (colors) return <Cell key={i} fill={colors[i % colors.length]} />;
-    return i === hl ? <Cell key={i} fill={`url(#${grad})`} className="viz-glow" /> : <Cell key={i} fill={`url(#${grad}b)`} />;
-  });
+/** Fill for one bar: solid brand cyan, solid deep teal for the one highlighted bar, or the given colours. No glow. */
+function barCells(data: Row[], hl: number | null, colors?: string[]) {
+  return data.map((_, i) => <Cell key={i} fill={colors ? colors[i % colors.length] : i === hl ? "var(--bar-hl)" : "var(--bar)"} />);
 }
 
 /**
- * Horizontal pill bars for named categories, in graded brand cyan. The largest bar is highlighted in deep teal; every
+ * Horizontal pill bars for named categories, in solid brand cyan. The largest bar is highlighted in deep teal; every
  * bar keeps its value at the end. `highlight={false}` draws them all alike.
  */
 export function HBars({ data, name, value, label, width = 150, format = num, money = false, extra, highlight = true }: {
   data: Row[]; name: string; value: string; label: string; color?: string; width?: number; format?: Fmt; money?: boolean; extra?: (row: Record<string, unknown>) => React.ReactNode; highlight?: boolean;
 }) {
-  const grad = `hl${React.useId().replace(/:/g, "")}`;
   const hl = highlight && data.length > 1 ? maxIndex(data, value) : null;
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: money ? 64 : 40, left: 4, bottom: 0 }} barCategoryGap="32%">
-        <HlGradient id={grad} horizontal />
         <XAxis type="number" allowDecimals={false} {...AXIS} axisLine={false} tickFormatter={money ? compact : format} />
         <YAxis type="category" dataKey={name} width={width} {...AXIS} axisLine={false} interval={0} />
         <Tooltip cursor={BAR_CURSOR} content={<VizTooltip money={money} format={format} extra={extra} />} />
         <Bar dataKey={value} name={label} radius={[0, 999, 999, 0]} maxBarSize={16} isAnimationActive={false} background={{ fill: "var(--viz-track)", radius: 999 } as never}>
-          {barCells(data, hl, grad)}
+          {barCells(data, hl)}
           {money ? <LabelList dataKey={value} content={moneyLabelRight} /> : <LabelList dataKey={value} position="right" fill="var(--foreground)" fontSize={12} formatter={(v: unknown) => format(v)} />}
         </Bar>
       </BarChart>
@@ -68,25 +46,23 @@ export function HBars({ data, name, value, label, width = 150, format = num, mon
 }
 
 /**
- * Pill columns. With `colors` (status or triage colours) every column keeps its colour. Otherwise columns are graded
- * cyan and the largest one, or the one at `highlightIndex`, is deep teal with a faint glow.
+ * Pill columns. With `colors` (status or triage colours) every column keeps its colour. Otherwise columns are solid
+ * brand cyan and the largest one, or the one at `highlightIndex` (for example today), is solid deep teal.
  */
 export function VBars({ data, name, value, label, colors, format = num, money = false, extra, labels = true, highlightIndex, grow = false }: {
   data: Row[]; name: string; value: string; label: string; color?: string; colors?: string[]; format?: Fmt; money?: boolean; extra?: (row: Record<string, unknown>) => React.ReactNode; labels?: boolean; highlightIndex?: number; grow?: boolean;
 }) {
-  const grad = `hl${React.useId().replace(/:/g, "")}`;
   const still = useReducedMotion();
   const hl = colors ? null : highlightIndex ?? (data.length > 1 ? maxIndex(data, value) : null);
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 22, right: 8, left: -6, bottom: 0 }} barCategoryGap="30%">
-        <HlGradient id={grad} />
         <CartesianGrid {...GRID} />
         <XAxis dataKey={name} {...AXIS} axisLine={false} interval={0} />
         <YAxis allowDecimals={false} {...AXIS} axisLine={false} tickFormatter={money ? compact : (v) => (Number(v) >= 10_000 ? compact(v) : format(v))} width={48} />
         <Tooltip cursor={BAR_CURSOR} content={<VizTooltip money={money} format={format} extra={extra} />} />
         <Bar dataKey={value} name={label} radius={999} maxBarSize={28} isAnimationActive={grow && !still} animationDuration={700} animationEasing="ease-out">
-          {barCells(data, hl, grad, colors)}
+          {barCells(data, hl, colors)}
           {labels && (money ? <LabelList dataKey={value} content={moneyLabelTop} /> : <LabelList dataKey={value} position="top" fill="var(--foreground)" fontSize={12} formatter={(v: unknown) => format(v)} />)}
         </Bar>
       </BarChart>
@@ -150,12 +126,12 @@ export function Ring({ data, total, caption, size = 168 }: { data: { name: strin
 }
 
 /**
- * A goal gauge: a ring filled to the value, with the target as a tick. On target it fills in the brand gradient; off
- * target it fills amber and says so in words with an icon, so the state never rests on colour.
+ * A goal gauge: a ring filled to the value, with the target as a tick. On target it fills in solid brand deep teal;
+ * off target it fills amber (a warning colour, kept on purpose) and says so in words with an icon, so the state never
+ * rests on colour.
  */
 export function RingGauge({ value, target, better = "higher", label, caption, size = 104 }: { value: number; target: number; better?: "higher" | "lower"; label: string; caption: string; size?: number }) {
   const still = useReducedMotion();
-  const id = `rg${React.useId().replace(/:/g, "")}`;
   const v = Math.max(0, Math.min(100, value));
   const ok = better === "higher" ? value >= target : value <= target;
   const r = 40, c = 2 * Math.PI * r;
@@ -165,11 +141,8 @@ export function RingGauge({ value, target, better = "higher", label, caption, si
     <figure className="flex min-w-0 flex-col items-center text-center">
       <div className="relative" style={{ width: size, height: size }}>
         <svg viewBox="0 0 100 100" className="size-full" role="img" aria-label={`${label}: ${Math.round(value)}%, target ${better === "higher" ? "at least" : "at most"} ${target}%. ${ok ? "On target." : "Off target."}`}>
-          <defs>
-            <linearGradient id={id} x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="var(--hl-from)" /><stop offset="100%" stopColor="var(--hl-to)" /></linearGradient>
-          </defs>
           <circle cx="50" cy="50" r={r} fill="none" stroke="var(--viz-track)" strokeWidth="8" />
-          <motion.circle cx="50" cy="50" r={r} fill="none" stroke={ok ? `url(#${id})` : "var(--st-warn)"} strokeWidth="8" strokeLinecap="round" transform="rotate(-90 50 50)"
+          <motion.circle cx="50" cy="50" r={r} fill="none" stroke={ok ? "var(--bar-hl)" : "var(--st-warn)"} strokeWidth="8" strokeLinecap="round" transform="rotate(-90 50 50)"
             strokeDasharray={c} initial={still ? false : { strokeDashoffset: c }} animate={{ strokeDashoffset: c * (1 - v / 100) }} transition={{ duration: 1, delay: 0.2, ease: [0.22, 0.8, 0.3, 1] }} />
           <circle cx={tx} cy={ty} r="3" fill="var(--card)" stroke="var(--foreground)" strokeWidth="1.5" />
         </svg>
@@ -237,7 +210,8 @@ export function AreaTrend({ data, name, value, label, color = "var(--viz-line)",
 
 /**
  * One whole split into parts: a tall segmented bar with each share printed inside when it fits, a legend in block
- * order, and every part's name, amount and share on hover and focus.
+ * order, and every part's name, amount and share on hover and focus. `dark` prints the share in Dark Green instead of
+ * white, for light fills (brand cyan, mint, amber, the neutral), so the text keeps 4.5:1.
  */
 export function SegmentedBar({ parts, unit = "", money = false, className }: { parts: { name: string; value: number; color: string; dark?: boolean }[]; unit?: string; money?: boolean; className?: string }) {
   const sum = parts.reduce((n, p) => n + p.value, 0) || 1;
@@ -251,7 +225,7 @@ export function SegmentedBar({ parts, unit = "", money = false, className }: { p
             <div key={p.name} role="listitem" aria-label={`${p.name}: ${num(p.value)}${unit ? ` ${unit}` : ""}, ${share.toFixed(0)}%`}
               {...bind(<TipBody title={p.name} lines={[{ value: money ? <Money value={p.value} /> : `${num(p.value)}${unit ? ` ${unit}` : ""}`, color: p.color }, { value: `${share.toFixed(1)}%`, label: "of the total" }]} />)}
               className="flex min-w-0 items-center rounded-[4px] px-2 text-xs font-semibold outline-none transition-[filter] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring"
-              style={{ width: `${share}%`, background: p.color, color: p.dark ? "#0b1f1a" : "#ffffff" }}>
+              style={{ width: `${share}%`, background: p.color, color: p.dark ? "#032c26" : "#ffffff" }}>
               {share >= 12 && <span className="truncate tabular-nums">{share.toFixed(0)}%</span>}
             </div>
           );
@@ -290,7 +264,7 @@ export function FunnelBars({ stages, colors }: { stages: { stage: string; amount
 }
 
 /** Ranked rows for a Pareto reading on one axis: denied amount as the bar, the running share as a number. */
-export function ParetoRows({ rows, color = "var(--viz-line)" }: { rows: { reason: string; amount: number; claims: number; share: number; cumulative: number }[]; color?: string }) {
+export function ParetoRows({ rows, color = "var(--bar)" }: { rows: { reason: string; amount: number; claims: number; share: number; cumulative: number }[]; color?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.amount));
   const { box, bind, layer } = useTip();
   return (
@@ -305,7 +279,7 @@ export function ParetoRows({ rows, color = "var(--viz-line)" }: { rows: { reason
             {...bind(<TipBody title={r.reason} lines={[{ value: <Money value={r.amount} />, label: "denied", color }, { value: num(r.claims), label: "claims" }, { value: `${r.share.toFixed(1)}%`, label: "of denied money" }, { value: `${r.cumulative.toFixed(1)}%`, label: "running total" }]} />)}>
             <span className="truncate pl-1 text-[0.8125rem]">{r.reason}</span>
             <span className="col-span-2 row-start-2 h-2.5 rounded-full sm:col-span-1 sm:row-start-auto" style={{ background: "var(--viz-track)" }}>
-              <span className="block h-full rounded-full" style={{ width: `${(r.amount / max) * 100}%`, background: "linear-gradient(90deg, var(--bar-from), var(--bar-to))" }} />
+              <span className="block h-full rounded-full" style={{ width: `${(r.amount / max) * 100}%`, background: "var(--bar)" }} />
             </span>
             <span className="hidden w-24 text-right text-[0.8125rem] font-medium sm:block"><Money value={r.amount} /></span>
             <span className="w-16 text-right text-[0.8125rem] tabular-nums text-muted-foreground">{r.cumulative.toFixed(0)}%</span>

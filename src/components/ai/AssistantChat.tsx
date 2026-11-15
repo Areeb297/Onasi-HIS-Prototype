@@ -4,14 +4,13 @@ import { IconChevronDown, IconHelpCircle } from "@tabler/icons-react";
 import { Check, ChevronRight, X } from "lucide-react";
 import { AgentIcon } from "@/components/ai/AgentIcon";
 import {
-  AssistantMessage, BRAND_BTN, BrandBadge, ChatThread, Composer, GLASS_BTN, ICON_BTN, ReplyActions, RevealText, SuggestionChips, TypingDots, UserMessage,
+  AssistantMessage, BRAND_BTN, BrandBadge, ChatThread, Composer, GLASS_BTN, ICON_BTN, MarkTile, ReplyActions, RevealText, SuggestionChips, TypingDots, UserMessage,
 } from "@/components/ai/chat-parts";
 import { cn } from "@/components/ui/primitives";
 import { approveTask, checkNow, dismissTask, isShortcut, runAction, useAgentWork } from "@/lib/ai/agent-work";
 import { AGENT_BY_ID, type Proposal } from "@/lib/ai/agents";
 import { SUGGESTED, answer } from "@/lib/ai/assistant";
 import { ABOUT_QUESTIONS, fixedAnswer, type ChatTurn } from "@/lib/ai/chat-history";
-import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { audit } from "@/lib/audit";
 
 /**
@@ -225,7 +224,7 @@ export function AssistantChat({ firstQuestion, resetKey, onCount }: { firstQuest
       <ChatThread label="Conversation" stick={last?.id} innerClassName="space-y-5 px-4 py-4">
         {turns.length === 0 ? (
           <div className="flex min-h-[40vh] items-center justify-center">
-            <span className="flex size-14 items-center justify-center rounded-2xl bg-[#032C26] shadow-[0_14px_34px_-18px_rgba(3,44,38,0.9)]"><OnasiAiMark size={32} /></span>
+            <MarkTile size="xl" />
           </div>
         ) : (
           turns.map((t, i) => (

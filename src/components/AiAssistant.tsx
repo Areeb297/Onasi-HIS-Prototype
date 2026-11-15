@@ -2,7 +2,7 @@ import * as React from "react";
 import { IconArrowsMaximize, IconMessagePlus, IconX } from "@tabler/icons-react";
 import { AssistantChat } from "@/components/ai/AssistantChat";
 import { AssistantFullScreen } from "@/components/ai/AssistantFullScreen";
-import { AssistantMessage, ChatThread, Composer, ICON_BTN, TypingDots, UserMessage } from "@/components/ai/chat-parts";
+import { AssistantMessage, ChatThread, Composer, ICON_BTN, MarkTile, TypingDots, UserMessage } from "@/components/ai/chat-parts";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { OutputCard } from "@/components/ai/OutputCard";
 import { UseCaseIcon } from "@/components/ai/UseCaseIcon";
@@ -195,7 +195,7 @@ export function AiAssistant() {
         onClick={() => { setMode(enc ? "chart" : "hospital"); setOpen(true); }}
         aria-label={`Ask ${ASSISTANT_NAME}${checks ? `. ${checks} safety checks on this chart.` : ""}`}
         title={`Ask ${ASSISTANT_NAME} (Ctrl+J)`}
-        className="fixed bottom-5 right-5 z-40 flex size-12 items-center justify-center gap-2.5 rounded-full bg-[#032C26] text-white shadow-[0_12px_32px_-12px_rgba(3,44,38,0.7)] ring-1 ring-white/10 transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none motion-reduce:hover:scale-100 md:size-auto md:py-2 md:pl-3 md:pr-4"
+        className="fixed bottom-5 right-5 z-40 flex size-12 items-center justify-center gap-2.5 rounded-full bg-white/90 text-[#032C26] shadow-[0_12px_32px_-14px_rgba(3,44,38,0.45)] ring-1 ring-[#39EDD5]/70 backdrop-blur-xl transition-transform dark:bg-[#0d2a24]/95 dark:text-foreground dark:ring-[#39EDD5]/35 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none motion-reduce:hover:scale-100 md:size-auto md:py-2 md:pl-3 md:pr-4"
       >
         <span className="relative">
           <OnasiAiMark size={24} />
@@ -229,7 +229,7 @@ export function AiAssistant() {
             <>
               <header className="shrink-0 space-y-2.5 px-4 pb-2 pt-3.5">
                 <div className="flex items-center gap-2.5">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#032C26]"><OnasiAiMark size={22} thinking={busy} /></span>
+                  <MarkTile size="sm" />
                   <span className="min-w-0 flex-1 truncate text-base font-semibold text-[#032C26] dark:text-foreground">{ASSISTANT_NAME}</span>
                   {dev && <span className="rounded border border-dashed border-warn px-1.5 py-0.5 text-xs font-semibold text-warn" title={SIM_NOTE}>Simulated</span>}
                   {hasContent && (

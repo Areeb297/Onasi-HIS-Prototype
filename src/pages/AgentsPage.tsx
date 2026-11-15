@@ -2,8 +2,7 @@ import * as React from "react";
 import { IconChecks, IconCopy, IconEye, IconHourglassHigh, IconMessageChatbot, IconPlayerPause, IconPlayerPlay, IconRefresh, IconRobot } from "@tabler/icons-react";
 import { Check, ChevronDown } from "lucide-react";
 import { AgentIcon } from "@/components/ai/AgentIcon";
-import { GLASS_BTN, ICON_BTN } from "@/components/ai/chat-parts";
-import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
+import { GLASS_BTN, ICON_BTN, MarkTile } from "@/components/ai/chat-parts";
 import { TaskRow, timeOf } from "@/components/ai/TaskRow";
 import { GlassBackdrop, GlassCard, GlassPillSwitch, GlassStagger, KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Card, Empty, cn } from "@/components/ui/primitives";
@@ -136,8 +135,8 @@ function WorkBoard({ onAsk }: { onAsk: (q: string) => void }) {
 
       <GlassCard solid lift={false} aria-labelledby="needs-you">
         <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-3 border-b px-5 py-4", HAIR)}>
-          <h2 id="needs-you" className="min-w-0 flex-1 text-base font-semibold text-[#032C26] dark:text-foreground">
-            Needs Your Attention <span className="ms-1 rounded-full bg-[#39EDD5]/15 px-2 py-0.5 text-xs font-medium tabular-nums text-[#035D53] dark:text-[#52FCE3]">{listed.length}</span>
+          <h2 id="needs-you" className="flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap text-base font-semibold text-[#032C26] dark:text-foreground">
+            Needs Your Attention <span className="rounded-full bg-[#39EDD5]/15 px-2 py-0.5 text-xs font-medium tabular-nums text-[#035D53] dark:text-[#52FCE3]">{listed.length}</span>
           </h2>
           {me && <GlassPillSwitch size="sm" label="Whose patients" value={whose} options={WHOSE} onChange={setWhose} />}
           <button type="button" className={cn(GLASS_BTN, "h-8 px-3 text-[0.8125rem]")} onClick={check} disabled={checking}>
@@ -197,7 +196,7 @@ export function AgentsPage() {
   return (
     <GlassBackdrop>
       <header className="mb-5 flex items-center gap-3.5">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#032C26] shadow-[0_10px_24px_-14px_rgba(3,44,38,0.8)]"><OnasiAiMark size={26} /></span>
+        <MarkTile size="lg" />
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight text-[#032C26] dark:text-foreground">{ASSISTANT_NAME} Agents</h1>
           <p className="text-sm text-muted-foreground">They point at what needs you. They change nothing in the record.</p>

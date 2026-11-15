@@ -8,16 +8,30 @@ import { cn } from "@/components/ui/primitives";
  */
 
 /**
- * Categorical slots, in fixed order: brand cyan, then deep teal (validated as a pair). Then the neutral grey-green for
- * "the rest" and Dark Green as an anchor; those two are not identity colours. A series keeps its slot whatever the filters do.
+ * Categorical slots, Onasi brand ramps only, in fixed order: cyan, deep teal, neutral, Dark Green (Minty White in dark),
+ * mint. Validated with the dataviz palette validator in both themes. A series keeps its slot whatever the filters do.
  */
-export const VIZ = ["var(--viz-1)", "var(--viz-2)", "var(--viz-rest)", "var(--viz-anchor)"] as const;
+export const VIZ = ["var(--viz-1)", "var(--viz-2)", "var(--viz-3)", "var(--viz-4)", "var(--viz-5)"] as const;
+/** Light neutral for "the rest" (free beds, other). Not an identity colour. */
+export const REST = "var(--viz-rest)";
 /** Ordinal ramp for ordered stages and age bands, light to dark. */
 export const ORD = ["var(--ord-1)", "var(--ord-2)", "var(--ord-3)", "var(--ord-4)", "var(--ord-5)"] as const;
-/** Status colours. Only for claim and payment state, always next to a label. */
+/**
+ * Status colours, only for claim and payment state and always next to a label or icon. Deliberately not all brand:
+ * paid is brand green and pending a brand neutral, but partly paid stays amber and denied stays red, because billing
+ * staff read those as warning and failure. STATUS_INK is the darker step for icons and small marks (4.5:1 or better).
+ */
 export const STATUS_COLOR: Record<string, string> = {
   Paid: "var(--st-good)", "Partially Paid": "var(--st-warn)", Denied: "var(--st-crit)", Pending: "var(--st-wait)",
 };
+export const STATUS_INK: Record<string, string> = {
+  Paid: "var(--st-good-ink)", "Partially Paid": "var(--st-warn-ink)", Denied: "var(--st-crit-ink)", Pending: "var(--st-wait-ink)",
+};
+/**
+ * CTAS triage level colours, 1 to 5. Not brand on purpose: the Canadian Triage and Acuity Scale colour code (blue, red,
+ * yellow, green, grey) is what emergency staff rely on, so charts of triage levels keep it.
+ */
+export const CTAS_COLORS = [1, 2, 3, 4, 5].map((n) => `var(--ctas-${n})`);
 
 export const num = (v: unknown) => Math.round(Number(v)).toLocaleString("en-US");
 /** 8,450 / 312K / 1.24M. One style per axis. */

@@ -42,7 +42,7 @@ export function PharmacyHomePage() {
       <KpiStrip label="Pharmacy now" className="mb-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
         <KpiTile label="Waiting For Check" value={o.waiting} note="New, changed or answered items" icon={<IconClipboardCheck stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
         <KpiTile label="Ready To Dispense" value={o.ready} note="Verified by a pharmacist" icon={<IconPill stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
-        <KpiTile label="Dispensed Today" value={o.dispensedToday} note="Lines handed over today" tone="ok" icon={<IconPackageImport stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
+        <KpiTile label="Dispensed Today" value={o.dispensedToday} note="Lines handed over today" tone={o.dispensedToday ? "ok" : undefined} icon={<IconPackageImport stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
         <KpiTile label="Low Stock" value={o.lowStock} note="Items under the reorder level" tone={o.lowStock ? "warn" : undefined} accent={o.lowStock ? "warn" : "brand"} icon={<IconAlertTriangle stroke={1.75} />} onClick={() => navigate("/pharmacy/stock", { tab: "low" })} />
         <KpiTile label="Expiring Soon" value={o.expiringSoon} note="Batches within 90 days or expired" tone={o.expiringSoon ? "danger" : undefined} accent={o.expiringSoon ? "danger" : "brand"} icon={<IconCalendarDue stroke={1.75} />} onClick={() => navigate("/pharmacy/stock", { tab: "expiry" })} className="col-span-2 sm:col-span-1" />
       </KpiStrip>

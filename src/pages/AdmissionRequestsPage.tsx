@@ -101,7 +101,7 @@ export function AdmissionRequestsPage() {
             <KpiTile key={s} icon={STATUS_ICON[s]} label={STATUS_LABEL[s]} value={n.toLocaleString("en-US")}
               note={status === s ? "Shown below" : `Show ${STATUS_LABEL[s].toLowerCase()}`} tone={status === s ? "ok" : undefined}
               accent={s === "pending" && n > 0 ? "warn" : "brand"}
-              className={cn(status === s && "ring-2 ring-[#03C1AC]/60", i === STATUSES.length - 1 && "col-span-2 sm:col-span-1")}
+              className={cn(status === s && "outline-2 outline-offset-0 outline-[#03C1AC]", i === STATUSES.length - 1 && "col-span-2 sm:col-span-1")}
               onClick={() => setStatus(status === s ? "" : s)} />
           );
         })}

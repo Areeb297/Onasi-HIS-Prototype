@@ -89,7 +89,7 @@ export function ServiceLinesCard({ m, findings, readOnly }: { m: ClaimModel; fin
             <Th className="text-right">Net</Th>
             <Th>Diagnoses</Th>
             <Th>Care Team</Th>
-            <Th><span className="sr-only">Remove</span></Th>
+            <Th className="relative"><span className="sr-only">Remove</span></Th>
           </tr>
         </thead>
         <tbody>

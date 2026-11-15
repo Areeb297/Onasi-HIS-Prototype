@@ -93,7 +93,7 @@ export function ClaimPage() {
         <KpiTile icon={<IconReceipt2 stroke={1.75} />} label="Net Amount" value={<Sar value={m.net} />} note={inv ? `From invoice #${inv.number}` : "From the visit charges"} />
         <KpiTile icon={<IconShieldCheck stroke={1.75} />} label="Insurance Share" value={<Sar value={m.totals.insuranceAmount} />} note="The patient pays the rest" />
         <KpiTile icon={<IconCash stroke={1.75} />} label={m.fin.claim?.approved !== undefined ? "Approved By Payer" : "Paid By Payer"} value={<Sar value={m.fin.claim?.approved ?? m.totals.insurancePaid} />} note={m.fin.claim ? <span className="font-mono">{m.fin.claim.claimNumber}</span> : "Claim not sent yet"} />
-        <KpiTile icon={<IconClockDollar stroke={1.75} />} label="Insurance Balance" value={<Sar value={m.totals.insuranceBalance} />} note={m.totals.insuranceBalance > 0.004 ? "Still to come from the payer" : "Settled"} tone={m.totals.insuranceBalance > 0.004 ? undefined : "ok"} />
+        <KpiTile icon={<IconClockDollar stroke={1.75} />} label="Insurance Balance" value={<Sar value={m.totals.insuranceBalance} />} note={m.totals.insuranceBalance > 0.004 ? "Still to come from the payer" : m.totals.insuranceAmount > 0.004 ? "Settled" : "No insurance share"} tone={m.totals.insuranceBalance <= 0.004 && m.totals.insuranceAmount > 0.004 ? "ok" : undefined} />
       </KpiStrip>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
@@ -188,7 +188,7 @@ function CareTeamCard({ m, readOnly }: { m: ClaimModel; readOnly: boolean }) {
     <Card>
       <CardHeader title="Care Team" subtitle="Doctors who gave the care. Each service line links to one or more of them." />
       <Table>
-        <thead><tr><Th>#</Th><Th>Doctor</Th><Th>Role</Th><Th>Qualification</Th><Th><span className="sr-only">Remove</span></Th></tr></thead>
+        <thead><tr><Th>#</Th><Th>Doctor</Th><Th>Role</Th><Th>Qualification</Th><Th className="relative"><span className="sr-only">Remove</span></Th></tr></thead>
         <tbody>
           {m.careTeam.length === 0 && <tr><Td colSpan={5}><Empty>No doctor on the care team.</Empty></Td></tr>}
           {m.careTeam.map((c, i) => (

@@ -87,7 +87,7 @@ function StockTab({ rows }: { rows: StockRow[] }) {
     <div className="space-y-4">
       <KpiStrip label="Stock numbers" className="grid-cols-2 lg:grid-cols-4">
         <KpiTile icon={<IconPill stroke={1.75} />} label="Items In Stock" value={new Set(rows.filter((r) => r.available > 0).map((r) => r.drug.code)).size} note={`${LOCATIONS.length} locations`} />
-        <KpiTile icon={<IconPackage stroke={1.75} />} label="Batches" value={rows.filter((r) => r.available > 0).length} note={`${rows.length - rows.filter((r) => r.available > 0).length} empty`} />
+        <KpiTile icon={<IconPackage stroke={1.75} />} label="Batches" value={rows.filter((r) => r.available > 0).length} note={rows.some((r) => r.available <= 0) ? `${rows.filter((r) => r.available <= 0).length} empty` : "None empty"} />
         <KpiTile icon={<IconAlertTriangle stroke={1.75} />} label="Low Stock" value={low.length} note="Under the reorder level" tone={low.length ? "warn" : "ok"} accent={low.length ? "warn" : "brand"} onClick={() => jump("low")} />
         <KpiTile icon={<IconCalendarDue stroke={1.75} />} label="Expiry Watch" value={watch.length} note={`Within ${EXPIRY_WATCH_DAYS} days or expired`} tone={watch.length ? "danger" : "ok"} accent={watch.length ? "danger" : "brand"} onClick={() => jump("expiry")} />
       </KpiStrip>

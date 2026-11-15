@@ -5,7 +5,7 @@ import { Money } from "@/components/Money";
 import { AgentWorkCard } from "@/components/ai/AgentWorkCard";
 import { ChartCard } from "@/components/charts/ChartCard";
 import { HBars, Ring, RingGauge, SegmentedBar, Stacked, VBars } from "@/components/charts/SimpleCharts";
-import { VIZ } from "@/components/charts/viz";
+import { CTAS_COLORS, REST, VIZ } from "@/components/charts/viz";
 import { DeltaPill, GlassBackdrop, GlassCard, GlassPillSwitch, GlassStagger, KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Badge, Button, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useAppointments } from "@/lib/appointments";
@@ -23,7 +23,7 @@ import { useVitals } from "@/lib/vitals";
 const money = (v: unknown) => Number(v).toLocaleString("en-US");
 const sar = (v: unknown) => <Money value={Number(v)} />;
 /** Left edge colour for each kind of item on today's list. */
-const KIND = { Clinic: VIZ[0], Online: VIZ[1], Theatre: VIZ[3] } as const; // cyan, deep teal, Dark Green anchor
+const KIND = { Clinic: VIZ[0], Online: VIZ[1], Theatre: VIZ[3] } as const; // brand cyan, deep teal, Dark Green (Minty White in dark)
 
 /**
  * Operational overview: the first page of the HIS. Census, beds, emergency, NPHIES and today's list are live.
@@ -108,11 +108,12 @@ export function DashboardPage() {
         </ChartCard>
 
         <ChartCard title="Emergency patients by triage level" note="Live. CTAS 1 is the most urgent." rows={c.ctas.map((x) => ({ Level: x.level, Patients: x.patients }))} columns={["Level", "Patients"]} height={230}>
-          <VBars data={c.ctas} name="level" value="patients" label="Patients" colors={[1, 2, 3, 4, 5].map((n) => `var(--ctas-${n})`)} />
+          {/* Triage levels keep the standard CTAS colour code, not brand colours: clinicians read the level by its colour. */}
+          <VBars data={c.ctas} name="level" value="patients" label="Patients" colors={CTAS_COLORS} />
         </ChartCard>
 
-        <ChartCard title="Bed availability" note={`Live. ${c.bedsUsed} of ${c.bedsTotal} beds in use, ${occ}% utilization.`} legend={[{ label: "In use", color: VIZ[0] }, { label: "Free", color: "var(--viz-rest)" }]} rows={c.wards.map((w) => ({ Ward: w.ward, "In use": w.used, Free: w.free, "Not ready": w.notReady }))} columns={["Ward", "In use", "Free", "Not ready"]} height={230}>
-          <Stacked horizontal data={c.wards} name="ward" width={118} series={[{ key: "used", label: "In use", color: VIZ[0] }, { key: "free", label: "Free", color: "var(--viz-rest)" }]} />
+        <ChartCard title="Bed availability" note={`Live. ${c.bedsUsed} of ${c.bedsTotal} beds in use, ${occ}% utilization.`} legend={[{ label: "In use", color: VIZ[0] }, { label: "Free", color: REST }]} rows={c.wards.map((w) => ({ Ward: w.ward, "In use": w.used, Free: w.free, "Not ready": w.notReady }))} columns={["Ward", "In use", "Free", "Not ready"]} height={230}>
+          <Stacked horizontal data={c.wards} name="ward" width={118} series={[{ key: "used", label: "In use", color: VIZ[0] }, { key: "free", label: "Free", color: REST }]} />
         </ChartCard>
 
         <ChartCard title="NPHIES clinical messages by state" note="Live, from the NPHIES Clinical send list." rows={c.sendStates.map((x) => ({ State: x.state, Items: x.items }))} columns={["State", "Items"]} height={230}>
@@ -121,7 +122,7 @@ export function DashboardPage() {
 
         <ChartCard title="Patients by gender" note="Live, registered patients." rows={mix.gender.map((g) => ({ Gender: g.name, Patients: g.patients }))} columns={["Gender", "Patients"]} height="auto">
           <div className="px-3 pb-2 pt-4">
-            <SegmentedBar unit="patients" parts={mix.gender.map((g, i) => ({ name: g.name, value: g.patients, color: VIZ[i] }))} />
+            <SegmentedBar unit="patients" parts={mix.gender.map((g, i) => ({ name: g.name, value: g.patients, color: VIZ[i], dark: i === 0 }))} />
             <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-border/70 pt-3">
               {mix.gender.map((g) => <div key={g.name}><dt className="text-xs text-muted-foreground">{g.name}</dt><dd className="mt-0.5 text-lg font-semibold tabular-nums">{g.patients}</dd></div>)}
             </dl>

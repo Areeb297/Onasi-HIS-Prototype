@@ -189,7 +189,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
           {statuses.map((s) => (
             <KpiTile key={s} icon={STATUS_ICON[s]} label={s} value={byStatus(s).toLocaleString("en-US")}
               note={status === s ? "Shown below" : `Show ${s.toLowerCase()}`} tone={status === s ? "ok" : undefined}
-              className={status === s ? "ring-2 ring-[#03C1AC]/60" : undefined} onClick={() => setStatus(status === s ? "" : s)} />
+              className={status === s ? "outline-2 outline-offset-0 outline-[#03C1AC]" : undefined} onClick={() => setStatus(status === s ? "" : s)} />
           ))}
         </KpiStrip>
       )}

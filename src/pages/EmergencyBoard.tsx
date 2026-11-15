@@ -210,22 +210,22 @@ export function EmergencyBoard() {
       />
 
       {/* Level strip */}
-      <KpiStrip label="Emergency numbers" className="mb-4 grid-cols-2 sm:grid-cols-4">
+      <KpiStrip label="Emergency numbers" className="mb-4 grid-cols-2 gap-2.5 sm:grid-cols-4">
         {CTAS.map((c) => {
           const n = active.filter((e) => e.ed!.ctas === c.level).length;
           const fr = frac.find((f) => f.level === c.level);
           const late = active.filter((e) => e.ed!.ctas === c.level && clockOf(e.ed!, now).overdue && stageOf(e.ed!) === "waiting-doctor").length;
           return (
-            <KpiTile key={c.level} icon={<LevelDot level={c.level} size="sm" />} label={c.label} value={n}
+            <KpiTile key={c.level} dense icon={<LevelDot level={c.level} size="sm" />} label={c.label} value={n}
               note={<>
                 <span className="block">{c.targetMin === 0 ? "Immediate" : `Target ${c.targetMin} min`}{late > 0 && <span className="ms-1 font-semibold text-destructive">{late} late</span>}</span>
                 {fr && <span className={cn("block", fr.pct !== undefined && fr.pct < fr.goal && "font-medium text-destructive")}>{fr.pct === undefined ? `Goal ${fr.goal}% in target` : `${fr.pct}% in target, goal ${fr.goal}%`}</span>}
               </>} />
           );
         })}
-        <KpiTile icon={<IconClipboardList stroke={1.75} />} label="Not Triaged" value={byStage("waiting-triage").length} note="Target 10 min" />
-        <KpiTile icon={<IconStethoscope stroke={1.75} />} label="Door To Doctor" value={avgD2d ?? "None"} note="Average minutes today" />
-        <KpiTile icon={<IconClock stroke={1.75} />} label="Over Target" value={overdue.length} note={`Longest wait ${longest} min`} accent={overdue.length ? "danger" : "brand"} tone={overdue.length ? "danger" : undefined} />
+        <KpiTile dense icon={<IconClipboardList stroke={1.75} />} label="Not Triaged" value={byStage("waiting-triage").length} note="Target 10 min" />
+        <KpiTile dense icon={<IconStethoscope stroke={1.75} />} label="Door To Doctor" value={avgD2d ?? "None"} note="Average minutes today" />
+        <KpiTile dense icon={<IconClock stroke={1.75} />} label="Over Target" value={overdue.length} note={`Longest wait ${longest} min`} accent={overdue.length ? "danger" : "brand"} tone={overdue.length ? "danger" : undefined} />
       </KpiStrip>
 
       {view === "list" ? (

@@ -1,6 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { BRAND_BTN } from "@/components/ai/chat-parts";
-import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
+import { BRAND_BTN, MarkTile } from "@/components/ai/chat-parts";
 import { TaskRow, timeOf } from "@/components/ai/TaskRow";
 import { cn } from "@/components/ui/primitives";
 import { isPaused, progressOf, useAgentWork, waitingTasks } from "@/lib/ai/agent-work";
@@ -35,7 +34,7 @@ export function AgentWorkCard() {
   return (
     <section className="glass-panel glass-hover mt-4 overflow-hidden rounded-2xl" aria-labelledby="ai-at-work">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 pb-3 pt-4">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#032C26]"><OnasiAiMark size={24} /></span>
+        <MarkTile size="md" />
         <div className="min-w-0 flex-1 basis-48">
           <h2 id="ai-at-work" className="text-base font-semibold text-[#032C26] dark:text-foreground">{ASSISTANT_NAME} At Work</h2>
           <p className="flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground">

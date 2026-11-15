@@ -44,7 +44,7 @@ export function StockLinesEditor({ lines, onChange, disabled }: { lines: LineDra
             <Th className="min-w-36">Expiry Date</Th>
             <Th className="min-w-28">Quantity</Th>
             <Th className="min-w-28">Unit Cost (SAR)</Th>
-            <Th><span className="sr-only">Remove</span></Th>
+            <Th className="relative"><span className="sr-only">Remove</span></Th>
           </tr>
         </thead>
         <tbody>

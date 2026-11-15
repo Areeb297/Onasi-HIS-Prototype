@@ -6,7 +6,7 @@ import {
 import { Money } from "@/components/Money";
 import { ChartCard, ViewSwitch } from "@/components/charts/ChartCard";
 import { AreaTrend, FunnelBars, HBars, ParetoRows, SegmentedBar, Stacked, VBars } from "@/components/charts/SimpleCharts";
-import { ORD, STATUS_COLOR, VIZ, num, pct } from "@/components/charts/viz";
+import { ORD, STATUS_COLOR, STATUS_INK, num, pct } from "@/components/charts/viz";
 import { GlassBackdrop, GlassCard, GlassPillSwitch, GlassStagger, KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Badge, Table, Td, Th } from "@/components/ui/primitives";
 import {
@@ -14,7 +14,10 @@ import {
   claimsView, type ClaimFilters,
 } from "@/lib/dashboard-data";
 
-/** Prior authorization outcomes are a state, so they wear the status colours. */
+/**
+ * Prior authorization outcomes are a state, so they wear the claim status colours: brand green for approved, but amber
+ * for partial and red for rejected on purpose, because billing staff read those as warning and failure.
+ */
 const OUTCOME = [
   { key: "Approved", color: STATUS_COLOR.Paid },
   { key: "Partial", color: STATUS_COLOR["Partially Paid"] },
@@ -60,7 +63,7 @@ function ClaimsTab() {
   const trend = trendBy === "Monthly" ? v.monthly : trendBy === "Weekly" ? v.weekly : v.daily;
   const filtered = f.payer !== ALL || f.type !== ALL || f.period !== INIT.period;
   const topThree = v.pareto.slice(0, 3).reduce((n, r) => n + r.share, 0);
-  const statusParts = v.status.map((s) => ({ name: s.status, value: s.claims, color: STATUS_COLOR[s.status], dark: s.status === "Partially Paid" || s.status === "Pending" }));
+  const statusParts = v.status.map((s) => ({ name: s.status, value: s.claims, color: STATUS_COLOR[s.status], dark: s.status !== "Denied" }));
 
   return (
     <>
@@ -94,7 +97,7 @@ function ClaimsTab() {
 
       <GlassStagger className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3" gap={0.05}>
         <ChartCard title="Revenue Cycle Funnel" note="Money at each stage, and its share of what was submitted." rows={v.funnel} columns={[{ key: "stage", label: "Stage" }, { key: "amount", label: "Amount", format: sar }, { key: "claims", label: "Claims" }]} height="auto">
-          <div className="pb-2 pt-2"><FunnelBars stages={v.funnel} colors={[ORD[1], ORD[2], ORD[3], ORD[4]]} /></div>
+          <div className="pb-2 pt-2"><FunnelBars stages={v.funnel} colors={[ORD[0], ORD[1], ORD[2], ORD[3]]} /></div>
         </ChartCard>
 
         <ChartCard title="Claim Status" note="Share of claims by where they stand with the payer." rows={v.status} columns={[{ key: "status", label: "Status" }, { key: "claims", label: "Claims" }, { key: "share", label: "Share", format: rate }]} height="auto">
@@ -103,7 +106,7 @@ function ClaimsTab() {
             <ul className="mt-4 divide-y divide-border/60 border-t border-border/60">
               {v.status.map((s) => (
                 <li key={s.status} className="flex items-center gap-2.5 py-2 text-[0.8125rem]">
-                  <span className="flex size-6 items-center justify-center rounded-md" style={{ color: STATUS_COLOR[s.status], background: `color-mix(in srgb, ${STATUS_COLOR[s.status]} 14%, transparent)` }} aria-hidden="true">{STATUS_ICON[s.status]}</span>
+                  <span className="flex size-6 items-center justify-center rounded-md" style={{ color: STATUS_INK[s.status], background: `color-mix(in srgb, ${STATUS_COLOR[s.status]} 14%, transparent)` }} aria-hidden="true">{STATUS_ICON[s.status]}</span>
                   <span className="flex-1 font-medium">{s.status}</span>
                   <span className="tabular-nums text-muted-foreground">{pct(s.share, 0)}</span>
                   <span className="w-14 text-right font-semibold tabular-nums">{num(s.claims)}</span>

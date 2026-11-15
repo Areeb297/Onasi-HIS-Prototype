@@ -1,8 +1,7 @@
 import * as React from "react";
 import { IconHistory, IconMessagePlus, IconMinimize, IconRefresh, IconSearch, IconTrash, IconX } from "@tabler/icons-react";
 import { Reply, askAssistant } from "@/components/ai/AssistantChat";
-import { BRAND_BTN, ChatThread, ChatWelcome, Composer, SuggestionChips, UserMessage } from "@/components/ai/chat-parts";
-import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
+import { BRAND_BTN, ChatThread, ChatWelcome, Composer, MarkTile, SuggestionChips, UserMessage } from "@/components/ai/chat-parts";
 import { cn } from "@/components/ui/primitives";
 import { SUGGESTED, patientChoices } from "@/lib/ai/assistant";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
@@ -16,8 +15,8 @@ import { loadChats, putChat, removeChat, saveChats, searchChats, titleOf, type C
  * findings have no action buttons, since the record may have changed. "Check Again" asks afresh.
  */
 
-const headerBtn = "inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#39EDD5]";
-const headerSelect = "h-9 max-w-52 truncate rounded-lg border border-white/15 bg-white/[0.07] px-2.5 text-sm text-white outline-none transition-colors hover:bg-white/[0.12] focus-visible:outline-2 focus-visible:outline-[#39EDD5] [&>option]:text-black";
+const headerBtn = "inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-[#032C26]/80 transition-colors hover:bg-[#032C26]/[0.07] hover:text-[#032C26] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring dark:text-foreground/80 dark:hover:bg-white/10 dark:hover:text-foreground";
+const headerSelect = "glass-pill h-9 max-w-52 truncate px-3.5 text-sm font-medium text-[#032C26] outline-none transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-ring dark:text-foreground dark:hover:bg-white/10 [&>option]:text-black";
 
 export type AssistantScope = "hospital" | "chart";
 
@@ -183,12 +182,12 @@ export function AssistantFullScreen({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#f6faf8] dark:bg-background">
-      {/* Header bar: the one solid Dark Green surface */}
-      <header className="flex shrink-0 items-center gap-3 border-b border-white/5 bg-[#032C26] px-3 py-2.5 text-white sm:px-5">
-        <OnasiAiMark size={28} />
+      {/* Header bar: Minty White with a faint mint wash, Dark Green ink, a thin border */}
+      <header className="flex shrink-0 items-center gap-3 border-b border-[#032C26]/10 bg-[linear-gradient(90deg,#DAF0E4_0%,#DAF0E4_55%,rgba(104,252,188,0.22)_100%)] px-3 py-2.5 text-[#032C26] sm:px-5 dark:border-white/10 dark:bg-[linear-gradient(90deg,#0b2420,#0c2c26)] dark:text-foreground">
+        <MarkTile size="sm" />
         <div className="min-w-0 flex-1 leading-tight">
           <h1 className="truncate text-base font-semibold">{ASSISTANT_NAME}</h1>
-          <p className="hidden truncate text-xs text-white/60 sm:block">Patients, results and visits</p>
+          <p className="hidden truncate text-xs text-[#032C26]/70 sm:block dark:text-muted-foreground">Patients, results and visits</p>
         </div>
         <div className="hidden items-center gap-2 lg:flex">
           {scopeSelect(headerSelect)}

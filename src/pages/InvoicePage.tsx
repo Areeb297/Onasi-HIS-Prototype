@@ -112,7 +112,7 @@ export function InvoicePage() {
       <KpiStrip label="Invoice amounts" className={cn("mb-4 grid-cols-2", insured ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
         <KpiTile icon={<IconReceipt2 stroke={1.75} />} label="Invoice Total" value={<Sar value={t.total} />} note={`${v.lines.length} ${v.lines.length === 1 ? "line" : "lines"}, VAT included`} />
         {insured && <KpiTile icon={<IconShieldCheck stroke={1.75} />} label="Insurance Share" value={<Sar value={t.insurancePayable} />} note={t.insuranceBalance > 0.004 ? <>Still to come <Sar value={t.insuranceBalance} /></> : "Settled by the payer"} tone={t.insuranceBalance > 0.004 ? undefined : "ok"} />}
-        <KpiTile icon={<IconCash stroke={1.75} />} label="Paid" value={<Sar value={t.paid} />} note={insured ? "Patient and payer together" : "By the patient"} tone="ok" />
+        <KpiTile icon={<IconCash stroke={1.75} />} label="Paid" value={<Sar value={t.paid} />} note={insured ? "Patient and payer together" : "By the patient"} tone={t.paid > 0.004 ? "ok" : undefined} />
         <KpiTile icon={<IconClockDollar stroke={1.75} />} label="Patient Due" value={<Sar value={t.patientBalance} />} note={t.patientBalance > 0.004 ? "Take the payment at the desk" : t.patientBalance < -0.004 ? "Refund owed to the patient" : "Nothing to collect"} tone={t.patientBalance > 0.004 ? "warn" : t.patientBalance < -0.004 ? undefined : "ok"} accent={t.patientBalance > 0.004 ? "warn" : "brand"} className={insured ? undefined : "col-span-2 lg:col-span-1"} />
       </KpiStrip>
 

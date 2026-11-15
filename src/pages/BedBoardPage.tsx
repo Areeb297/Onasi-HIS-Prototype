@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Ban, BedDouble, CalendarClock, CircleCheck, DoorOpen, LayoutGrid, Pencil, Plus, RotateCcw, Sparkles, Table2, UserRound } from "lucide-react";
 import { BedSetupDialog, canSetUpBeds } from "@/components/beds/BedSetupDialog";
-import { KpiStrip, KpiTile } from "@/components/ui/glass";
+import { GlassPillSwitch, KpiStrip, KpiTile } from "@/components/ui/glass";
 import { PatientFlagBadges } from "@/components/PatientBanner";
 import { useVisitActions } from "@/components/VisitActions";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
@@ -114,7 +114,7 @@ export function BedBoardPage() {
           return (
             <KpiTile key={s.id} icon={<Icon strokeWidth={1.75} />} label={s.label} value={count(s.id)} note={on ? "Shown below" : s.hint.replace(/\.$/, "")}
               tone={on ? "ok" : undefined} accent={s.id === "out" && count(s.id) ? "danger" : s.id === "discharging" && count(s.id) ? "warn" : "brand"}
-              className={on ? "ring-2 ring-[#03C1AC]/60" : undefined} onClick={() => setF("state", on ? "" : s.id)} />
+              className={on ? "outline-2 outline-offset-0 outline-[#03C1AC]" : undefined} onClick={() => setF("state", on ? "" : s.id)} />
           );
         })}
       </KpiStrip>
@@ -171,16 +171,9 @@ export function BedBoardPage() {
             </Select>
           </Field>
           <Field label="Bed Or Patient"><Input value={flt.q} placeholder="Bed number or name" onChange={(e) => setF("q", e.target.value)} /></Field>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <Button onClick={() => setFlt(NO_FILTERS)} disabled={!filtered} aria-label="Reset filters"><RotateCcw className="size-4" />Reset</Button>
-            <div role="group" aria-label="View" className="ms-auto flex rounded-md border border-border bg-muted p-0.5">
-              {(["cards", "table"] as const).map((v) => (
-                <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v} className={cn("flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-ring", view === v ? "bg-card shadow-sm" : "text-muted-foreground")}>
-                  {v === "cards" ? <LayoutGrid className="size-3.5" aria-hidden="true" /> : <Table2 className="size-3.5" aria-hidden="true" />}
-                  {v === "cards" ? "Cards" : "Table"}
-                </button>
-              ))}
-            </div>
+            <GlassPillSwitch label="View" size="sm" className="ms-auto" options={["Cards", "Table"] as const} value={view === "cards" ? "Cards" : "Table"} onChange={(v) => setView(v === "Cards" ? "cards" : "table")} />
           </div>
         </div>
       </Card>
