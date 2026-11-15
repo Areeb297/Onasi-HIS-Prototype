@@ -22,7 +22,9 @@ import { EVENT_BY_ID } from "@/lib/spec";
 import { bedLabel, nowLocal, patientName, updateEncounter, useHis } from "@/lib/store";
 import { visitMessages } from "@/lib/visitMessages";
 import { visitStatus } from "@/pages/WorklistPage";
-import { CHART_PANEL_ID, ChartTabs, chartTabDomId } from "@/components/emr/tabs/ChartTabs";
+import { CHART_PANEL_ID, ChartTabs, chartTabDomId, useFits } from "@/components/emr/tabs/ChartTabs";
+import { SplitPanes, useCanSplit } from "@/components/emr/tabs/SplitPanes";
+import { closePane, loadSplitPrefs, openBeside, other, readSplit, saveSplitPrefs, setPane, splitParams, swap, toggleSplit, type Pane, type Side, type Split } from "@/components/emr/tabs/split";
 import { VitalsSection } from "@/components/emr/VitalsSection";
 import { ChartOverview } from "@/components/emr/ChartOverview";
 import { AiBriefModal } from "@/components/ai/AiBriefModal";
@@ -43,7 +45,7 @@ import { ComplaintsSection } from "@/components/emr/ComplaintsSection";
 import { DiagnosisSection } from "@/components/emr/DiagnosisSection";
 import { audit } from "@/lib/audit";
 import { EMR_FORM_BY_ID } from "@/lib/emr-forms";
-import { EMR_MENU, tabFor, type NativeId, type TabId } from "@/lib/emr-menu";
+import { EMR_MENU, type NativeId } from "@/lib/emr-menu";
 import { breakGlass, can, hasGlass, useSession } from "@/lib/session";
 import { coverageView, normalizeDx } from "@/lib/chart-entries";
 import { caseOf, useFinancial } from "@/lib/nphies-financial";
@@ -99,10 +101,39 @@ const NATIVE: Record<NativeId, (p: { enc: Encounter }) => React.ReactElement> = 
 export function ChartPage() {
   const state = useHis();
   const route = useRoute();
-  useSession();
+  const { user } = useSession();
   const { act, dialogs } = useVisitActions();
   const visit = route.params.get("visit") ?? "";
-  const section = route.params.get("s") || "overview";
+  // One or two sections, read from the address: ?s=<first>&s2=<second>. A phone shows the first one only.
+  const canSplit = useCanSplit();
+  const inLink = readSplit(route.params);
+  const split: Split = canSplit ? inLink : { left: inLink.left, right: null };
+  const [active, setActive] = React.useState<Side>("left");
+  const [prefs, setPrefs] = React.useState(() => loadSplitPrefs(user.id));
+  const root = React.useRef<HTMLDivElement>(null);
+  const side: Side = split.right ? active : "left";
+  const remember = (patch: Partial<typeof prefs>) => setPrefs((p) => { const next = { ...p, ...patch }; saveSplitPrefs(user.id, next); return next; });
+  const show = (next: Split) => {
+    if (next.right) remember({ last: next.right });
+    else setActive("left");
+    navigate("/chart", { visit, ...splitParams(next) });
+  };
+  React.useEffect(() => setPrefs(loadSplitPrefs(user.id)), [user.id]);
+
+  // Ctrl+\ opens or closes the second pane; F6 moves between the panes. Only the chart that is on screen listens.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!canSplit || !root.current || root.current.offsetParent === null) return;
+      if (e.ctrlKey && e.key === "\\") { e.preventDefault(); show(toggleSplit(split, prefs.last)); }
+      if (e.key === "F6" && split.right) {
+        e.preventDefault();
+        const to = other(root.current.querySelector(`[data-pane="${side}"]`)?.contains(document.activeElement) ? side : other(side));
+        root.current.querySelector<HTMLElement>(`[data-pane="${to}"]`)?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   const enc = state.encounters.find((e) => e.visitNumber === visit);
   const patient = enc && state.patients.find((p) => p.id === enc.patientId);
   const gated = !!patient?.confidential && !hasGlass(patient.id);
@@ -126,16 +157,10 @@ export function ChartPage() {
   }
   if (gated) return <GlassGate patient={patient} />;
 
-  // The tab goes in the link only when the section sits in two tabs and the other one is meant (Laboratory under Orders).
-  const go = (s: string, t: TabId) => navigate("/chart", { visit, s, t: tabFor(s).id === t ? undefined : t });
   const onAct = (k: ActionKey) => (k === "CHART" ? undefined : act(k, enc.visitNumber));
-  const item = EMR_MENU.find((i) => i.id === section) ?? EMR_MENU[0];
-  const tab = tabFor(item.id, route.params.get("t"));
-  const Native = item.kind === "native" ? NATIVE[item.id as NativeId] : null;
-  const formDef = item.kind === "form" ? EMR_FORM_BY_ID[item.id] : undefined;
 
   return (
-    <div>
+    <div ref={root}>
       <ChartHeader enc={enc} patient={patient} />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -155,17 +180,42 @@ export function ChartPage() {
         )}
       </div>
 
-      <ChartTabs enc={enc} patient={patient} tab={tab} section={item.id} onPick={go} />
-      <div id={CHART_PANEL_ID} role="tabpanel" aria-labelledby={chartTabDomId(tab.id)} className="mt-4 min-w-0">
-        {item.id === "laboratory"
-          ? <LabSection key={tab.id} enc={enc} view={tab.id === "orders" ? "Laboratory Orders" : "Results"} />
-          : Native && <Native enc={enc} />}
-        {formDef && <EmrFormPage form={formDef} enc={enc} />}
-        {item.kind === "form" && !formDef && <Card><Empty>The form "{item.label}" is not defined yet.</Empty></Card>}
-      </div>
+      <ChartTabs enc={enc} patient={patient} split={split} canSplit={canSplit} onPick={(p) => show(setPane(split, side, p))} onBeside={(p) => { setActive("right"); show(openBeside(split, p)); }} />
+      {split.right ? (
+        <PaneFits enc={enc} patient={patient} open={[split.left.section, split.right.section]}>
+          {(paneFits) => (
+            <SplitPanes
+              visit={enc.visitNumber} split={{ left: split.left, right: split.right! }} active={side} ratio={prefs.ratio} fits={paneFits}
+              onRatio={(ratio) => remember({ ratio })} onActive={setActive}
+              onPick={(s, p) => show(setPane(split, s, p))} onSwap={() => show(swap(split))} onClose={(s) => show(closePane(split, s))}
+              render={(p) => <SectionBody enc={enc} pane={p} />}
+            />
+          )}
+        </PaneFits>
+      ) : (
+        <div id={CHART_PANEL_ID} role="tabpanel" aria-labelledby={chartTabDomId(split.left.tab)} className="mt-4 min-w-0">
+          <SectionBody enc={enc} pane={split.left} />
+        </div>
+      )}
       {dialogs}
     </div>
   );
+}
+
+/** One chart section, by its id. Laboratory opens on the order pad under Orders and on the results grid under Results. */
+function SectionBody({ enc, pane }: { enc: Encounter; pane: Pane }) {
+  const item = EMR_MENU.find((i) => i.id === pane.section) ?? EMR_MENU[0];
+  const Native = item.kind === "native" ? NATIVE[item.id as NativeId] : null;
+  const formDef = item.kind === "form" ? EMR_FORM_BY_ID[item.id] : undefined;
+  if (item.id === "laboratory") return <LabSection key={pane.tab} enc={enc} view={pane.tab === "orders" ? "Laboratory Orders" : "Results"} />;
+  if (Native) return <Native enc={enc} />;
+  if (formDef) return <EmrFormPage form={formDef} enc={enc} />;
+  return <Card><Empty>The form "{item.label}" is not defined yet.</Empty></Card>;
+}
+
+/** Gives the split panes the same "which forms fit this patient" rule the tab bar uses. */
+function PaneFits({ enc, patient, open, children }: { enc: Encounter; patient: Patient; open: string[]; children: (fits: (id: string) => boolean) => React.ReactElement }) {
+  return children(useFits(enc, patient, open));
 }
 
 /* ---------- Header: patient, vitals, allergies ---------- */
