@@ -7,6 +7,7 @@ import type {
   DispenseLine, DoseStep, Drug, DurationUnit, ItemStatus, Prescription, Reason, Regimen, RxCoverage, RxItem, RxState, SendRecord, UsageSetting,
 } from "./rx-types";
 import { getState } from "./store";
+import { demoOrders } from "./rcm-demo";
 
 /**
  * Own localStorage store for prescriptions, dispenses and the send log.
@@ -386,7 +387,19 @@ function seed(): RxState {
       mk(p7.visitNumber, "P007", p7.attending, "outpatient", "DRG001", { reason: { code: "R50.9", text: "Fever, unspecified" } }, "NRX10015838");
       mk(p7.visitNumber, "P007", p7.attending, "outpatient", "DRG033", { reason: { code: "R52", text: "Pain, unspecified" } }, "RQB10023757");
     }
-    s.counters.ref = 3;
+    // Past visits of the RCM sample patients (rcm-demo.ts): medicines prescribed and finished, so their claims carry them.
+    let ref = 3;
+    for (const d of demoOrders(encs)) {
+      for (const drugId of d.rx) {
+        ref += 1;
+        mk(d.visitNumber, d.patientId, d.doctor, d.inpatient ? "inpatient" : "outpatient", drugId, { status: "completed", ...(d.dx ? { reason: { ...d.dx } } : {}) }, `NRX2${String(ref).padStart(7, "0")}`);
+        const rx = s.prescriptions[s.prescriptions.length - 1];
+        rx.authoredAt = d.at;
+        rx.sentAt = d.at;
+        rx.lastSend = { at: d.at, http: 201, ok: true };
+      }
+    }
+    s.counters.ref = ref;
   } catch {
     /* seed is optional */
   }

@@ -21,7 +21,8 @@ describe("the demo prescriptions in a fresh profile", () => {
     const s = rx.getRx();
     expect(s.prescriptions.length).toBeGreaterThanOrEqual(3);
     expect(s.prescriptions.every((p) => p.sentAt)).toBe(true);
-    expect(new Set(s.prescriptions.map((p) => p.patientId))).toEqual(new Set(["P002", "P007"]));
+    // The seeded visits plus the past visits of the RCM sample patients (rcm-demo.ts).
+    expect([...new Set(s.prescriptions.map((p) => p.patientId))]).toEqual(expect.arrayContaining(["P002", "P007", "P101"]));
   });
 
   it("are made from the visits that exist at the first read, not from the visits at load time (the bug in a fresh profile)", async () => {

@@ -92,32 +92,36 @@ export interface DemoVisit {
   complaint: { code: string; text: string };
   dx: { code: string; text: string }[];
   target: DemoTarget;
+  /** Tests, exams and medicines of the visit (LOINC, imaging procedure codes, drug ids). lab.ts, radiology.ts and rx.ts seed them. */
+  orders?: { lab?: string[]; rad?: string[]; rx?: string[] };
+  /** The claim type, when it is not the one that follows the visit class. */
+  claimType?: "pharmacy";
 }
 
 /** Past visits, June to November 2026. Several patients come more than once. */
 export const DEMO_VISITS: DemoVisit[] = [
-  { pid: "P101", cls: "I", daysAgo: 160, hour: 9, los: 4, service: "MED", doctor: "D1001", reason: "Fever and productive cough", complaint: { code: "49727002", text: "Cough" }, dx: [D.pneumonia, D.dm2], target: "paid" },
-  { pid: "P101", cls: "O", daysAgo: 118, hour: 10, service: "OPD", doctor: "D1001", reason: "Diabetes follow up", complaint: { code: "", text: "Diabetes follow up" }, dx: [D.dm2, D.htn], target: "paid" },
-  { pid: "P101", cls: "O", daysAgo: 22, hour: 11, service: "OPD", doctor: "D1001", reason: "Blood pressure review", complaint: { code: "", text: "Blood pressure review" }, dx: [D.htn], target: "pended" },
-  { pid: "P102", cls: "O", daysAgo: 150, hour: 16, service: "OPD", doctor: "D1001", reason: "Sore throat and fever", complaint: { code: "162397003", text: "Sore throat" }, dx: [D.urti], target: "paid" },
-  { pid: "P102", cls: "E", daysAgo: 64, hour: 22, service: "ER", doctor: "D1003", reason: "Vomiting and diarrhoea", complaint: { code: "422400008", text: "Vomiting" }, dx: [D.gastro], target: "partial" },
-  { pid: "P103", cls: "I", daysAgo: 138, hour: 7, los: 6, service: "ORT", doctor: "D1005", reason: "Hip fracture after a fall", complaint: { code: "1912002", text: "Fall" }, dx: [D.hipFx, D.htn], target: "part-paid" },
-  { pid: "P103", cls: "O", daysAgo: 96, hour: 9, service: "ORT", doctor: "D1005", reason: "Hip fracture follow up", complaint: { code: "", text: "Hip fracture follow up" }, dx: [D.hipFx], target: "approved" },
-  { pid: "P104", cls: "O", daysAgo: 127, hour: 13, service: "OPD", doctor: "D1001", reason: "Painful urination", complaint: { code: "49650001", text: "Painful urination" }, dx: [D.uti], target: "rejected" },
-  { pid: "P104", cls: "E", daysAgo: 41, hour: 3, service: "ER", doctor: "D1003", reason: "Severe headache", complaint: { code: "25064002", text: "Headache" }, dx: [D.migraine], target: "paid" },
-  { pid: "P105", cls: "I", daysAgo: 112, hour: 18, los: 5, service: "MED", doctor: "D1001", reason: "Shortness of breath and leg swelling", complaint: { code: "267036007", text: "Shortness of breath" }, dx: [D.hf, D.ckd, D.htn], target: "partial" },
-  { pid: "P105", cls: "O", daysAgo: 70, hour: 10, service: "OPD", doctor: "D1001", reason: "Heart failure clinic", complaint: { code: "", text: "Heart failure clinic" }, dx: [D.hf], target: "part-paid" },
-  { pid: "P105", cls: "I", daysAgo: 12, hour: 8, los: 2, service: "MED", doctor: "D1001", reason: "Planned review of kidney function", complaint: { code: "", text: "Kidney function review" }, dx: [D.ckd], target: "pa-rejected" },
-  { pid: "P106", cls: "O", daysAgo: 104, hour: 11, service: "OPD", doctor: "D1001", reason: "Wheezing at night", complaint: { code: "56018004", text: "Wheezing" }, dx: [D.asthma], target: "approved" },
-  { pid: "P106", cls: "O", daysAgo: 30, hour: 12, service: "OPD", doctor: "D1001", reason: "Asthma review", complaint: { code: "", text: "Asthma review" }, dx: [], target: "rejected" },
-  { pid: "P107", cls: "E", daysAgo: 88, hour: 20, service: "ER", doctor: "D1003", reason: "Chest pain while playing football", complaint: { code: "29857009", text: "Chest pain" }, dx: [D.chest], target: "paid" },
-  { pid: "P107", cls: "O", daysAgo: 8, hour: 15, service: "OPD", doctor: "D1001", reason: "Low back pain", complaint: { code: "161891005", text: "Back pain" }, dx: [D.backPain], target: "submitted" },
-  { pid: "P108", cls: "O", daysAgo: 77, hour: 9, service: "OPD", doctor: "D1001", reason: "Cough for two weeks", complaint: { code: "49727002", text: "Cough" }, dx: [D.urti], target: "partial" },
-  { pid: "P108", cls: "I", daysAgo: 19, hour: 14, los: 3, service: "MED", doctor: "D1001", reason: "Worsening breathlessness", complaint: { code: "267036007", text: "Shortness of breath" }, dx: [D.copd], target: "rejected" },
-  { pid: "P109", cls: "O", daysAgo: 55, hour: 10, service: "OPD", doctor: "D1001", reason: "Sugar control review", complaint: { code: "", text: "Sugar control review" }, dx: [D.dm2], target: "approved" },
-  { pid: "P109", cls: "O", daysAgo: 4, hour: 9, service: "OPD", doctor: "D1001", reason: "Repeat prescription", complaint: { code: "", text: "Repeat prescription" }, dx: [D.dm2], target: "reviewed" },
-  { pid: "P110", cls: "E", daysAgo: 48, hour: 1, service: "ER", doctor: "D1003", reason: "Abdominal pain", complaint: { code: "21522001", text: "Abdominal pain" }, dx: [D.gastro], target: "pended" },
-  { pid: "P110", cls: "O", daysAgo: 2, hour: 17, service: "OPD", doctor: "D1001", reason: "Migraine follow up", complaint: { code: "", text: "Migraine follow up" }, dx: [], target: "drafted" },
+  { pid: "P101", cls: "I", daysAgo: 160, hour: 9, los: 4, service: "MED", doctor: "D1001", reason: "Fever and productive cough", complaint: { code: "49727002", text: "Cough" }, dx: [D.pneumonia, D.dm2], target: "paid", orders: { lab: ["58410-2", "1988-5", "24323-8"], rad: ["XCHES-PA"], rx: ["DRG006", "DRG001"] } },
+  { pid: "P101", cls: "O", daysAgo: 118, hour: 10, service: "OPD", doctor: "D1001", reason: "Diabetes follow up", complaint: { code: "", text: "Diabetes follow up" }, dx: [D.dm2, D.htn], target: "paid", orders: { lab: ["4548-4", "24331-1"], rx: ["DRG010", "DRG013"] } },
+  { pid: "P101", cls: "O", daysAgo: 22, hour: 11, service: "OPD", doctor: "D1001", reason: "Blood pressure review", complaint: { code: "", text: "Blood pressure review" }, dx: [D.htn], target: "pended", orders: { lab: ["2160-0"], rx: ["DRG013"] } },
+  { pid: "P102", cls: "O", daysAgo: 150, hour: 16, service: "OPD", doctor: "D1001", reason: "Sore throat and fever", complaint: { code: "162397003", text: "Sore throat" }, dx: [D.urti], target: "paid", orders: { rx: ["DRG004", "DRG001"] } },
+  { pid: "P102", cls: "E", daysAgo: 64, hour: 22, service: "ER", doctor: "D1003", reason: "Vomiting and diarrhoea", complaint: { code: "422400008", text: "Vomiting" }, dx: [D.gastro], target: "partial", orders: { lab: ["58410-2", "2951-2", "2823-3"], rx: ["DRG030"] } },
+  { pid: "P103", cls: "I", daysAgo: 138, hour: 7, los: 6, service: "ORT", doctor: "D1005", reason: "Hip fracture after a fall", complaint: { code: "1912002", text: "Fall" }, dx: [D.hipFx, D.htn], target: "part-paid", orders: { lab: ["58410-2", "5902-2", "6301-6"], rx: ["DRG028", "DRG002", "DRG001"] } },
+  { pid: "P103", cls: "O", daysAgo: 96, hour: 9, service: "ORT", doctor: "D1005", reason: "Hip fracture follow up", complaint: { code: "", text: "Hip fracture follow up" }, dx: [D.hipFx], target: "approved", orders: { rx: ["DRG001"] } },
+  { pid: "P104", cls: "O", daysAgo: 127, hour: 13, service: "OPD", doctor: "D1001", reason: "Painful urination", complaint: { code: "49650001", text: "Painful urination" }, dx: [D.uti], target: "rejected", orders: { lab: ["24357-6", "630-4"], rx: ["DRG009"] } },
+  { pid: "P104", cls: "E", daysAgo: 41, hour: 3, service: "ER", doctor: "D1003", reason: "Severe headache", complaint: { code: "25064002", text: "Headache" }, dx: [D.migraine], target: "paid", orders: { rad: ["CSKUH"], rx: ["DRG002"] } },
+  { pid: "P105", cls: "I", daysAgo: 112, hour: 18, los: 5, service: "MED", doctor: "D1001", reason: "Shortness of breath and leg swelling", complaint: { code: "267036007", text: "Shortness of breath" }, dx: [D.hf, D.ckd, D.htn], target: "partial", orders: { lab: ["58410-2", "2160-0", "2951-2"], rad: ["XCHES-PA"], rx: ["DRG029", "DRG014"] } },
+  { pid: "P105", cls: "O", daysAgo: 70, hour: 10, service: "OPD", doctor: "D1001", reason: "Heart failure clinic", complaint: { code: "", text: "Heart failure clinic" }, dx: [D.hf], target: "part-paid", orders: { lab: ["2160-0", "2823-3"], rx: ["DRG029"] } },
+  { pid: "P105", cls: "I", daysAgo: 12, hour: 8, los: 2, service: "MED", doctor: "D1001", reason: "Planned review of kidney function", complaint: { code: "", text: "Kidney function review" }, dx: [D.ckd], target: "pa-rejected", orders: { lab: ["2160-0", "3094-0"] } },
+  { pid: "P106", cls: "O", daysAgo: 104, hour: 11, service: "OPD", doctor: "D1001", reason: "Wheezing at night", complaint: { code: "56018004", text: "Wheezing" }, dx: [D.asthma], target: "approved", orders: { rx: ["DRG021", "DRG023"] } },
+  { pid: "P106", cls: "O", daysAgo: 30, hour: 12, service: "OPD", doctor: "D1001", reason: "Asthma review", complaint: { code: "", text: "Asthma review" }, dx: [], target: "rejected", orders: { rx: ["DRG021"] } },
+  { pid: "P107", cls: "E", daysAgo: 88, hour: 20, service: "ER", doctor: "D1003", reason: "Chest pain while playing football", complaint: { code: "29857009", text: "Chest pain" }, dx: [D.chest], target: "paid", orders: { lab: ["10839-9"], rad: ["XCHES-PA"] } },
+  { pid: "P107", cls: "O", daysAgo: 8, hour: 15, service: "OPD", doctor: "D1001", reason: "Low back pain", complaint: { code: "161891005", text: "Back pain" }, dx: [D.backPain], target: "submitted", orders: { rad: ["X-LSJ"], rx: ["DRG003"] } },
+  { pid: "P108", cls: "O", daysAgo: 77, hour: 9, service: "OPD", doctor: "D1001", reason: "Cough for two weeks", complaint: { code: "49727002", text: "Cough" }, dx: [D.urti], target: "partial", orders: { rad: ["XCHES-PA"], rx: ["DRG007"] } },
+  { pid: "P108", cls: "I", daysAgo: 19, hour: 14, los: 3, service: "MED", doctor: "D1001", reason: "Worsening breathlessness", complaint: { code: "267036007", text: "Shortness of breath" }, dx: [D.copd], target: "rejected", orders: { lab: ["58410-2", "1988-5"], rad: ["CCHES"], rx: ["DRG021", "DRG023"] } },
+  { pid: "P109", cls: "O", daysAgo: 55, hour: 10, service: "OPD", doctor: "D1001", reason: "Sugar control review", complaint: { code: "", text: "Sugar control review" }, dx: [D.dm2], target: "approved", orders: { lab: ["4548-4", "2345-7"], rx: ["DRG010", "DRG011"] } },
+  { pid: "P109", cls: "O", daysAgo: 4, hour: 9, service: "OPD", doctor: "D1001", reason: "Repeat prescription", complaint: { code: "", text: "Repeat prescription" }, dx: [D.dm2], target: "reviewed", orders: { rx: ["DRG010", "DRG011", "DRG017"] }, claimType: "pharmacy" },
+  { pid: "P110", cls: "E", daysAgo: 48, hour: 1, service: "ER", doctor: "D1003", reason: "Abdominal pain", complaint: { code: "21522001", text: "Abdominal pain" }, dx: [D.gastro], target: "pended", orders: { lab: ["58410-2"], rad: ["UABDO"], rx: ["DRG030"] } },
+  { pid: "P110", cls: "O", daysAgo: 2, hour: 17, service: "OPD", doctor: "D1001", reason: "Migraine follow up", complaint: { code: "", text: "Migraine follow up" }, dx: [], target: "drafted", orders: { rx: ["DRG002"] } },
 ];
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -179,3 +183,37 @@ export function demoTargetOf(enc: Pick<Encounter, "patientId" | "cls" | "reason"
 export function withDemoData<S extends { patients: Patient[]; encounters: Encounter[]; counters: { visit: number; patient: number } }>(state: S, now: Date = new Date()): S {
   return state.patients.some((p) => p.id === DEMO_MARK) ? state : addDemoData(state, now);
 }
+
+export interface DemoOrders {
+  visitNumber: string;
+  patientId: string;
+  doctor: string;
+  /** When the orders were placed: an hour into the visit. ISO time. */
+  at: string;
+  reason: string;
+  /** The principal diagnosis, given as the reason for each order so the claim lines link to it. */
+  dx?: { code: string; text: string };
+  inpatient: boolean;
+  lab: string[];
+  rad: string[];
+  rx: string[];
+}
+
+/** The orders of the demo visits present in the visit list, for the lab, radiology and pharmacy seeds. */
+export function demoOrders(encounters: Pick<Encounter, "visitNumber" | "patientId" | "cls" | "reason" | "admitAt" | "attending">[]): DemoOrders[] {
+  const out: DemoOrders[] = [];
+  for (const v of DEMO_VISITS) {
+    if (!v.orders) continue;
+    const e = encounters.find((x) => x.patientId === v.pid && x.cls === v.cls && x.reason === v.reason);
+    if (!e?.admitAt) continue;
+    out.push({
+      visitNumber: e.visitNumber, patientId: v.pid, doctor: e.attending, at: new Date(new Date(e.admitAt).getTime() + 3_600_000).toISOString(), reason: v.reason,
+      dx: v.dx[0] ? { ...v.dx[0] } : undefined, inpatient: v.cls === "I", lab: v.orders.lab ?? [], rad: v.orders.rad ?? [], rx: v.orders.rx ?? [],
+    });
+  }
+  return out;
+}
+
+/** The claim type a demo visit's claim was made as, when it differs from the default. */
+export const demoClaimTypeOf = (enc: Pick<Encounter, "patientId" | "cls" | "reason">): "pharmacy" | undefined =>
+  DEMO_VISITS.find((v) => v.pid === enc.patientId && v.cls === enc.cls && v.reason === enc.reason)?.claimType;

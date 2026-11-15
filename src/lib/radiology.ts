@@ -21,6 +21,7 @@ import {
   type RadStudy, type SendRecord,
 } from "./fhir/types";
 import type { Encounter, Patient } from "./model";
+import { demoOrders } from "./rcm-demo";
 import { coverageLabel } from "./order-fields";
 import { doctorIdForUser, personFromDoctor, personFromUser } from "./fhir/people";
 import { can, currentUser, type DemoUser } from "./session";
@@ -61,6 +62,22 @@ function seedRad(): RadState {
   add("P001", "XCHES-PA", "urgent", 120, "Fever and productive cough, rule out pneumonia", "Admitted yesterday. Oxygen saturation 94 percent.");
   add("P004", "XCHES-PA", "routine", 50, "Chest X-ray requested by clinic", "");
   add("P007", "UABDO", "routine", 30, "Abdominal pain", "Fever for two days.");
+  // Past visits of the RCM sample patients (rcm-demo.ts): exams done and reported, so their claims carry them.
+  for (const d of demoOrders(encs)) {
+    for (const code of d.rad) {
+      n += 1;
+      const done = new Date(new Date(d.at).getTime() + 40 * 60_000).toISOString();
+      orders.push({
+        id: `RO-${n}`, visitNumber: d.visitNumber, patientId: d.patientId, procCode: code, priority: "routine", indication: d.reason, clinicalInfo: "", orderedAt: d.at,
+        orderedById: d.doctor, status: "resulted", orderDirty: false, reportDirty: false, sends: [], diagnosis: d.dx,
+        study: { studyUid: `1.2.826.0.1.3680043.10.${n}`, accession: `ACC${n}`, performedStart: done, performedEnd: done, performedBy: "Sultan Alqahtani, RT", images: true, series: 1, instances: 2 },
+        report: {
+          technique: procByCode(code)?.technique ?? "", comparison: "None.", findings: "No acute abnormality seen.", impression: "No acute abnormality.", addendum: "",
+          critical: false, communicated: "", reportedAt: done, reportedById: "D1004", signedAt: done,
+        },
+      });
+    }
+  }
   return { orders, counter: n - 200000, rejectNext: false, viewed: {} };
 }
 

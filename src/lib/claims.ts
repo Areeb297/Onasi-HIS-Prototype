@@ -18,7 +18,7 @@ import type { RxState } from "./rx-types";
 import { can, currentUser } from "./session";
 import { getState, patientName } from "./store";
 import { claimReadiness, type ClaimLine as VitalClaimLine } from "./vitals";
-import { DEMO_MARK, demoTargetOf } from "./rcm-demo";
+import { DEMO_MARK, demoClaimTypeOf, demoTargetOf } from "./rcm-demo";
 import { activeRuleSet, evaluateConditions, ruleApplies, type ClaimFacts, type FieldMap, type Rule } from "./rule-engine";
 import { buildDemoClaims, type DemoClaimInput, type PayerAnswer } from "./rcm-demo-claims";
 
@@ -1049,7 +1049,7 @@ export function seedDemoClaims(now: Date = new Date()): number {
     if (lines.length) lines[lines.length - 1].insurance = round2(lines[lines.length - 1].insurance + m.totals.insuranceAmount - lines.reduce((n, l) => n + l.insurance, 0));
     inputs.push({
       visit: enc.visitNumber, target, cls: enc.cls === "I" ? "I" : enc.cls === "E" ? "E" : "O", start: new Date(start), end: enc.dischargeAt ? new Date(enc.dischargeAt) : now,
-      healthId: m.patient.healthId, payer: m.payer, net: m.net, insurance: m.totals.insuranceAmount, lines, dxCount: m.dx.length,
+      healthId: m.patient.healthId, payer: m.payer, net: m.net, insurance: m.totals.insuranceAmount, lines, dxCount: m.dx.length, authNeeded: m.authNeeded,
     });
   }
   if (!inputs.length) return 0;
@@ -1072,6 +1072,7 @@ export function seedDemoClaims(now: Date = new Date()): number {
     ];
     const d: ClaimDraft = {
       visit: i.visit, savedAt: st.savedAt, savedBy: biller, claimDate: sentDay, accountingDate: sentDay,
+      ...(demoClaimTypeOf(m.enc) ? { type: demoClaimTypeOf(m.enc) } : {}),
       ...(st.reviewedAt ? { reviewedAt: st.reviewedAt } : {}),
       ...(st.sentAt && soft.length ? { ack: { at: st.sentAt, by: biller, reason: "Height not measured at the visit; the payer accepts it for this plan.", ids: soft } } : {}),
       ...(sends.length ? { sends } : {}),

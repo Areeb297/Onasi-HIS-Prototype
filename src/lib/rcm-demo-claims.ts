@@ -54,6 +54,8 @@ export interface DemoClaimInput {
   insurance: number;
   lines: { seq: number; key: string; net: number; insurance: number }[];
   dxCount: number;
+  /** The visit needs prior authorization (inpatient, or at or above the charge limit). */
+  authNeeded: boolean;
 }
 
 export interface DemoClaimResult {
@@ -124,8 +126,8 @@ export function buildDemoClaims(input: DemoClaimInput[], now: Date, startSeq = 0
     if (c.target === "drafted") continue;
     if (c.target === "reviewed") { step.reviewedAt = new Date(cap(tEnd + 70 * MIN)).toISOString(); continue; }
 
-    // Prior authorization: every inpatient stay, and the visits that test it.
-    const needsPa = c.cls === "I" || c.target.startsWith("pa-");
+    // Prior authorization: every visit that needs it (inpatient, or at or above the charge limit), and the visits that test it.
+    const needsPa = c.authNeeded || c.cls === "I" || c.target.startsWith("pa-");
     if (needsPa) {
       const tPa = t0 + 35 * MIN;
       step.reviewedAt = new Date(tPa - 5 * MIN).toISOString();

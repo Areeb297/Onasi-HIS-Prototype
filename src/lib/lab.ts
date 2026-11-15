@@ -24,6 +24,7 @@ import {
   type Priority, type SendRecord,
 } from "./fhir/types";
 import type { Encounter, Patient } from "./model";
+import { demoOrders } from "./rcm-demo";
 import { coverageLabel } from "./order-fields";
 import { can, currentUser, type DemoUser } from "./session";
 import { getState, patientName } from "./store";
@@ -69,6 +70,24 @@ function seedLab(): LabState {
   add("P002", ["4548-4", "2345-7"], "routine", "received", 40, "Diabetes review");
   add("P003", ["10839-9", "58410-2"], "stat", "received", 15, "Chest pain");
   add("P007", ["24357-6", "630-4"], "routine", "received", 25, "Fever, check for urine infection");
+  // Past visits of the RCM sample patients (rcm-demo.ts): finished orders with results, so their claims carry the tests.
+  const sexOf = (pid: string) => getState().patients.find((p) => p.id === pid)?.sex ?? "M";
+  for (const d of demoOrders(encs)) {
+    if (!d.lab.length) continue;
+    n += 1;
+    const id = `LO-${n}`;
+    const order: LabOrder = {
+      id, visitNumber: d.visitNumber, patientId: d.patientId, codes: d.lab, placers: withPlacers(id, d.lab), priority: "routine", fasting: null, note: d.reason, orderedAt: d.at,
+      orderedById: d.doctor, status: "resulted", specimens: [], results: {}, orderDirty: false, resultDirty: false, sends: [], diagnosis: d.dx,
+    };
+    order.specimens = specimensFor(order, d.at, "Faisal Alqahtani, MLT");
+    for (const t of expand(order.codes)) {
+      order.results[t.code] = t.kind === "organism"
+        ? { code: t.code, value: ">100,000 CFU/mL", interp: "POS", status: "final", at: d.at, organism: ORGANISMS[0], sens: [{ key: "AMP", result: "R" }, { key: "CRO", result: "S" }, { key: "CIP", result: "S" }] }
+        : (() => { const value = sampleValue(t, sexOf(d.patientId)); return { code: t.code, value, interp: interpretValue(t, value, sexOf(d.patientId)), status: "final" as const, at: d.at }; })();
+    }
+    orders.push(order);
+  }
   return { orders, counter: n - 100000, rejectNext: false, viewed: {} };
 }
 

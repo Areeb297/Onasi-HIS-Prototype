@@ -96,4 +96,20 @@ describe("demo claims for the RCM screens", () => {
       expect(c.messages.every((m) => m.at <= NOW.toISOString())).toBe(true);
     }
   });
+  it("rows carry real tests, exams and medicines: several with 5 to 7 items, one Pharmacy claim, some with no diagnosis", () => {
+    seedDemoClaims(NOW);
+    const rows = billingRows(getFinancial(), NOW);
+    const big = rows.filter((r) => r.items.total >= 5 && r.items.total <= 7);
+    expect(big.length).toBeGreaterThanOrEqual(4);
+    expect(rows.some((r) => r.items.chips.lab > 0 && r.items.chips.rad > 0 && r.items.chips.rx > 0)).toBe(true);
+    expect(rows.some((r) => r.m.type === "pharmacy" && r.items.chips.rx >= 3)).toBe(true);
+    const noDx = rows.filter((r) => r.m.dx.length === 0);
+    expect(noDx.length).toBeGreaterThan(0);
+    expect(noDx.every((r) => r.findings.some((f) => f.rule === "no-principal-dx" && f.severity === "hard"))).toBe(true);
+    // A claim already with the payer had its prior authorization approved when it needed one.
+    for (const r of rows.filter((x) => x.m.fin.claim)) expect(r.findings.some((f) => f.rule === "auth-not-approved"), r.visit).toBe(false);
+    // Lines from orders link to the visit's principal diagnosis.
+    const paid = rows.find((r) => r.status.label === "Paid" && r.items.total >= 5)!;
+    expect(paid.m.lines.filter((l) => l.kind !== "visit").every((l) => l.dxSeqs.length > 0)).toBe(true);
+  });
 });

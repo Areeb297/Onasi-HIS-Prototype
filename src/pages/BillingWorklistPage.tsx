@@ -12,16 +12,20 @@ import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Button, Card, Empty, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
-  batchCheck, billingRows, CLAIM_TYPE_LABEL, EMPTY_WORKLIST_FILTER, filterRows, reviewSummary, runReview, sortRows, SUBTYPE_LABEL, useClaims, WORKLIST_SORT_LABEL,
+  batchCheck, billingRows, CLAIM_TYPE_LABEL, EMPTY_WORKLIST_FILTER, filterRows, resetClaims, reviewSummary, runReview, seedDemoClaims, sortRows, SUBTYPE_LABEL, useClaims, WORKLIST_SORT_LABEL,
   type ClaimType, type WorklistFilter, type WorklistRow, type WorklistSort,
 } from "@/lib/claims";
-import { syncInvoices, useInvoices } from "@/lib/invoice";
-import { useLab } from "@/lib/lab";
-import { useFinancial } from "@/lib/nphies-financial";
+import { resetInvoices, syncInvoices, useInvoices } from "@/lib/invoice";
+import { resetLab, useLab } from "@/lib/lab";
+import { resetLabExtras } from "@/lib/lab-extras";
+import { resetFinancial, useFinancial } from "@/lib/nphies-financial";
+import { resetRadExtras } from "@/lib/rad-extras";
+import { resetRcm } from "@/lib/rcm-cases";
+import { pushToast } from "@/lib/toast";
 import { allTransactions } from "@/lib/rcm-transactions";
-import { useRad } from "@/lib/radiology";
+import { resetRad, useRad } from "@/lib/radiology";
 import { navigate } from "@/lib/router";
-import { useRx } from "@/lib/rx";
+import { resetRx, useRx } from "@/lib/rx";
 import { can, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { useVitals } from "@/lib/vitals";
@@ -79,6 +83,15 @@ export function BillingWorklistPage() {
   const outstanding = all.filter((r) => r.m.fin.claim && r.m.fin.claim.status !== "rejected" && r.m.fin.claim.status !== "cancelled").reduce((n, r) => n + r.m.totals.insuranceBalance, 0);
 
   const reviewOf = reviewVisit ? all.find((r) => r.visit === reviewVisit) : undefined;
+  /** Brings back the sample claims with their tests, exams, medicines and payer answers. Work done on claims, orders and payments is lost. */
+  const resetDemo = () => {
+    if (!confirm("Reset the demo claims? Claims, lab, radiology and pharmacy orders, payer answers and payments go back to the sample data.")) return;
+    resetLab(); resetLabExtras(); resetRad(); resetRadExtras(); resetRx(true); resetFinancial(); resetInvoices(); resetClaims(); resetRcm();
+    const n = seedDemoClaims();
+    syncInvoices();
+    setSelected(new Set());
+    pushToast({ tone: "ok", text: `Demo claims reset. ${n} claims have their history again.` });
+  };
   const openReview = (v: string) => { runReview(v); setReviewVisit(v); };
 
   const filters = (drawer: boolean) => (
@@ -145,6 +158,10 @@ export function BillingWorklistPage() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => navigate("/transactions")}><IconSend stroke={1.75} /> Submitted Transactions</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => navigate("/nphies-financial")}><IconCash stroke={1.75} /> NPHIES Financial</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={!allowed} onSelect={resetDemo}>
+                  <RotateCcw /> <span><span className="block">Reset Demo Claims</span><span className="block text-xs text-muted-foreground">Sample claims, orders and payer answers</span></span>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button variant="primary" disabled={!allowed} title={allowed ? undefined : noRole} onClick={() => setDialog("create")}><Plus className="size-4" /> Create Claim / PreAuth</Button>
