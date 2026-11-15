@@ -1,6 +1,7 @@
 import * as React from "react";
 import { IconMessage2, IconShieldExclamation, IconShieldCheck } from "@tabler/icons-react";
-import { AlertTriangle, CheckCircle2, CircleAlert, Plus, Trash2 } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, CircleAlert, Droplet, HeartPulse, Plus, Scale, Thermometer, Trash2, Wind } from "lucide-react";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { ClassBadge } from "@/components/badges";
 import { RowActions, type ActionKey } from "@/components/RowActions";
 import { VisitDischargeProgress, useVisitActions } from "@/components/VisitActions";
@@ -164,17 +165,11 @@ export function ChartPage() {
 /* ---------- Header: patient, vitals, allergies ---------- */
 
 /** One vital sign in large type. An abnormal value gets an icon and a word, so color is never the only signal. */
-function Vital({ label, value, unit, flag }: { label: string; value?: string; unit: string; flag?: "High" | "Low" | "Check" }) {
+/** One vital sign as a frosted KPI tile. An out-of-range value turns the icon and note red. */
+function VitalTile({ icon, label, value, unit, flag }: { icon: React.ReactNode; label: string; value?: string; unit: string; flag?: "High" | "Low" | "Check" }) {
   return (
-    <div className="min-w-[76px]">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={cn("flex items-baseline gap-1 text-lg font-semibold tabular-nums", flag && "text-destructive")}>
-        {flag && <AlertTriangle className="size-4 self-center" aria-hidden="true" />}
-        {value ? value : <span className="text-muted-foreground">--</span>}
-        {value && <span className="text-xs font-normal text-muted-foreground">{unit}</span>}
-      </div>
-      {flag && <div className="text-xs font-semibold text-destructive">{flag}</div>}
-    </div>
+    <KpiTile dense icon={icon} label={label} accent={flag ? "danger" : "brand"} tone={flag ? "danger" : undefined} note={flag}
+      value={value ? <span className={cn("tabular-nums", flag && "text-destructive")}>{value} <span className="text-xs font-normal text-muted-foreground">{unit}</span></span> : <span className="text-muted-foreground">--</span>} />
   );
 }
 
@@ -195,7 +190,7 @@ function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
   const cover = coverageView(patient, new Date().toISOString().slice(0, 10), caseOf(enc.visitNumber).eligibility);
   return (
     <>
-      <div className="z-20 overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:sticky sm:top-[3.4rem]" role="region" aria-label="Patient header">
+      <div className="glass-card z-20 overflow-hidden rounded-2xl sm:sticky sm:top-[3.4rem]" role="region" aria-label="Patient header">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 border-l-4 border-l-move px-3 py-2.5 sm:px-4 sm:py-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-move/12 text-sm font-semibold text-move sm:size-11" aria-hidden="true">{initials}</span>
@@ -267,14 +262,16 @@ function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
         )}
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-border bg-card px-4 py-2.5" role="region" aria-label="Latest vital signs">
-        <Vital label="Blood pressure" value={v?.bp} unit="mmHg" flag={sbp < 90 ? "Low" : sbp > 180 ? "High" : undefined} />
-        <Vital label="Pulse" value={v?.pulse} unit="/min" flag={pulse > 100 ? "High" : pulse < 50 ? "Low" : undefined} />
-        <Vital label="Temperature" value={v?.temp} unit="°C" flag={temp >= 38 ? "High" : temp < 35.5 ? "Low" : undefined} />
-        <Vital label="Oxygen" value={v?.spo2} unit="%" flag={spo2 < 94 ? "Low" : undefined} />
-        <Vital label="Breathing" value={v?.rr} unit="/min" flag={rr > 24 ? "High" : rr < 10 ? "Low" : undefined} />
-        <Vital label="Weight" value={v?.weight} unit="kg" />
-        {!v && <span className="text-sm text-muted-foreground">No vital signs recorded yet.</span>}
+      <div role="region" aria-label="Latest vital signs" className="mt-2.5">
+        <KpiStrip className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          <VitalTile icon={<HeartPulse />} label="Blood Pressure" value={v?.bp} unit="mmHg" flag={sbp < 90 ? "Low" : sbp > 180 ? "High" : undefined} />
+          <VitalTile icon={<Activity />} label="Pulse" value={v?.pulse} unit="/min" flag={pulse > 100 ? "High" : pulse < 50 ? "Low" : undefined} />
+          <VitalTile icon={<Thermometer />} label="Temperature" value={v?.temp} unit="°C" flag={temp >= 38 ? "High" : temp < 35.5 ? "Low" : undefined} />
+          <VitalTile icon={<Droplet />} label="Oxygen" value={v?.spo2} unit="%" flag={spo2 < 94 ? "Low" : undefined} />
+          <VitalTile icon={<Wind />} label="Breathing" value={v?.rr} unit="/min" flag={rr > 24 ? "High" : rr < 10 ? "Low" : undefined} />
+          <VitalTile icon={<Scale />} label="Weight" value={v?.weight} unit="kg" />
+        </KpiStrip>
+        {!v && <p className="mt-1.5 text-xs text-muted-foreground">No vital signs recorded yet.</p>}
       </div>
     </>
   );
