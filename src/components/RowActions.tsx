@@ -70,12 +70,13 @@ const DANGER: ActionKey[] = ["A11", "A38"];
 /** Corrections and cancellations sit apart at the end of the menu, after a line. Only the cancellations are red. */
 const LAST: ActionKey[] = ["A45", ...DANGER];
 
-export function RowActions({ enc, onAct }: { enc: Encounter; onAct: (k: ActionKey) => void }) {
+/** `inChart`: the bar is shown inside the chart itself, so "Open Chart" would lead nowhere and is left out. */
+export function RowActions({ enc, onAct, inChart = false }: { enc: Encounter; onAct: (k: ActionKey) => void; inChart?: boolean }) {
   const dev = useDevMode();
   useSession();
   const allowed = can("adt.send");
   const all = actionsFor(enc).filter((a) => allowed || a.key === "CHART");
-  const chart = all.find((a) => a.key === "CHART");
+  const chart = inChart ? undefined : all.find((a) => a.key === "CHART");
   const rest = all.filter((a) => a.key !== "CHART");
   const next = suggested(enc, rest);
   const more = rest.filter((a) => a !== next);

@@ -27,6 +27,7 @@ import { ReclassifiedVisitsPage } from "@/pages/ReclassifiedVisitsPage";
 import { WardViewPage } from "@/pages/WardViewPage";
 import { BillingWorklistPage } from "@/pages/BillingWorklistPage";
 import { ClaimPage } from "@/pages/ClaimPage";
+import { MyPatientsPage } from "@/pages/MyPatientsPage";
 import { FieldMappingPage } from "@/pages/FieldMappingPage";
 import { RuleEnginePage } from "@/pages/RuleEnginePage";
 import { RuleUploadPage } from "@/pages/RuleUploadPage";
@@ -341,6 +342,7 @@ function Page() {
     case "/pharmacy/stock": return <PharmacyStockPage />;
     case "/billing": return <BillingWorklistPage />;
     case "/claim": return <ClaimPage />;
+    case "/my-patients": return <MyPatientsPage />;
     case "/rule-engine": return <RuleEnginePage />;
     case "/rule-engine/upload": return <RuleUploadPage />;
     case "/field-mapping": return <FieldMappingPage />;

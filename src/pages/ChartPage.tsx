@@ -140,7 +140,7 @@ export function ChartPage() {
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Visit actions</span>
-          <RowActions enc={{ ...enc, status: enc.status }} onAct={onAct} />
+          <RowActions enc={{ ...enc, status: enc.status }} onAct={onAct} inChart />
           <VisitDischargeProgress enc={enc} />
           <AiBriefModal enc={enc} patient={patient} />
         </div>

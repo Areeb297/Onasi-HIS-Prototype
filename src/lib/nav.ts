@@ -37,7 +37,10 @@ const m = (id: string, label: string, perm?: Permission): NavPage => ({ id, labe
 export const NAV: NavGroup[] = [
   {
     id: "dashboard", label: "Dashboard", icon: IconDeviceDesktopAnalytics, color: "text-admit",
-    pages: [{ id: "dashboard", label: "Dashboard", path: "/dashboard", perm: "patient.read" }],
+    pages: [
+      { id: "dashboard", label: "Dashboard", path: "/dashboard", perm: "patient.read" },
+      { id: "my-patients", label: "My Patients", path: "/my-patients", perm: "emr.read" },
+    ],
   },
   {
     id: "patient", label: "Patient", icon: IconUsers, color: "text-merge",
