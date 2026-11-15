@@ -11,7 +11,7 @@ import { can, currentUser } from "@/lib/session";
 import { activeDrugsOnVisit, addDraftItem, defaultUsage, getDrug, itemQuantity, updateItem, useRx } from "@/lib/rx";
 import { DRUG_BY_ID, DURATION_CHIPS, FREQUENCIES, QUICK_DRUG_IDS, ROUTES, drugLabel, searchDrugs } from "@/lib/rx-catalogue";
 import {
-  DOSE_TIMES, DURATION_UNITS, REGIMENS, daysBetween, endDateFor, fromDays, isControlled, itemDates, regimenDays, regimenOf, stepDates, toDays,
+  DOSE_TIMES, DURATION_UNITS, REGIMENS, daysBetween, endDateFor, fromDays, isControlled, itemDates, orderSteps, regimenDays, regimenOf, stepDates, toDays,
 } from "@/lib/rx-logic";
 import { checkSafety } from "@/lib/rx-safety";
 import { ageOf, measuresFor } from "@/lib/rx-send";
@@ -244,7 +244,7 @@ export function RxEditor({ enc, editing, onDone }: Props) {
       refills: own ? 0 : parseInt(refills, 10) || 0,
       reason: reasons[reasonIdx] ?? reasons[0],
       regimen,
-      schedule: regimen === "normal" ? undefined : steps,
+      schedule: regimen === "normal" ? undefined : orderSteps(regimen, steps),
       durationUnit: regimen === "normal" ? unit : ("d" as DurationUnit),
       startDate,
       coverage,

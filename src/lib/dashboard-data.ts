@@ -268,7 +268,7 @@ let CLAIMS_CACHE: Claim[] | null = null;
 /** Sample claims over the last two years. Day 0 is today; day 400 is 400 days ago. */
 export function sampleClaims(): Claim[] {
   if (CLAIMS_CACHE) return CLAIMS_CACHE;
-  const r = seeded(20_251_115);
+  const r = seeded(101);
   const payers = Object.keys(PAYER_PROFILE);
   const out: Claim[] = [];
   for (let day = 729; day >= 0; day--) {

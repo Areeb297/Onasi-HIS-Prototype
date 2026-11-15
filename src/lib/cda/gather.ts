@@ -1,4 +1,5 @@
 import { listSoap } from "../ai/soap-store";
+import { detailOf } from "../soap-details";
 import type { Encounter, Patient } from "../model";
 import { getFormRecords } from "../records";
 import { SERVICES } from "../reference-data";
@@ -61,6 +62,11 @@ export function gatherInput(type: DocType, enc: Encounter, patient: Patient, o: 
     now: o.now ?? new Date(),
     docId: o.docId, setId: o.setId, version: o.version, replaces: o.replaces, amendReason: o.amendReason, procIndex: o.procIndex,
     medications: medsForVisit(enc.visitNumber),
-    soap: listSoap(enc.visitNumber).filter((s) => s.status === "signed" || s.subjective || s.plan),
+    soap: listSoap(enc.visitNumber)
+      .filter((s) => s.status === "signed" || s.subjective || s.plan)
+      .map((s) => {
+        const d = detailOf(s.id);
+        return { ...s, hpi: d.hpi, pastMedical: d.pastMedical, familyHistory: d.familyHistory, socialHistory: d.socialHistory, vitalSigns: d.vitalSigns, physicalExam: d.physicalExam };
+      }),
   };
 }

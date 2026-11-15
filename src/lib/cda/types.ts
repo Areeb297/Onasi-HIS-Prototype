@@ -57,6 +57,13 @@ export interface SoapLite {
   objective: string;
   assessment: string;
   plan: string;
+  /** Structured sub-fields kept beside the note (soap-details.ts). Absent for a note saved before they existed. */
+  hpi?: string;
+  pastMedical?: string;
+  familyHistory?: string;
+  socialHistory?: string;
+  vitalSigns?: string;
+  physicalExam?: string;
 }
 
 /** Everything a builder needs. Pure data, so the builders are easy to test. */

@@ -5,13 +5,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { answerQuery, verifyStatusOf } from "@/lib/rx-verify";
 import { RxEditor } from "@/components/emr/RxEditor";
 import { Dialog } from "@/components/Dialog";
-import { Badge, Button, Card, CardHeader, Empty, Field, Input, Table, Td, Th } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardHeader, Empty, Field, Input, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
 import { dosageNarrative } from "@/lib/fhir/medication";
 import type { Encounter } from "@/lib/model";
 import { fillOf, getDrug, removeDraftItem, rxForVisit, setHeight, useRx } from "@/lib/rx";
-import { isPatientOwn, isRaqeebScope, itemDates, regimenOf, type PrescriptionAction } from "@/lib/rx-logic";
+import { isPatientOwn, isRaqeebScope, itemDates, regimenOf, unitCount, type PrescriptionAction } from "@/lib/rx-logic";
 import { measuresFor, planPrescription, sendPrescription } from "@/lib/rx-send";
 import type { ItemStatus, Prescription, RxItem } from "@/lib/rx-types";
 import { can } from "@/lib/session";
@@ -95,11 +95,15 @@ function MeasuresCard({ enc }: { enc: Encounter }) {
           )}
         </div>
       </div>
-      {missing && (
-        <div className="mx-4 mb-4 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs">
-          Add {[!m.heightCm && "height", !m.weightKg && "weight"].filter(Boolean).join(" and ")} before sending. nphies rejects a prescription without them.
-        </div>
-      )}
+      {/* Always one line tall. If this box came and went, the page below would jump when Height is saved on blur, and the first click on a drug would land on the wrong thing. */}
+      <div
+        role="status"
+        className={cn("mx-4 mb-4 rounded-md border px-3 py-2 text-xs", missing ? "border-warn/40 bg-warn/10" : "border-ok/40 bg-ok/10")}
+      >
+        {missing
+          ? `Add ${[!m.heightCm && "height", !m.weightKg && "weight"].filter(Boolean).join(" and ")} before sending. nphies rejects a prescription without them.`
+          : "Height and weight are recorded. They go with every prescription."}
+      </div>
     </Card>
   );
 }
@@ -217,7 +221,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
       )}
       <Table>
         <thead className="bg-muted/40">
-          <tr><Th>Drug</Th><Th>Dose And Duration</Th><Th>Source And Coverage</Th><Th>Quantity</Th><Th>Dispensed</Th><Th>Status And Pharmacy Check</Th><Th>Actions</Th></tr>
+          <tr><Th>Drug</Th><Th>Dose And Duration</Th><Th>Supply</Th><Th>Status And Pharmacy Check</Th><Th className="w-px whitespace-nowrap">Actions</Th></tr>
         </thead>
         <tbody>
           {rx.items.map((item) => {
@@ -229,30 +233,30 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
             const vstatus = verifyStatusOf(item, fill.dispensedTotal);
             return (
               <tr key={item.id} className="hover:bg-muted/30">
-                <Td>
+                <Td className="min-w-[11rem] align-top">
                   <div className="font-medium">{drug.generic} {drug.strengthValue} {drug.strengthUnit}</div>
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     {drug.form} <ControlBadge cls={drug.controlClass} />
                     {item.allergyOverride && <Badge tone="danger" className="whitespace-nowrap">Allergy Override</Badge>}
                     {dev && <span className="font-mono">{item.identifier} v{item.version}</span>}
                   </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1 text-xs">
+                    <Badge tone={item.patientProvided ? "move" : "neutral"}>{item.patientProvided ? "Provided By Patient" : "Pharmacy"}</Badge>
+                    {item.coverage ? <Badge tone={item.coverage === "Insured" ? "ok" : "warn"}>{item.coverage}</Badge> : <span className="text-muted-foreground">Coverage not recorded</span>}
+                  </div>
                 </Td>
-                <Td className="max-w-[280px] text-xs">
+                <Td className="min-w-[16rem] align-top text-xs">
                   {regimenOf(item) !== "normal" && <Badge tone="update" className="mb-1">{regimenOf(item) === "split" ? "Split Regimen" : "Taper Regimen"}</Badge>}
                   <div>{dosageNarrative(drug, item)}</div>
                   <div className="text-muted-foreground">{dateRange(item, rx.authoredAt)}</div>
                   {item.patientInstruction && <div className="text-muted-foreground">{item.patientInstruction}</div>}
                   <div className="text-muted-foreground">Reason: {item.reason.text}</div>
                 </Td>
-                <Td className="text-xs">
-                  <div className="flex flex-wrap gap-1">
-                    <Badge tone={item.patientProvided ? "move" : "neutral"}>{item.patientProvided ? "Provided By Patient" : "Pharmacy"}</Badge>
-                    {item.coverage ? <Badge tone={item.coverage === "Insured" ? "ok" : "warn"}>{item.coverage}</Badge> : <span className="text-muted-foreground">Coverage not recorded</span>}
-                  </div>
+                <Td className="whitespace-nowrap align-top tabular-nums">
+                  <div className="font-medium">{unitCount(item.quantity, drug.unit)}{item.refills > 0 && <span className="text-xs font-normal text-muted-foreground"> · {item.refills} repeats</span>}</div>
+                  <div className="text-xs text-muted-foreground">{item.patientProvided ? "Not dispensed" : sent ? `${round(fill.dispensedTotal)} of ${item.quantity} dispensed` : "Not dispensed yet"}</div>
                 </Td>
-                <Td className="whitespace-nowrap tabular-nums">{item.quantity} {drug.unit}{item.refills > 0 && <span className="text-xs text-muted-foreground"> · {item.refills} repeats</span>}</Td>
-                <Td className="whitespace-nowrap tabular-nums text-xs">{item.patientProvided ? "Not dispensed" : sent ? `${round(fill.dispensedTotal)} of ${item.quantity}` : "Not yet"}</Td>
-                <Td className="max-w-[260px]">
+                <Td className="min-w-[12rem] max-w-[18rem] align-top">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <ItemStatusBadge status={item.status} />
                     {sent && item.status === "active" && !fill.done && <VerifyBadge status={vstatus} />}
@@ -271,8 +275,8 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
                     </div>
                   )}
                 </Td>
-                <Td>
-                  <div className="inline-flex items-center gap-0.5 rounded-full border border-border bg-background px-1.5 py-1">
+                <Td className="w-px whitespace-nowrap align-top">
+                  <div className="inline-flex flex-nowrap items-center gap-0.5 rounded-full border border-border bg-background px-1.5 py-1">
                     {open && (
                       <PillBtn title={!canWrite ? "You do not have permission to prescribe" : noEdit ? "Dispensing has started. This item cannot be edited." : "Edit Item"} disabled={!canWrite || noEdit} onClick={() => onEdit(item.id)}>
                         <IconPencil className="size-[18px] text-update" stroke={1.75} />

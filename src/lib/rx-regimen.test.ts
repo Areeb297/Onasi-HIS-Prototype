@@ -103,7 +103,7 @@ describe("split and taper regimens", () => {
     const d = buildDosage(PARA, item, false) as Json[];
     expect(d).toHaveLength(3);
     expect((d[0].timing as Json).repeat).toEqual({ boundsDuration: { value: 5, unit: "day(s)", code: "d" } });
-    expect(String(d[0].text)).toContain("Split dosing: 2 tablet once daily in the morning for 5 days; and 1 tablet once daily at night for 5 days");
+    expect(String(d[0].text)).toContain("Split dosing: 2 tablets once daily in the morning for 5 days; and 1 tablet once daily at night for 5 days");
     expect(d.slice(1).map((x) => x.sequence)).toEqual([1, 1]);
     expect(d.slice(1).map((x) => ((x.timing as Json).repeat as Json).when)).toEqual([["MORN"], ["NIGHT"]]);
     expect(d.slice(1).map((x) => (x.doseAndRate as Json[])[0].doseQuantity)).toEqual([{ value: 2, unit: "tablet" }, { value: 1, unit: "tablet" }]);
@@ -119,7 +119,7 @@ describe("split and taper regimens", () => {
       { start: "2026-11-04", end: "2026-11-06" },
       { start: "2026-11-07", end: "2026-11-08" },
     ]);
-    expect(dosageNarrative(PARA, item)).toContain("Taper: 2 tablet 3 times daily for 3 days; then 1 tablet 3 times daily for 3 days; then 1 tablet twice daily for 2 days");
+    expect(dosageNarrative(PARA, item)).toContain("Taper: 2 tablets 3 times daily for 3 days; then 1 tablet 3 times daily for 3 days; then 1 tablet twice daily for 2 days");
     expect(orderLine(PARA, item).frequency).toContain("then");
   });
 
@@ -224,7 +224,7 @@ describe("older saved records still read", () => {
     expect(stepsOf(item)).toEqual([{ dose: 2, frequencyId: "TID", days: 3 }]);
     expect(itemDates(item, "2026-10-10T08:30:00.000Z")).toEqual({ start: "2026-10-10", end: "2026-10-12" });
     expect(isPatientOwn({ items: [item] })).toBe(false);
-    expect(dosageNarrative(PARA, item)).toBe("2 tablet, 3 times daily, by oral route, for 3 days");
+    expect(dosageNarrative(PARA, item)).toBe("2 tablets, 3 times daily, by oral route, for 3 days");
     const d = buildDosage(PARA, item, false) as Json[];
     expect(d).toHaveLength(2);
     expect(d[1].sequence).toBeUndefined();

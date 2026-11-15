@@ -97,9 +97,23 @@ export const DOSE_TIMES: { id: DoseTime; label: string }[] = [
 export const regimenOf = (item: Pick<RxItem, "regimen" | "schedule">): Regimen =>
   item.regimen && item.regimen !== "normal" && (item.schedule?.length ?? 0) > 0 ? item.regimen : "normal";
 
-/** The rows of an item. A normal item is one row made of its dose, frequency and duration. */
+/** A count with its unit: "1 tablet", "2 tablets", "5 mL". Used wherever a dose or a quantity is written out. */
+export const unitCount = (n: number, unit: string): string => `${n} ${unit}${n === 1 || unit === "mL" ? "" : "s"}`;
+
+/**
+ * Split rows in the order of the day: morning, noon, evening, night. A row with no time goes last. The order they were typed in
+ * does not matter. Taper phases keep their order, because they follow one another.
+ */
+export function orderSteps(regimen: Regimen, steps: DoseStep[]): DoseStep[] {
+  if (regimen !== "split") return steps;
+  const rank = (t: DoseTime | undefined) => (t ? DOSE_TIMES.findIndex((x) => x.id === t) : DOSE_TIMES.length);
+  return steps.map((s, i) => ({ s, i })).sort((a, b) => rank(a.s.time) - rank(b.s.time) || a.i - b.i).map((x) => x.s);
+}
+
+/** The rows of an item. A normal item is one row made of its dose, frequency and duration. Split rows come in the order of the day. */
 export function stepsOf(item: Pick<RxItem, "regimen" | "schedule" | "dose" | "frequencyId" | "durationDays">): DoseStep[] {
-  return regimenOf(item) === "normal" ? [{ dose: item.dose, frequencyId: item.frequencyId, days: item.durationDays }] : (item.schedule as DoseStep[]);
+  const reg = regimenOf(item);
+  return reg === "normal" ? [{ dose: item.dose, frequencyId: item.frequencyId, days: item.durationDays }] : orderSteps(reg, item.schedule as DoseStep[]);
 }
 
 /** Overall course: split rows run side by side (the longest counts), taper phases run one after the other (they add up). */

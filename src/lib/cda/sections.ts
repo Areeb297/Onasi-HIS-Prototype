@@ -74,7 +74,14 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
     if (!prim.length) return text(i.enc.reason, ["Encounter.reason"]);
     return dxPart(i, prim, "ref", ["Encounter.dx (first)"], `Reason for the visit: ${i.enc.reason || "not entered"}.`);
   },
-  hpi: (i) => text(i.soap?.find((s) => s.subjective)?.subjective ?? i.enc.notes[0]?.text ?? i.enc.reason, ["SOAP subjective", "Progress notes", "Encounter.reason"]),
+  hpi: (i) => {
+    // The history of the SOAP note: its subjective text, then the structured parts (HPI, past medical, family and social history).
+    const s = i.soap?.find((x) => x.subjective || x.hpi || x.pastMedical || x.familyHistory || x.socialHistory);
+    const lines = s
+      ? [s.subjective, s.hpi && `History of present illness: ${s.hpi}`, s.pastMedical && `Past medical history: ${s.pastMedical}`, s.familyHistory && `Family history: ${s.familyHistory}`, s.socialHistory && `Social history: ${s.socialHistory}`].filter((x): x is string => !!x && !!x.trim())
+      : [];
+    return lines.length ? { blocks: lines.map((l) => p(l)), sources: ["SOAP subjective and history details"] } : text(i.enc.notes[0]?.text ?? i.enc.reason, ["Progress notes", "Encounter.reason"]);
+  },
   admitdx: (i) => {
     const a = i.enc.dx.filter((d) => d.type === "A");
     return dxPart(i, a.length ? a : i.enc.dx.slice(0, 1), "adm", ["Encounter.dx (admitting)"]);
@@ -139,7 +146,12 @@ const BUILDERS: Record<string, (i: DocInput) => Part> = {
       sources: ["Encounter.vitals"],
     };
   },
-  exam: (i) => text(i.soap?.find((s) => s.objective)?.objective ?? "", ["SOAP objective"]),
+  exam: (i) => {
+    // The examination of the SOAP note: its objective text, then the vital signs and the physical examination typed in the details.
+    const s = i.soap?.find((x) => x.objective || x.vitalSigns || x.physicalExam);
+    const lines = s ? [s.objective, s.vitalSigns && `Vital signs: ${s.vitalSigns}`, s.physicalExam && `Physical examination: ${s.physicalExam}`].filter((x): x is string => !!x && !!x.trim()) : [];
+    return lines.length ? { blocks: lines.map((l) => p(l)), sources: ["SOAP objective and examination details"] } : text("", ["SOAP objective"]);
+  },
   careplan: (i) => {
     const plan = (i.soap ?? []).map((s) => s.plan).filter(Boolean);
     const tp = i.forms("treatment-plan").flatMap((r) => dump(r));

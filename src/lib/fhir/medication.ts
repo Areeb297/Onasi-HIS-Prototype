@@ -1,6 +1,6 @@
 import { OID, ORG_OID } from "../reference-data";
 import { FREQ_BY_ID, OVERRIDE_LABEL, ROUTE_BY_CODE, ROUTE_LABEL } from "../rx-catalogue";
-import { addDays, regimenOf, stepDates, stepsOf } from "../rx-logic";
+import { addDays, regimenOf, stepDates, stepsOf, unitCount } from "../rx-logic";
 import type { ControlClass, DoseStep, DoseTime, Drug, DispenseLine, Frequency, ItemStatus, RxItem, UsageSetting } from "../rx-types";
 
 /**
@@ -259,9 +259,9 @@ export function freqOf(id: string): Frequency {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const TIME_TEXT: Record<DoseTime, string> = { MORN: "in the morning", NOON: "at noon", EVE: "in the evening", NIGHT: "at night" };
 
-/** One row of a split or taper regimen in words, for example "2 tablet twice daily in the morning for 5 days". */
+/** One row of a split or taper regimen in words, for example "2 tablets twice daily in the morning for 5 days". */
 export function stepNarrative(drug: Drug, s: DoseStep): string {
-  return [`${s.dose} ${drug.unit}`, freqOf(s.frequencyId).label.toLowerCase(), s.time ? TIME_TEXT[s.time] : "", `for ${plural(s.days, "day")}`].filter(Boolean).join(" ");
+  return [unitCount(s.dose, drug.unit), freqOf(s.frequencyId).label.toLowerCase(), s.time ? TIME_TEXT[s.time] : "", `for ${plural(s.days, "day")}`].filter(Boolean).join(" ");
 }
 
 export function dosageNarrative(drug: Drug, item: RxItem, days: number = item.durationDays): string {
@@ -275,7 +275,7 @@ export function dosageNarrative(drug: Drug, item: RxItem, days: number = item.du
   }
   const f = freqOf(item.frequencyId);
   const parts = [
-    `${item.dose} ${drug.unit}`,
+    unitCount(item.dose, drug.unit),
     f.label.toLowerCase(),
     route,
     item.asNeeded ? "as needed" : "",
@@ -287,7 +287,7 @@ export function dosageNarrative(drug: Drug, item: RxItem, days: number = item.du
 export function itemNarrative(drug: Drug, item: RxItem): string {
   const lines = [
     `${drug.generic} ${drug.strengthValue} ${drug.strengthUnit} ${drug.form.toLowerCase()}. ${dosageNarrative(drug, item)}.`,
-    `Quantity ${item.quantity} ${drug.unit}. Repeats allowed ${item.refills}. Status ${item.status}.`,
+    `Quantity ${unitCount(item.quantity, drug.unit)}. Repeats allowed ${item.refills}. Status ${item.status}.`,
   ];
   if (item.patientInstruction) lines.push(`Instructions: ${item.patientInstruction}`);
   return lines.join(" ");

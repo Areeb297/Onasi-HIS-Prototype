@@ -1,6 +1,7 @@
 import * as React from "react";
 import { CornerDownLeft, Maximize2, Minimize2, Trash2 } from "lucide-react";
 import { AssistantChat } from "@/components/ai/AssistantChat";
+import { AssistantFullScreen } from "@/components/ai/AssistantFullScreen";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { OutputCard } from "@/components/ai/OutputCard";
 import { UseCaseIcon } from "@/components/ai/UseCaseIcon";
@@ -40,7 +41,7 @@ type Item =
 const SUGGESTIONS = ["Is there a drug allergy problem?", "What orders for chest pain?", "Give me a diabetes leaflet in Arabic", "What documentation is missing?"];
 
 export function AiAssistant() {
-  useSession();
+  const { user } = useSession();
   useRoute(); // re-render when the address changes, so the open chart stays current
   const st = useHis();
   const dev = useDevMode();
@@ -126,83 +127,8 @@ export function AiAssistant() {
     void run(ruleEngine.detectIntent(t), t);
   }
 
-  return (
+  const chartTools = (
     <>
-      {/* Launcher: a floating button fixed at the bottom right. The page content has bottom padding (in App.tsx) so its last row scrolls clear of it. The red number is the safety checks waiting on this chart. */}
-      <button
-        onClick={() => { setMode(enc ? "chart" : "hospital"); setOpen(true); }}
-        aria-label={`Ask ${ASSISTANT_NAME}${checks ? `. ${checks} safety checks on this chart.` : ""}`}
-        title={`Ask ${ASSISTANT_NAME} (Ctrl+J)`}
-        className="fixed bottom-5 right-5 z-40 flex size-12 items-center justify-center gap-2.5 rounded-full bg-[var(--brand-deep)] text-white md:size-auto md:py-2 md:pl-3 md:pr-4 shadow-lg ring-1 ring-white/10 transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-primary dark:text-primary-foreground"
-      >
-        <span className="relative">
-          <OnasiAiMark size={24} />
-          {checks > 0 && (
-            <span className="absolute -right-2 -top-2 flex size-4 items-center justify-center rounded-full bg-destructive text-xs font-bold text-white">{checks}</span>
-          )}
-        </span>
-        <span className="hidden text-sm font-semibold md:inline">Ask {ASSISTANT_NAME}</span>
-      </button>
-
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent
-          side="right"
-          className={cn("w-full gap-0", full ? "max-w-none sm:max-w-none" : "sm:max-w-xl")}
-          aria-describedby="nabd-desc"
-          onEscapeKeyDown={(e) => { if (full) { e.preventDefault(); setFull(false); } }}
-        >
-          <SheetHeader className="gap-3 border-b border-border pr-12">
-            <SheetTitle className="sr-only">Ask {ASSISTANT_NAME}</SheetTitle>
-            <SheetDescription id="nabd-desc" className="sr-only">Ask about the hospital or the open chart. A clinician must review every answer.{dev ? ` ${SIM_NOTE}` : ""}</SheetDescription>
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-xl bg-foreground text-background">
-                <OnasiAiMark size={28} thinking={busy} />
-              </div>
-              <div className="leading-tight">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-lg font-semibold tracking-tight">{ASSISTANT_NAME}</span>
-                  <span dir="rtl" lang="ar" className="text-base text-muted-foreground">{ASSISTANT_NAME_AR}</span>
-                </div>
-                <div className="text-xs text-muted-foreground">{full ? "Esc returns to the side panel." : "Ctrl+J opens and closes it."}</div>
-              </div>
-              <span className="ms-auto flex items-center gap-2">
-                {dev && <span className="rounded-sm border border-dashed border-warn px-1.5 py-0.5 text-xs font-semibold text-warn" title={SIM_NOTE}>Simulated</span>}
-                <Button size="sm" variant="ghost" onClick={() => setFull(!full)} aria-pressed={full} title={full ? "Exit Full Screen (Esc)" : "Expand to full screen"} aria-label={full ? "Exit Full Screen" : "Expand"}>
-                  {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-                  <span className="hidden sm:inline">{full ? "Exit Full Screen" : "Expand"}</span>
-                </Button>
-              </span>
-            </div>
-            <div role="tablist" aria-label="What to ask about" className="flex rounded-lg border border-border bg-muted p-0.5">
-              <button type="button" role="tab" aria-selected={mode === "hospital"} onClick={() => setMode("hospital")} className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", mode === "hospital" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>The Hospital</button>
-              <button type="button" role="tab" aria-selected={mode === "chart"} disabled={!enc} title={enc ? undefined : "Open a patient chart first"} onClick={() => setMode("chart")} className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50", mode === "chart" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                This Chart{checks > 0 && <span className="ms-1.5 rounded-full bg-destructive px-1.5 py-0.5 text-xs font-bold text-white">{checks}</span>}
-              </button>
-            </div>
-            {mode === "chart" && (
-              <>
-            <div className={cn("border-s-2 ps-3 text-sm", enc ? "border-admit" : "border-border text-muted-foreground")}>
-                {enc && patient ? (
-                  <>
-                    <strong>{restricted ? "Confidential chart" : fullName(patient)}</strong>
-                    <span className="text-muted-foreground"> · visit {enc.visitNumber}</span>
-                    {checks > 0 && <span className="ms-2 rounded bg-destructive/12 px-1.5 py-0.5 text-xs font-medium text-destructive">{checks} safety {checks === 1 ? "check" : "checks"}</span>}
-                  </>
-                ) : (
-                  "No chart is open. Open a patient chart to use the chart tools."
-                )}
-              </div>
-              {dev && <p className="text-xs leading-snug text-muted-foreground">{SIM_NOTE}</p>}
-              </>
-            )}
-          </SheetHeader>
-
-          {mode === "hospital" || !enc ? (
-            <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-3", wide)}>
-              <AssistantChat compact firstQuestion={question} />
-            </div>
-          ) : (
-            <>
           {/* Use case tiles */}
           <div className={cn("grid grid-cols-3 gap-2 border-b border-border p-3", full && "sm:grid-cols-6", wide)} role="group" aria-label="What I can do">
             {USE_CASES.map((u) => (
@@ -274,7 +200,105 @@ export function AiAssistant() {
               <Trash2 className="size-4" />
             </Button>
           </form>
+    </>
+  );
+
+  return (
+    <>
+      {/* Launcher: a floating button fixed at the bottom right. The page content has bottom padding (in App.tsx) so its last row scrolls clear of it. The red number is the safety checks waiting on this chart. */}
+      <button
+        onClick={() => { setMode(enc ? "chart" : "hospital"); setOpen(true); }}
+        aria-label={`Ask ${ASSISTANT_NAME}${checks ? `. ${checks} safety checks on this chart.` : ""}`}
+        title={`Ask ${ASSISTANT_NAME} (Ctrl+J)`}
+        className="fixed bottom-5 right-5 z-40 flex size-12 items-center justify-center gap-2.5 rounded-full bg-[var(--brand-deep)] text-white md:size-auto md:py-2 md:pl-3 md:pr-4 shadow-lg ring-1 ring-white/10 transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-primary dark:text-primary-foreground"
+      >
+        <span className="relative">
+          <OnasiAiMark size={24} />
+          {checks > 0 && (
+            <span className="absolute -right-2 -top-2 flex size-4 items-center justify-center rounded-full bg-destructive text-xs font-bold text-white">{checks}</span>
+          )}
+        </span>
+        <span className="hidden text-sm font-semibold md:inline">Ask {ASSISTANT_NAME}</span>
+      </button>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent
+          side="right"
+          className={cn("w-full gap-0", full ? "max-w-none sm:max-w-none" : "sm:max-w-xl")}
+          aria-describedby="nabd-desc"
+          showCloseButton={!full}
+          onEscapeKeyDown={(e) => { if (full) { e.preventDefault(); setFull(false); } }}
+        >
+          {full && (
+            <>
+              <SheetTitle className="sr-only">Ask {ASSISTANT_NAME}</SheetTitle>
+              <SheetDescription id="nabd-desc" className="sr-only">Ask about the hospital or the open chart. A clinician must review every answer.</SheetDescription>
+              <AssistantFullScreen
+                userId={user.id}
+                firstQuestion={question}
+                scope={mode === "chart" && enc ? "chart" : "hospital"}
+                onScope={setMode}
+                chartLabel={enc && patient ? `${restricted ? "Confidential chart" : fullName(patient)}, visit ${enc.visitNumber}` : ""}
+                chartTools={chartTools}
+                onExitFull={() => setFull(false)}
+                onClose={() => setOpen(false)}
+              />
             </>
+          )}
+          {!full && (
+          <SheetHeader className="gap-3 border-b border-border pr-12">
+            <SheetTitle className="sr-only">Ask {ASSISTANT_NAME}</SheetTitle>
+            <SheetDescription id="nabd-desc" className="sr-only">Ask about the hospital or the open chart. A clinician must review every answer.{dev ? ` ${SIM_NOTE}` : ""}</SheetDescription>
+            <div className="flex items-center gap-3">
+              <div className="flex size-11 items-center justify-center rounded-xl bg-foreground text-background">
+                <OnasiAiMark size={28} thinking={busy} />
+              </div>
+              <div className="leading-tight">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-lg font-semibold tracking-tight">{ASSISTANT_NAME}</span>
+                  <span dir="rtl" lang="ar" className="text-base text-muted-foreground">{ASSISTANT_NAME_AR}</span>
+                </div>
+                <div className="text-xs text-muted-foreground">{full ? "Esc returns to the side panel." : "Ctrl+J opens and closes it."}</div>
+              </div>
+              <span className="ms-auto flex items-center gap-2">
+                {dev && <span className="rounded-sm border border-dashed border-warn px-1.5 py-0.5 text-xs font-semibold text-warn" title={SIM_NOTE}>Simulated</span>}
+                <Button size="sm" variant="ghost" onClick={() => setFull(!full)} aria-pressed={full} title={full ? "Exit Full Screen (Esc)" : "Expand to full screen"} aria-label={full ? "Exit Full Screen" : "Expand"}>
+                  {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                  <span className="hidden sm:inline">{full ? "Exit Full Screen" : "Expand"}</span>
+                </Button>
+              </span>
+            </div>
+            <div role="tablist" aria-label="What to ask about" className="flex rounded-lg border border-border bg-muted p-0.5">
+              <button type="button" role="tab" aria-selected={mode === "hospital"} onClick={() => setMode("hospital")} className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", mode === "hospital" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>The Hospital</button>
+              <button type="button" role="tab" aria-selected={mode === "chart"} disabled={!enc} title={enc ? undefined : "Open a patient chart first"} onClick={() => setMode("chart")} className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50", mode === "chart" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                This Chart{checks > 0 && <span className="ms-1.5 rounded-full bg-destructive px-1.5 py-0.5 text-xs font-bold text-white">{checks}</span>}
+              </button>
+            </div>
+            {mode === "chart" && (
+              <>
+            <div className={cn("border-s-2 ps-3 text-sm", enc ? "border-admit" : "border-border text-muted-foreground")}>
+                {enc && patient ? (
+                  <>
+                    <strong>{restricted ? "Confidential chart" : fullName(patient)}</strong>
+                    <span className="text-muted-foreground"> · visit {enc.visitNumber}</span>
+                    {checks > 0 && <span className="ms-2 rounded bg-destructive/12 px-1.5 py-0.5 text-xs font-medium text-destructive">{checks} safety {checks === 1 ? "check" : "checks"}</span>}
+                  </>
+                ) : (
+                  "No chart is open. Open a patient chart to use the chart tools."
+                )}
+              </div>
+              {dev && <p className="text-xs leading-snug text-muted-foreground">{SIM_NOTE}</p>}
+              </>
+            )}
+          </SheetHeader>
+          )}
+
+          {full ? null : mode === "hospital" || !enc ? (
+            <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-3", wide)}>
+              <AssistantChat compact firstQuestion={question} />
+            </div>
+          ) : (
+            chartTools
           )}
         </SheetContent>
       </Sheet>

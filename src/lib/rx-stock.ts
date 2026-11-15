@@ -1,4 +1,5 @@
 import type { Dispense, Drug } from "./rx-types";
+import { unitCount } from "./rx-logic";
 import { extraBatchesFor } from "./stock-store";
 
 /**
@@ -75,7 +76,7 @@ export function fmtExpiry(iso: string | undefined): string {
 
 export const isExpired = (b: Pick<Batch, "expiry">, today: Date = new Date()): boolean => b.expiry < today.toISOString().slice(0, 10);
 
-const units = (n: number, unit: string) => `${round(n)} ${unit}${n === 1 || unit === "mL" ? "" : "s"}`;
+const units = (n: number, unit: string) => unitCount(round(n), unit);
 
 /**
  * Says in words why the stock does not cover the quantity, and what to do. Null when the batch covers it.

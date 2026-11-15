@@ -1,7 +1,7 @@
 import { audit } from "./audit";
 import { fillOf, getDrug, getRx, setRx } from "./rx";
 import { FREQ_BY_ID, ROUTE_LABEL } from "./rx-catalogue";
-import { DOSE_TIMES, isControlled, isRaqeebScope, regimenDailyAmount, regimenOf, stepsOf } from "./rx-logic";
+import { DOSE_TIMES, isControlled, isRaqeebScope, regimenDailyAmount, regimenOf, stepsOf, unitCount } from "./rx-logic";
 import { checkSafety, type SafetyFinding, type SafetyInput } from "./rx-safety";
 import { sendDispense, type DispenseRequest, type SendOutcome } from "./rx-send";
 import { batchesFor, stockProblem } from "./rx-stock";
@@ -184,7 +184,7 @@ export function orderLine(
   drug: Drug,
   item: Pick<RxItem, "dose" | "route" | "frequencyId" | "durationDays" | "asNeeded"> & Partial<Pick<RxItem, "regimen" | "schedule">>,
 ): { dose: string; route: string; frequency: string; duration: string } {
-  const doseText = (n: number) => `${n} ${drug.unit}${n === 1 || drug.unit === "mL" ? "" : "s"} (${r2(n * drug.perUnit)} ${unitOf(drug)})`;
+  const doseText = (n: number) => `${unitCount(n, drug.unit)} (${r2(n * drug.perUnit)} ${unitOf(drug)})`;
   const reg = regimenOf(item);
   const days = `${item.durationDays} day${item.durationDays === 1 ? "" : "s"}`;
   if (reg !== "normal") {

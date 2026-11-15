@@ -7,7 +7,8 @@ import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { Badge, Button, cn } from "@/components/ui/primitives";
 import { approveTask, checkNow, dismissTask, isShortcut, runAction, useAgentWork } from "@/lib/ai/agent-work";
 import { AGENT_BY_ID, type Proposal } from "@/lib/ai/agents";
-import { SUGGESTED, answer, patientChoices, type Answer } from "@/lib/ai/assistant";
+import { SUGGESTED, answer, patientChoices } from "@/lib/ai/assistant";
+import { ABOUT_QUESTIONS, type ChatTurn } from "@/lib/ai/chat-history";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
 import { audit } from "@/lib/audit";
 
@@ -16,12 +17,7 @@ import { audit } from "@/lib/audit";
  * A finding that changes a record carries an Approve button. Nothing is changed by asking.
  */
 
-interface Turn {
-  id: number;
-  at: string;
-  question: string;
-  answer: Answer;
-}
+type Turn = ChatTurn;
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
@@ -56,16 +52,8 @@ function ReplyActions({ turn, onAgain }: { turn: Turn; onAgain: () => void }) {
 
 const STEP_MS = 380;
 
-/** Questions staff ask before they trust an assistant, answered plainly. */
-const FAQ: { q: string; a: string }[] = [
-  { q: "What can I ask?", a: "Three things for now: are there critical results the doctor has not seen, who can go home today and what still blocks them, and the shift handoff. You can name a patient or choose one in the About box to narrow the answer." },
-  { q: "Does it change anything in the record?", a: "No. It reads the record and points at what needs you. The Critical Result Chaser also notifies the attending doctor by itself, which changes nothing in the record. Where a step would send something, it shows an Approve button and waits." },
-  { q: "Where do the answers come from?", a: "From the live record in this system: the visit lists, charts, orders, results and the NPHIES send list. Each answer shows what was read before it shows what was found. It does not use the internet or outside data." },
-  { q: "Which patients can it read?", a: "The same ones you can. It works with your role and permissions. Confidential charts stay closed unless you have broken the glass, and it will not match a confidential patient by name." },
-  { q: "Is this a language model?", a: "Not in this version. The checks are fixed rules and the chat matches your words to one of its topics. When a question is outside them it says so. A language model can be connected later behind the same screens." },
-  { q: "Who can see what I asked?", a: "Every question, approval and dismissal is written to the audit trail with your name and the time. Compliance staff can review it on the Audit page." },
-  { q: "Can it give a diagnosis or choose a treatment?", a: "No. It finds missing data, waiting results and late steps. Clinical decisions stay with the doctor and the nurse. It is not a medical device." },
-];
+/** Questions staff ask before they trust an assistant, answered plainly. Shared with the full screen view. */
+const FAQ = ABOUT_QUESTIONS;
 
 function Finding({ p }: { p: Proposal }) {
   const work = useAgentWork();
@@ -105,7 +93,8 @@ function Finding({ p }: { p: Proposal }) {
   );
 }
 
-function Reply({ turn, live, onAsk, onSettled }: { turn: Turn; live: boolean; onAsk: (q: string) => void; onSettled: () => void }) {
+/** One reply: what the agent read, then what it found. `live` plays the reading steps one by one. */
+export function Reply({ turn, live, onAsk, onSettled }: { turn: Turn; live: boolean; onAsk: (q: string) => void; onSettled: () => void }) {
   const a = turn.answer;
   const steps = a.run?.steps ?? [];
   const [shown, setShown] = React.useState(live ? 0 : steps.length);

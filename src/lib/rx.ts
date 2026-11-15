@@ -18,7 +18,12 @@ const KEY = "onasi-emr-rx-v2";
 const OLD_KEYS = ["onasi-emr-rx-v1"];
 const EMPTY: RxState = { prescriptions: [], dispenses: [], sends: [], heights: {}, counters: { rx: 0, item: 0, disp: 0, ref: 0 } };
 
-let state: RxState = load();
+/**
+ * Read from storage, or seeded with the demo prescriptions, on the first read and not when this file loads. The demo data needs
+ * the visit store, which may not be ready yet at load time, and a brand new browser then started with an empty worklist.
+ */
+let loaded: RxState | undefined;
+const read = (): RxState => (loaded ??= load());
 const listeners = new Set<() => void>();
 
 function load(): RxState {
@@ -34,20 +39,20 @@ function load(): RxState {
 
 function persist() {
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    localStorage.setItem(KEY, JSON.stringify(read()));
   } catch {
     /* ignore */
   }
 }
 
 export function setRx(next: RxState) {
-  state = next;
+  loaded = next;
   persist();
   listeners.forEach((l) => l());
 }
 
 export function getRx(): RxState {
-  return state;
+  return read();
 }
 
 export function useRx(): RxState {
@@ -56,8 +61,8 @@ export function useRx(): RxState {
       listeners.add(cb);
       return () => listeners.delete(cb);
     },
-    () => state,
-    () => state,
+    read,
+    read,
   );
 }
 
@@ -165,7 +170,7 @@ function settleRegimen<T extends Pick<RxItem, "regimen" | "schedule" | "dose" | 
 export function addDraftItem(enc: Pick<Encounter, "visitNumber" | "patientId" | "attending">, n: NewItem): { rx: Prescription; item: RxItem } {
   const drug = getDrug(n.drugId);
   const controlled = isControlled(drug.controlClass);
-  const s = state;
+  const s = read();
   const counters = { ...s.counters };
   counters.item += 1;
   const manual = n.quantity !== undefined && n.quantity > 0;
@@ -259,7 +264,7 @@ export interface ItemPatch {
 
 /** Change an item. If the prescription was sent, it becomes "changes not sent" and the item version goes up. */
 export function updateItem(rxId: string, itemId: string, patch: ItemPatch) {
-  const s = state;
+  const s = read();
   const rx = s.prescriptions.find((p) => p.id === rxId);
   if (!rx) return;
   const items = rx.items.map((i) => {
@@ -279,7 +284,7 @@ export function updateItem(rxId: string, itemId: string, patch: ItemPatch) {
 
 /** Only items that were never sent can be removed. Sent items are cancelled or stopped instead. */
 export function removeDraftItem(rxId: string, itemId: string) {
-  const s = state;
+  const s = read();
   const rx = s.prescriptions.find((p) => p.id === rxId);
   if (!rx || rx.sentAt) return;
   const items = rx.items.filter((i) => i.id !== itemId);
@@ -289,7 +294,7 @@ export function removeDraftItem(rxId: string, itemId: string) {
 }
 
 export function setHeight(visit: string, patientId: string, cm: number) {
-  setRx({ ...state, heights: { ...state.heights, [visit]: cm } });
+  setRx({ ...read(), heights: { ...read().heights, [visit]: cm } });
   audit("update", "Body height", { patient: patientId, detail: `Visit ${visit}. ${cm} cm` });
 }
 
@@ -309,8 +314,8 @@ export function addSendRecord(s: RxState, rec: SendRecord): RxState {
 }
 
 export function nextCounter(key: keyof RxState["counters"]): number {
-  const counters = { ...state.counters, [key]: state.counters[key] + 1 };
-  state = { ...state, counters };
+  const counters = { ...read().counters, [key]: read().counters[key] + 1 };
+  loaded = { ...read(), counters };
   return counters[key];
 }
 
