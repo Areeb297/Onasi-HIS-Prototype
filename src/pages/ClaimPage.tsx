@@ -8,8 +8,8 @@ import { Sar } from "@/components/invoice/InvoiceParts";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
-  addSupport, CARE_ROLE_LABEL, checkEligibility, CLAIM_TYPE_LABEL, claimFor, claimStatusOf, DX_TYPE_LABEL, ON_ADMISSION_LABEL, PRIORITY_LABEL, removeSupport,
-  reviewModel, reviewSummary, runReview, saveCareTeam, saveClaim, saveDx, saveHeader, sendOptions, SEVERITY_LABEL, SUBTYPE_LABEL, SUPPORT_CATEGORIES, SUPPORT_LABEL,
+  addSupport, CARE_ROLE_LABEL, checkEligibility, CLAIM_TYPE_LABEL, claimFor, DX_TYPE_LABEL, ON_ADMISSION_LABEL, PRIORITY_LABEL, removeSupport,
+  reviewModel, reviewSummary, runReview, saveCareTeam, saveClaim, saveDx, saveHeader, sendOptions, SEVERITY_LABEL, statusOfClaim, SUBTYPE_LABEL, SUPPORT_CATEGORIES, SUPPORT_LABEL,
   unconfirmedSoftStops, useClaims,
   type CareRole, type CareTeamMember, type ClaimModel, type ClaimPriority, type ClaimSubType, type ClaimType, type DxType, type Finding, type HeaderPatch, type OnAdmission, type Severity,
 } from "@/lib/claims";
@@ -125,7 +125,7 @@ export function ClaimPage() {
   const readOnly = !allowed || m.locked;
   const claimFindings = reviewModel(m, "claim");
   const options = sendOptions(enc, fin);
-  const status = claimStatusOf(m.fin);
+  const status = statusOfClaim(m);
   const inv = invoiceOf(visit, invoices);
   const sum = reviewSummary(claimFindings);
   const noRole = "Your role cannot send. This needs the billing permission.";
@@ -217,6 +217,7 @@ export function ClaimPage() {
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
         <div className="flex min-w-0 flex-col gap-4">
+          {m.answer && <PayerAnswerCard m={m} />}
           <DetailsSection m={m} readOnly={readOnly} />
           <EncounterSection m={m} />
           <CareTeamSection m={m} readOnly={readOnly} />
@@ -259,7 +260,7 @@ function ReviewPanel({ m, findings, onRun }: { m: ClaimModel; findings: Finding[
       />
       <div className="flex flex-col gap-3 p-4">
         {!findings.length && (
-          <p className="flex items-center gap-2 rounded-lg bg-ok/10 px-3 py-2.5 text-sm text-ok"><IconCircleCheck className="size-4 shrink-0" stroke={1.75} aria-hidden="true" /> Nothing to fix. The claim can be sent.</p>
+          <p className="flex items-center gap-2 rounded-lg bg-ok/10 px-3 py-2.5 text-sm text-ok"><IconCircleCheck className="size-4 shrink-0" stroke={1.75} aria-hidden="true" /> {m.fin.claim && m.fin.claim.status !== "rejected" && m.fin.claim.status !== "cancelled" ? "Nothing to fix. The claim is with the payer." : "Nothing to fix. The claim can be sent."}</p>
         )}
         {groups.map((sev) => {
           const list = findings.filter((f) => f.severity === sev);
@@ -290,6 +291,51 @@ function ReviewPanel({ m, findings, onRun }: { m: ClaimModel; findings: Finding[
         {open > 0 && <p className="text-xs text-muted-foreground">{open} Soft Stop{open === 1 ? "" : "s"} will ask for a reason when you send.</p>}
         {m.draft?.ack && <p className="text-xs text-muted-foreground">Soft Stops confirmed by {m.draft.ack.by}: {m.draft.ack.reason}</p>}
       </div>
+    </Card>
+  );
+}
+
+/* ---------- payer answer ---------- */
+
+/** What the payer said: the error codes of a rejection, or the approved and denied amount of each line. */
+function PayerAnswerCard({ m }: { m: ClaimModel }) {
+  const a = m.answer!;
+  const denied = a.lines.filter((l) => l.denied > 0.004);
+  const rejected = m.fin.claim?.status === "rejected" || (!m.fin.claim && m.fin.authorization?.status === "denied");
+  return (
+    <Card className={cn(rejected ? "border-destructive/30" : denied.length ? "border-warn/40" : undefined)}>
+      <CardHeader
+        title="Payer Answer"
+        subtitle={`${a.claimNumber ? `Claim ${a.claimNumber}` : "Prior authorization"}, answered ${fmtDateTime(a.at)}.`}
+        right={<Button size="sm" variant="ghost" onClick={() => navigate("/transactions", { visit: m.visit })}>Transactions</Button>}
+      />
+      {a.errors.length > 0 && (
+        <ul className="flex flex-col gap-1.5 p-4">
+          {a.errors.map((e, i) => (
+            <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border border-destructive/25 bg-destructive/[0.04] px-3 py-2 text-sm">
+              <span className="font-mono text-xs font-semibold text-destructive">{e.code}</span>
+              <span>{e.text}</span>
+              <span className="text-xs text-muted-foreground">{e.scope === "Item" ? `Line ${e.seq}` : "Whole claim"}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!a.errors.length && a.lines.length > 0 && (
+        <Table>
+          <thead><tr><Th className="w-10">#</Th><Th numeric>Claimed</Th><Th numeric>Approved</Th><Th numeric>Denied</Th><Th>Reason</Th></tr></thead>
+          <tbody>
+            {a.lines.map((l) => (
+              <tr key={l.seq} className={cn(l.denied > 0.004 && "bg-warn/[0.05]")}>
+                <Td className="tabular-nums">{l.seq}</Td>
+                <Td numeric><Sar value={l.claimed} /></Td>
+                <Td numeric className="font-semibold"><Sar value={l.approved} /></Td>
+                <Td numeric>{l.denied > 0.004 ? <Sar value={l.denied} /> : <span className="text-muted-foreground">None</span>}</Td>
+                <Td>{l.reason ? <><span className="font-mono text-xs font-semibold">{l.reason}</span> <span className="text-sm">{l.reasonText}</span></> : <span className="text-sm text-muted-foreground">Paid as claimed</span>}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
     </Card>
   );
 }

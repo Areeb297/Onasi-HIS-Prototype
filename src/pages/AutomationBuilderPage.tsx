@@ -19,6 +19,7 @@ import {
 } from "@/lib/automations";
 import { navigate, useRoute } from "@/lib/router";
 import { pushToast } from "@/lib/toast";
+import { fmtTime } from "@/lib/format";
 
 /**
  * The automation builder: palette on the left, the canvas in the middle, the settings of the selected step on the right.
@@ -452,7 +453,7 @@ function TestDrawer({ test, setTest, onPick }: {
         <div className="min-w-0 flex-1">
           <h2 className="text-[0.9375rem] font-semibold text-[#032C26] dark:text-foreground">Test Run</h2>
           <p className="text-xs text-muted-foreground">
-            {run.event.source === "sample" ? "No recent event of this kind, so a sample from today's patients." : `Replaying a real event from ${new Date(run.event.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}.`} Nothing is changed.
+            {run.event.source === "sample" ? "No recent event of this kind, so a sample from today's patients." : `Replaying a real event from ${fmtTime(run.event.at)}.`} Nothing is changed.
           </p>
         </div>
         <button type="button" className={ICON_BTN} onClick={() => setTest(null)} aria-label="Close the test run"><IconX className="size-4" aria-hidden="true" /></button>

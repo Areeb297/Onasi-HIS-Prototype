@@ -6,6 +6,7 @@ import { caseOf, estimateCharge, financialVisits, getFinancial, PAYER_SHARE, pay
 import { FACILITY_NAME } from "./reference-data";
 import { can, currentUser } from "./session";
 import { getState, patientName } from "./store";
+import { fmtDateTime } from "./format";
 
 /**
  * Cashier invoices, one per visit, as the HIS has them: invoice worklist, invoice detail, Record Payment (new payment,
@@ -477,7 +478,7 @@ export function zatcaClock(inv: Invoice, now: number = Date.now()): ZatcaClock {
   const deadline = new Date(z.clockFrom).getTime() + ZATCA_HOURS * 3600_000;
   const msLeft = deadline - now;
   if (z.status === "Reported") {
-    const at = z.reportedAt ? new Date(z.reportedAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    const at = z.reportedAt ? fmtDateTime(z.reportedAt) : "";
     return { status: z.status, deadline, msLeft, overdue: false, text: `Reported ${at}`.trim() };
   }
   const overdue = msLeft <= 0;

@@ -6,8 +6,9 @@ import { allocatePayment, PAY_METHODS, round2, takePayment, WAIVER_TYPES, type I
 import { can } from "@/lib/session";
 import { pushToast } from "@/lib/toast";
 import { Sar } from "./InvoiceParts";
+import { fmtDateTime } from "@/lib/format";
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const when = (iso: string) => fmtDateTime(iso);
 
 /** A file picker that keeps only the file name. Keyboard reachable: the real input sits inside the label. */
 export function ProofPicker({ value, onChange, label }: { value: string; onChange: (name: string) => void; label: string }) {

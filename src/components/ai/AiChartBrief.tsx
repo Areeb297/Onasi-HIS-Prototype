@@ -13,6 +13,7 @@ import { attentionFor, buildTimeline } from "@/lib/chart-review";
 import type { Encounter, Patient } from "@/lib/model";
 import { navigate } from "@/lib/router";
 import { can } from "@/lib/session";
+import { fmtDateTime } from "@/lib/format";
 
 /**
  * The patient brief. When a chart opens, Onasi AI reads it and writes a short summary at the top:
@@ -66,7 +67,7 @@ export function buildBrief(enc: Encounter, patient: Patient, now: Date = new Dat
 
   const recent = buildTimeline(enc).slice(0, 3).map((t) => ({
     title: t.title,
-    when: new Date(t.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+    when: fmtDateTime(t.at),
   }));
 
   const next: Brief["next"] = [];

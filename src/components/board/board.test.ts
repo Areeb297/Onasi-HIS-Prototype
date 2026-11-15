@@ -71,10 +71,10 @@ describe("clock thresholds", () => {
     const now = Date.now();
     expect(Math.round(elapsedMin(new Date(now - 12 * 60_000).toISOString(), now))).toBe(12);
     expect(elapsedMin(new Date(now + 60_000).toISOString(), now)).toBe(0);
-    expect(fmtDuration(45)).toBe("45m");
-    expect(fmtDuration(80)).toBe("1h 20m");
-    expect(fmtDuration(120)).toBe("2h");
-    expect(fmtDuration(60 * 51)).toBe("2d 3h");
+    expect(fmtDuration(45)).toBe("45 min");
+    expect(fmtDuration(80)).toBe("1 h 20 min");
+    expect(fmtDuration(120)).toBe("2 h");
+    expect(fmtDuration(60 * 51)).toBe("2 d 3 h");
   });
 });
 

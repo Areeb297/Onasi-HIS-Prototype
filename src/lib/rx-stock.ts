@@ -1,6 +1,7 @@
 import type { Dispense, Drug } from "./rx-types";
 import { unitCount } from "./rx-logic";
 import { extraBatchesFor } from "./stock-store";
+import { fmtDate } from "./format";
 
 /**
  * Pharmacy stock by batch. Made-up numbers: every drug gets two or three batches worked out from its id,
@@ -69,9 +70,7 @@ export function firstUsableBatch(batches: Batch[]): Batch | undefined {
 /** Expiry as a date only, for example 31 Jan 2027. */
 export function fmtExpiry(iso: string | undefined): string {
   if (!iso) return "No expiry recorded";
-  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return fmtDate(iso.slice(0, 10)) || iso;
 }
 
 export const isExpired = (b: Pick<Batch, "expiry">, today: Date = new Date()): boolean => b.expiry < today.toISOString().slice(0, 10);

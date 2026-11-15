@@ -7,6 +7,7 @@ import { coverageOutcome, type CoverageOutcome } from "./registration";
 import { retrieveInsurance, type InsuranceCard } from "./registry";
 import { currentUser } from "./session";
 import { bedLabel, getState, patientName, updateEncounter } from "./store";
+import { fmtDayHeading } from "./format";
 
 /**
  * Outpatient appointments: the board the front desk works from and the booking rules.
@@ -144,7 +145,7 @@ const fromMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:$
 /** "Sun 15 Nov" */
 export const dayLabel = (date: string) => {
   const [y, m, d] = date.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  return fmtDayHeading(new Date(y, m - 1, d));
 };
 
 /* ---------- store ---------- */

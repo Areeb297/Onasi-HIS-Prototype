@@ -1,8 +1,9 @@
 import * as React from "react";
 import { Search, X } from "lucide-react";
+import { ErrorSummary, FormField, FormGrid, FormSection, Segmented } from "@/components/emr/entry-ui";
 import { Gate } from "@/components/emr/fhir-ui";
 import { OrderCoverageField, OrderDiagnosisField } from "@/components/emr/OrderFields";
-import { Button, Field, Input, Select, cn } from "@/components/ui/primitives";
+import { Button, Input, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { COMMON_PANELS, COMMON_SINGLES, LAB_CATALOG, QUICK_SETS, testByCode, type LabTest } from "@/lib/fhir/lab-catalog";
 import { PRIORITIES, type OrderCoverage, type OrderDiagnosis, type Priority } from "@/lib/fhir/types";
@@ -22,6 +23,15 @@ export interface LabOrderInput {
 /** What an existing order brings into the pad. Orders saved before diagnosis and coverage existed have neither. */
 export type LabOrderInitial = Omit<LabOrderInput, "diagnosis" | "coverage"> & { diagnosis?: OrderDiagnosis | null; coverage?: OrderCoverage };
 
+type Fasting = "none" | "yes" | "no";
+const FASTING: { value: Fasting; label: string }[] = [
+  { value: "none", label: "Not Stated" },
+  { value: "yes", label: "Fasting" },
+  { value: "no", label: "Non-Fasting" },
+];
+const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p.code, label: p.label }));
+const groupLabel = "mb-1.5 text-xs font-medium text-muted-foreground";
+
 function Chip({ test, on, toggle }: { test: LabTest; on: boolean; toggle: () => void }) {
   const dev = useDevMode();
   return (
@@ -31,7 +41,7 @@ function Chip({ test, on, toggle }: { test: LabTest; on: boolean; toggle: () => 
       onClick={toggle}
       title={`${test.display} (LOINC ${test.code})${test.madeUp ? " (test code)" : ""}`}
       className={cn(
-        "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        "min-h-8 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted",
       )}
     >
@@ -77,12 +87,14 @@ export function LabOrderPad({
 }) {
   const [codes, setCodes] = React.useState<string[]>(initial?.codes ?? []);
   const [priority, setPriority] = React.useState<Priority>(initial?.priority ?? "routine");
-  const [fasting, setFasting] = React.useState<"" | "yes" | "no">(initial?.fasting === true ? "yes" : initial?.fasting === false ? "no" : "");
+  const [fasting, setFasting] = React.useState<Fasting>(initial?.fasting === true ? "yes" : initial?.fasting === false ? "no" : "none");
   const [note, setNote] = React.useState(initial?.note ?? "");
   const [diagnosis, setDiagnosis] = React.useState<OrderDiagnosis | null>(initial ? initial.diagnosis ?? null : defaultOrderDiagnosis(diagnoses));
   const [coverage, setCoverage] = React.useState<OrderCoverage>(initial?.coverage ?? (insured ? "plan" : "self-pay"));
   const [q, setQ] = React.useState("");
   const [pending, setPending] = React.useState<{ andSend: boolean } | null>(null);
+  /** An order was tried with no test picked. The message stays until a test is picked. */
+  const [tried, setTried] = React.useState(false);
 
   const toggle = (c: string) => !testsLocked && setCodes((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
   const addMany = (list: string[]) => !testsLocked && setCodes((cur) => [...new Set([...cur, ...list])]);
@@ -91,100 +103,106 @@ export function LabOrderPad({
     : [];
 
   const value: LabOrderInput = { codes, priority, fasting: fasting === "yes" ? true : fasting === "no" ? false : null, note, diagnosis, coverage };
-  const ready = codes.length > 0 && canOrder;
+  const noTests = codes.length === 0;
+  const showNoTests = tried && noTests;
   const dupes = duplicatesOf && !testsLocked ? duplicatesOf(codes) : [];
-  /** A duplicate asks first. Anything else goes straight through. */
-  const submit = (andSend: boolean) => (dupes.length > 0 ? setPending({ andSend }) : onSubmit(value, andSend));
+  /** No test asks for one. A duplicate asks first. Anything else goes straight through. */
+  const submit = (andSend: boolean) => {
+    setTried(true);
+    if (noTests) return;
+    if (dupes.length > 0) setPending({ andSend });
+    else onSubmit(value, andSend);
+  };
 
   return (
-    <div className="space-y-3">
-      {!testsLocked && (
-        <>
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-muted-foreground">Quick Sets</div>
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_SETS.map((s) => (
-                <Button key={s.id} size="sm" onClick={() => addMany(s.codes)} title={s.codes.map((c) => testByCode(c)?.short).join(", ")}>
-                  + {s.label}
-                </Button>
-              ))}
+    <div className="space-y-5">
+      {showNoTests && <ErrorSummary problems={["Choose at least one test."]} />}
+      <FormSection
+        title="Tests"
+        description={testsLocked ? "The specimen is collected, so the tests cannot change. You can still change the priority and the note." : "Tap to add or remove a test. Panels and quick sets add several at once."}
+      >
+        {!testsLocked && (
+          <>
+            <div>
+              <div className={groupLabel}>Quick Sets</div>
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_SETS.map((s) => (
+                  <Button key={s.id} size="sm" onClick={() => addMany(s.codes)} title={s.codes.map((c) => testByCode(c)?.short).join(", ")}>
+                    + {s.label}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-muted-foreground">Panels</div>
-            <div className="flex flex-wrap gap-1.5">
-              {COMMON_PANELS.map((t) => (
-                <Chip key={t.code} test={t} on={codes.includes(t.code)} toggle={() => toggle(t.code)} />
-              ))}
+            <div>
+              <div className={groupLabel}>Panels</div>
+              <div className="flex flex-wrap gap-1.5">
+                {COMMON_PANELS.map((t) => (
+                  <Chip key={t.code} test={t} on={codes.includes(t.code)} toggle={() => toggle(t.code)} />
+                ))}
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-muted-foreground">Common Tests</div>
-            <div className="flex flex-wrap gap-1.5">
-              {COMMON_SINGLES.map((t) => (
-                <Chip key={t.code} test={t} on={codes.includes(t.code)} toggle={() => toggle(t.code)} />
-              ))}
+            <div>
+              <div className={groupLabel}>Common Tests</div>
+              <div className="flex flex-wrap gap-1.5">
+                {COMMON_SINGLES.map((t) => (
+                  <Chip key={t.code} test={t} on={codes.includes(t.code)} toggle={() => toggle(t.code)} />
+                ))}
+              </div>
             </div>
-          </div>
-          <div className="relative max-w-sm">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input className="pl-8" placeholder="Search all tests by name or code" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search tests" />
-          </div>
-          {found.length > 0 && (
+            <div>
+              <div className="relative max-w-sm [--field-h:2.5rem]">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input className="pl-8" placeholder="Search all tests by name or code" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search tests" />
+              </div>
+              {found.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {found.map((t) => (
+                    <Chip key={t.code} test={t} on={codes.includes(t.code)} toggle={() => toggle(t.code)} />
+                  ))}
+                </div>
+              )}
+              {q.trim() !== "" && found.length === 0 && <p className="mt-1.5 text-xs text-muted-foreground">No test matches. Try fewer letters or the code.</p>}
+            </div>
+          </>
+        )}
+        <div className={cn("rounded-lg border bg-muted/30 p-3", showNoTests ? "border-destructive/60" : "border-border")}>
+          <div className={groupLabel}>Selected ({codes.length})</div>
+          {noTests ? (
+            <p className={cn("text-sm", showNoTests ? "font-medium text-destructive" : "text-muted-foreground")}>
+              {showNoTests ? "No test chosen yet. Tap a test above to add it." : "Tap a test above to add it."}
+            </p>
+          ) : (
             <div className="flex flex-wrap gap-1.5">
-              {found.map((t) => (
-                <Chip key={t.code} test={t} on={codes.includes(t.code)} toggle={() => toggle(t.code)} />
+              {codes.map((c) => (
+                <span key={c} className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
+                  {testByCode(c)?.short ?? c}
+                  {!testsLocked && (
+                    <button type="button" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => toggle(c)} aria-label={`Remove ${testByCode(c)?.short}`}>
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </span>
               ))}
             </div>
           )}
-        </>
-      )}
-      {testsLocked && <p className="text-xs text-muted-foreground">The specimen is collected, so the tests cannot change. You can still change the priority and the note.</p>}
+        </div>
+      </FormSection>
 
-      <div className="rounded-lg border border-border bg-muted/30 p-3">
-        <div className="mb-1.5 text-xs font-medium text-muted-foreground">Selected ({codes.length})</div>
-        {codes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Tap a chip above to add a test.</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {codes.map((c) => (
-              <span key={c} className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
-                {testByCode(c)?.short ?? c}
-                {!testsLocked && (
-                  <button type="button" onClick={() => toggle(c)} aria-label={`Remove ${testByCode(c)?.short}`}>
-                    <X className="size-3" />
-                  </button>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-[160px_180px_minmax(0,1fr)]">
-        <Field label="Priority" hl7="ServiceRequest.priority">
-          <Select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
-            {PRIORITIES.map((p) => (
-              <option key={p.code} value={p.code}>{p.label}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Fasting" hl7="Additional Order Information">
-          <Select value={fasting} onChange={(e) => setFasting(e.target.value as "" | "yes" | "no")}>
-            <option value="">Not Stated</option>
-            <option value="yes">Fasting</option>
-            <option value="no">Non-Fasting</option>
-          </Select>
-        </Field>
-        <Field label="Note For The Lab">
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
-        </Field>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <OrderDiagnosisField diagnoses={diagnoses} value={diagnosis} onChange={setDiagnosis} />
-        <OrderCoverageField value={coverage} onChange={setCoverage} insured={insured || coverage === "plan"} />
-      </div>
+      <FormSection title="Order Details">
+        <FormGrid>
+          <FormField group label="Priority" hl7="ServiceRequest.priority">
+            <Segmented value={priority} options={PRIORITY_OPTIONS} onChange={setPriority} />
+          </FormField>
+          <FormField group label="Fasting" hl7="Additional Order Information">
+            <Segmented value={fasting} options={FASTING} onChange={setFasting} />
+          </FormField>
+          <OrderDiagnosisField diagnoses={diagnoses} value={diagnosis} onChange={setDiagnosis} />
+          <OrderCoverageField value={coverage} onChange={setCoverage} insured={insured || coverage === "plan"} />
+          <FormField label="Note For The Lab" help="Optional." className="sm:col-span-2">
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="For example: sample from the central line" />
+          </FormField>
+        </FormGrid>
+      </FormSection>
 
       {pending && dupes.length > 0 && (
         <div role="alert" className="space-y-2 rounded-lg border border-warn/50 bg-warn/10 p-3">
@@ -198,21 +216,21 @@ export function LabOrderPad({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <Gate allowed={canOrder} reason="Your role cannot order laboratory tests.">
-          <Button variant="primary" disabled={!ready || !!pending} onClick={() => submit(false)}>
+          <Button variant="primary" disabled={!canOrder || !!pending} onClick={() => submit(false)}>
             {submitLabel}
           </Button>
         </Gate>
         {showSend && (
           <Gate allowed={canOrder} reason="Your role cannot order laboratory tests.">
-            <Button disabled={!ready || !!pending} onClick={() => submit(true)}>
+            <Button disabled={!canOrder || !!pending} onClick={() => submit(true)}>
               {submitLabel} And Send To NPHIES
             </Button>
           </Gate>
         )}
         {onCancel && <Button variant="ghost" onClick={onCancel}>Close</Button>}
-        {!canOrder && <span className="self-center text-xs text-muted-foreground">{reason}</span>}
+        {!canOrder && <span className="text-xs text-muted-foreground">{reason}</span>}
       </div>
     </div>
   );

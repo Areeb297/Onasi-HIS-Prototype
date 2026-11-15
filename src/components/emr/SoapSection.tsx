@@ -1,10 +1,11 @@
 import * as React from "react";
-import { Check, ChevronDown, ChevronUp, Download, PenLine, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronUp, Download, FileText, PenLine, Pencil, Plus, Trash2 } from "lucide-react";
+import { Dialog } from "@/components/Dialog";
+import { EmptyState, FormField, FormGrid, FormSection, RowMenu, TextArea } from "@/components/emr/entry-ui";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { UseCaseIcon } from "@/components/ai/UseCaseIcon";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
-import { Badge, Button, Card, CardHeader, Empty, Field, Input, Select, cn } from "@/components/ui/primitives";
-import { Textarea } from "@/components/ui/textarea";
+import { Badge, Button, Card, CardHeader, Empty, Input, Select, cn } from "@/components/ui/primitives";
 import { AI_LABEL } from "@/lib/ai/context";
 import { ruleEngine, type AiOutput } from "@/lib/ai/engine";
 import { auditAccept, auditReject, auditSuggest, buildContext } from "@/lib/ai/live";
@@ -137,7 +138,15 @@ export function SoapSection({ enc }: { enc: Encounter }) {
           }
         />
         {!mayWrite && <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">Your role can read SOAP notes but not write them.</p>}
-        {empty && <Empty>No SOAP notes on this visit yet. Press New Note, or Draft With {ASSISTANT_NAME} to start from the chart.</Empty>}
+        {empty && (
+          <EmptyState
+            icon={<FileText />}
+            title="No SOAP Notes On This Visit"
+            action={mayWrite ? <Button size="sm" variant="primary" onClick={() => setEdit({ draft: { ...EMPTY }, detail: { ...EMPTY_DETAIL } })}><Plus className="size-4" /> New Note</Button> : undefined}
+          >
+            {mayWrite ? (mayAi ? `Start a new note, or use Draft With ${ASSISTANT_NAME} to start from the chart.` : "Start a new note for this visit.") : "Notes written on this visit show here."}
+          </EmptyState>
+        )}
       </Card>
 
       {edit && <NoteEditor enc={enc} edit={edit} setEdit={setEdit} onSave={save} onDiscard={discard} />}
@@ -158,14 +167,21 @@ export function SoapSection({ enc }: { enc: Encounter }) {
 
 function NoteEditor({ enc, edit, setEdit, onSave, onDiscard }: { enc: Encounter; edit: Editing; setEdit: (e: Editing) => void; onSave: (sign: boolean) => void; onDiscard: () => void }) {
   const dev = useDevMode();
+  const [tried, setTried] = React.useState(false);
   const setDetail = (patch: Partial<SoapDetail>) => setEdit({ ...edit, detail: { ...edit.detail, ...patch } });
+  const blank = FIELDS.every((f) => !edit.draft[f.key].trim()) && !hasDetail(edit.detail);
+  const save = (sign: boolean) => {
+    if (blank) { setTried(true); return; }
+    onSave(sign);
+  };
   return (
     <Card className="border-primary/50">
       <CardHeader
         title={edit.id ? "Edit SOAP Note" : "New SOAP Note"}
+        subtitle="Fill the parts you need. Empty parts are left out."
         right={<Button size="sm" onClick={() => setEdit({ ...edit, detail: fillFromChart(edit.detail, enc) })} title="Fills empty parts with the complaints, latest vital signs and diagnoses of this visit.">Fill From Chart</Button>}
       />
-      <div className="space-y-4 p-4">
+      <div className="space-y-6 p-4">
         {edit.ai && (
           <div className="rounded-lg border border-warn/40 bg-warn/8 p-3 text-sm">
             <p className="flex flex-wrap items-center gap-2 font-medium">
@@ -175,31 +191,37 @@ function NoteEditor({ enc, edit, setEdit, onSave, onDiscard }: { enc: Encounter;
           </div>
         )}
         {FIELDS.map((f) => (
-          <fieldset key={f.key} className="rounded-lg border border-border p-3">
-            <legend className="px-1 text-sm font-semibold">
-              <span className="mr-1.5 inline-flex size-5 items-center justify-center rounded bg-accent text-xs font-semibold text-accent-foreground">{f.letter}</span>
-              {f.label}
-            </legend>
-            <Field label="Summary" hint={f.hint}>
-              <Textarea value={edit.draft[f.key]} onChange={(e) => setEdit({ ...edit, draft: { ...edit.draft, [f.key]: e.target.value } })} className="min-h-20" />
-            </Field>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <FormSection
+            key={f.key}
+            title={f.label}
+            description={f.hint}
+            right={<span aria-hidden="true" className="inline-flex size-6 items-center justify-center rounded-md bg-accent text-xs font-semibold text-accent-foreground">{f.letter}</span>}
+          >
+            <FormField label="Summary">
+              <TextArea value={edit.draft[f.key]} onChange={(e) => { setEdit({ ...edit, draft: { ...edit.draft, [f.key]: e.target.value } }); setTried(false); }} rows={3} />
+            </FormField>
+            <FormGrid>
               {DETAIL_FIELDS[f.key].map((d) => (
-                <Field key={d.key} label={d.label} hint={d.hint}>
-                  <Textarea value={edit.detail[d.key]} onChange={(e) => setDetail({ [d.key]: e.target.value })} rows={2} />
-                </Field>
+                <FormField key={d.key} label={d.label} help={d.hint}>
+                  <TextArea value={edit.detail[d.key]} onChange={(e) => { setDetail({ [d.key]: e.target.value }); setTried(false); }} rows={2} />
+                </FormField>
               ))}
-            </div>
+            </FormGrid>
             {f.key === "assessment" && <RiskFactorPicker value={edit.detail.riskFactors} onChange={(v) => setDetail({ riskFactors: v })} />}
-          </fieldset>
+          </FormSection>
         ))}
-        <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => onSave(false)}>Save Draft</Button>
-          <Button variant="primary" onClick={() => onSave(true)} title="Saves the note and adds your e-signature stamp. The note is then locked.">
-            <PenLine className="size-4" /> Save And Co-sign
-          </Button>
-          <Button variant="danger" onClick={onDiscard}>{edit.ai ? "Reject AI Draft" : "Cancel"}</Button>
-        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2 rounded-b-2xl border-t border-border bg-card px-4 py-3">
+        {tried && blank && (
+          <p role="alert" className="me-auto flex items-center gap-1 text-xs font-medium text-destructive">
+            <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" /> Write at least one part before saving.
+          </p>
+        )}
+        <Button variant={edit.ai ? "danger" : "ghost"} onClick={onDiscard}>{edit.ai ? "Reject AI Draft" : "Cancel"}</Button>
+        <Button onClick={() => save(false)}>Save Draft</Button>
+        <Button variant="primary" onClick={() => save(true)} title="Saves the note and adds your e-signature stamp. The note is then locked.">
+          <PenLine className="size-4" /> Save And Co-sign
+        </Button>
       </div>
     </Card>
   );
@@ -211,9 +233,8 @@ function RiskFactorPicker({ value, onChange }: { value: string[]; onChange: (v: 
   const extra = value.filter((v) => !RISK_FACTORS.includes(v));
   const add = () => { const t = other.trim(); if (t && !value.includes(t)) onChange([...value, t]); setOther(""); };
   return (
-    <div className="mt-3">
-      <div className="mb-1.5 text-sm font-medium">Risk Factors <span className="font-normal text-muted-foreground">(choose any that apply)</span></div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Risk factors">
+    <FormField label="Risk Factors" group help="Choose any that apply, or add another.">
+      <div className="flex flex-wrap gap-1.5">
         {[...RISK_FACTORS, ...extra].map((r) => {
           const on = value.includes(r);
           return (
@@ -222,18 +243,18 @@ function RiskFactorPicker({ value, onChange }: { value: string[]; onChange: (v: 
               type="button"
               aria-pressed={on}
               onClick={() => toggle(r)}
-              className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", on ? "border-move/50 bg-move/12 text-move" : "border-border bg-card text-muted-foreground hover:bg-muted")}
+              className={cn("inline-flex min-h-8 items-center gap-1 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", on ? "border-primary/60 bg-accent text-accent-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted")}
             >
               {on && <Check className="size-3" aria-hidden="true" />} {r}
             </button>
           );
         })}
       </div>
-      <div className="mt-2 flex max-w-md gap-2">
+      <div className="flex max-w-md gap-2">
         <Input value={other} onChange={(e) => setOther(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} placeholder="Another risk factor" aria-label="Another risk factor" />
         <Button onClick={add} disabled={!other.trim()}>Add</Button>
       </div>
-    </div>
+    </FormField>
   );
 }
 
@@ -271,37 +292,50 @@ function DetailView({ n, detail }: { n: SoapNote; detail: SoapDetail }) {
 }
 
 function NoteCard({ n, detail, patient, dev, mayWrite, editing, onEdit }: { n: SoapNote; detail: SoapDetail; patient: Patient; dev: boolean; mayWrite: boolean; editing: boolean; onEdit: () => void }) {
+  const [removing, setRemoving] = React.useState(false);
+  const draft = n.status === "draft";
   return (
     <Card>
       <CardHeader
-        title={`SOAP note, ${stamp(n.at)}`}
+        title={`SOAP Note, ${stamp(n.at)}`}
         subtitle={`Started by ${n.author}`}
         right={
-          <div className="flex flex-wrap items-center gap-2">
-            {n.aiDrafted && <Badge tone="warn">Started from AI draft</Badge>}
-            <Badge tone={n.status === "signed" ? "ok" : "neutral"}>{n.status === "signed" ? "Signed" : "Draft"}</Badge>
-            <Button size="sm" onClick={() => download(n, detail, patient)} title="Download this note as a text file"><Download className="size-4" aria-hidden="true" /> Download</Button>
-            {n.status === "draft" && (
-              <>
-                <Button size="sm" disabled={!mayWrite || editing} onClick={onEdit}>Edit</Button>
-                <Button size="sm" variant="primary" disabled={!mayWrite} onClick={() => { signSoap(n.id); pushToast({ tone: "ok", text: "SOAP note co-signed." }); }}>
-                  <PenLine className="size-4" /> Co-sign
-                </Button>
-                <Button size="sm" variant="ghost" disabled={!mayWrite} onClick={() => { deleteSoap(n.id); deleteSoapDetail(n.id); }} aria-label="Delete draft">
-                  <Trash2 className="size-4" />
-                </Button>
-              </>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {draft && (
+              <Button size="sm" variant="primary" disabled={!mayWrite} onClick={() => { signSoap(n.id); pushToast({ tone: "ok", text: "SOAP note co-signed." }); }}>
+                <PenLine className="size-4" /> Co-sign
+              </Button>
             )}
+            <RowMenu
+              label={`Actions for the SOAP note of ${stamp(n.at)}`}
+              items={[
+                draft && { label: "Edit Note", icon: <Pencil className="size-4" />, onSelect: onEdit, disabled: !mayWrite || editing },
+                { label: "Download As Text", icon: <Download className="size-4" />, onSelect: () => download(n, detail, patient) },
+                draft && { label: "Delete Draft", icon: <Trash2 className="size-4" />, onSelect: () => setRemoving(true), disabled: !mayWrite, danger: true, separated: true },
+              ]}
+            />
           </div>
         }
       />
+      <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
+        <Badge tone={draft ? "neutral" : "ok"}>{draft ? "Draft" : "Signed"}</Badge>
+        {n.aiDrafted && <Badge tone="warn">Started From AI Draft</Badge>}
+      </div>
       <DetailView n={n} detail={detail} />
       {n.status === "signed" && (
-        <p className="border-t border-border bg-ok/8 px-4 py-2 text-xs">
+        <p className="rounded-b-2xl border-t border-border bg-ok/8 px-4 py-2 text-xs">
           <strong className="text-ok">Electronically signed</strong> by {n.signedBy} on {stamp(n.signedAt)}. The note is locked.
           {dev && " Simulated e-signature: name and time only, no certificate."}
         </p>
       )}
+      <Dialog
+        open={removing}
+        onClose={() => setRemoving(false)}
+        title="Delete Draft Note"
+        footer={<><Button onClick={() => setRemoving(false)}>Keep The Draft</Button><Button variant="danger" onClick={() => { deleteSoap(n.id); deleteSoapDetail(n.id); setRemoving(false); pushToast({ tone: "warn", text: "Draft SOAP note deleted" }); }}>Delete Draft</Button></>}
+      >
+        <p className="text-sm">Delete the draft SOAP note of <strong>{stamp(n.at)}</strong>? It was not signed, so nothing of it stays in the chart.</p>
+      </Dialog>
     </Card>
   );
 }

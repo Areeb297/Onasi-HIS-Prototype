@@ -1,8 +1,14 @@
 import * as React from "react";
-import { Check, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Check, FileClock, Pencil, Plus, Trash2 } from "lucide-react";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Table, Td, Th, cn } from "@/components/ui/primitives";
+import {
+  AttentionLink, CheckRow, ChipMulti, ChipSingle, ChoiceSelect, DateTimeInput, ErrorSummary, FormActions, FormGrid, FormSection, SegmentedControl,
+  clearDraft, countIn, draftTime, fitsSegmented, focusField, isBlank, isDirty, loadDraft, rules, saveDraft, summaryItems, useFormErrors, useUnsavedChangesGuard, type Errors,
+} from "@/components/forms";
+import { pushToast } from "@/lib/toast";
+import { fmtDateTime } from "@/lib/format";
 import { can, useSession } from "@/lib/session";
 import { useDevMode } from "@/lib/devmode";
 import { EMR_FORM_BY_ID, sexProblem } from "@/lib/emr-forms";
@@ -55,93 +61,56 @@ function display(f: FieldDef, v: Values): string {
 
 /* ---------- field input ---------- */
 
-/** Same look as Input: clear outline, white fill, 2px blue focus ring. */
-const textareaClass =
-  "min-h-20 rounded-lg border-input bg-card px-3 text-sm text-foreground shadow-xs placeholder:text-muted-foreground/80 " +
-  "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring md:text-sm dark:bg-background";
-/** Choice chips for radio and multi-select fields. The chosen one is bold and outlined, not only tinted. */
-const chip = (on: boolean) =>
-  cn(
-    "min-h-9 rounded-lg border px-3 py-1.5 text-sm transition-colors",
-    on ? "border-admit bg-admit/14 font-semibold text-admit ring-1 ring-admit" : "border-input bg-card text-foreground hover:bg-muted dark:bg-background",
-  );
+const toOpt = (o: string | FieldOption) => ({ value: optValue(o), label: optLabel(o) });
+
+/** A radio field with two to four short choices is a segmented control. Longer lists are chips. */
+const segmented = (f: FieldDef) => f.type === "radio" && fitsSegmented((f.options ?? []).map(toOpt));
+
+/** Fields that take the whole row of the grid: long text and rows of choices. */
+const wide = (f: FieldDef) =>
+  !!f.full || f.type === "textarea" || f.type === "scale" || f.type === "multiselect" || f.type === "checkbox" || (f.type === "radio" && !segmented(f));
+
+/** Fields shown as a labelled group rather than a <label>, because they hold more than one control. */
+const grouped = (f: FieldDef) => f.type === "radio" || f.type === "multiselect" || f.type === "scale" || f.type === "checkbox" || f.type === "datetime";
 
 function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val: Values[string]) => void }) {
   const val = v[f.key];
   if (f.compute) {
-    return (
-      <div className="flex items-center gap-2">
-        <Input readOnly disabled value={val === undefined || val === "" ? "" : String(val)} placeholder="Enter the amounts above" aria-label={`${f.label}, worked out for you`} className="font-semibold tabular-nums" />
-        {f.unit && <span className="shrink-0 text-sm text-muted-foreground">{f.unit}</span>}
-      </div>
-    );
+    return <Input readOnly disabled value={val === undefined || val === "" ? "" : String(val)} placeholder="Enter the amounts above" aria-label={`${f.label}, worked out for you`} className="font-semibold tabular-nums" suffix={f.unit} />;
   }
   if (f.auto) return <Input readOnly disabled value={(val as string) ?? ""} aria-label={f.label} />;
   switch (f.type) {
     case "textarea":
-      return <Textarea value={(val as string) ?? ""} onChange={(e) => onChange(e.target.value)} rows={3} placeholder={f.placeholder} aria-label={f.label} className={textareaClass} />;
+      return <Textarea value={(val as string) ?? ""} onChange={(e) => onChange(e.target.value)} rows={3} placeholder={f.placeholder} aria-label={f.label} />;
     case "number":
       return (
-        <div className="flex items-center gap-2">
-          <Input type="number" min={f.min} max={f.max} value={(val as number | string) ?? ""} onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))} aria-label={f.label} />
-          {f.unit && <span className="shrink-0 text-sm text-muted-foreground">{f.unit}</span>}
-        </div>
+        <Input type="number" inputMode="decimal" min={f.min} max={f.max} value={(val as number | string) ?? ""} onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))} aria-label={f.label} suffix={f.unit} className="tabular-nums" />
       );
-    case "date":
     case "datetime":
+      return <DateTimeInput value={(val as string) ?? ""} onChange={(x) => onChange(x)} label={f.label} />;
+    case "date":
     case "time":
-      return <Input type={f.type === "datetime" ? "datetime-local" : f.type} value={(val as string) ?? ""} onChange={(e) => onChange(e.target.value)} aria-label={f.label} />;
+      return <Input type={f.type} value={(val as string) ?? ""} onChange={(e) => onChange(e.target.value)} aria-label={f.label} />;
     case "select":
-      return (
-        <Select value={(val as string) ?? ""} onChange={(e) => onChange(e.target.value)} aria-label={f.label}>
-          <option value="">Select</option>
-          {f.options?.map((o) => <option key={optValue(o)} value={optValue(o)}>{optLabel(o)}</option>)}
-        </Select>
-      );
+      return <ChoiceSelect options={(f.options ?? []).map(toOpt)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} placeholder="Select" label={f.label} />;
     case "radio":
-      return (
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={f.label}>
-          {f.options?.map((o) => {
-            const on = val === optValue(o);
-            return (
-              <button key={optValue(o)} type="button" role="radio" aria-checked={on} onClick={() => onChange(optValue(o))} className={chip(on)}>
-                {optLabel(o)}
-              </button>
-            );
-          })}
-        </div>
-      );
+      return segmented(f)
+        ? <SegmentedControl options={(f.options ?? []).map(toOpt)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} label={f.label} />
+        : <ChipSingle options={(f.options ?? []).map(toOpt)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} label={f.label} />;
     case "multiselect":
-      return (
-        <div className="flex flex-wrap gap-2">
-          {f.options?.map((o) => {
-            const arr = Array.isArray(val) ? val : [];
-            const on = arr.includes(optValue(o));
-            return (
-              <button key={optValue(o)} type="button" aria-pressed={on} onClick={() => onChange(on ? arr.filter((x) => x !== optValue(o)) : [...arr, optValue(o)])} className={chip(on)}>
-                {optLabel(o)}
-              </button>
-            );
-          })}
-        </div>
-      );
+      return <ChipMulti options={(f.options ?? []).map(toOpt)} value={Array.isArray(val) ? val : []} onChange={(x) => onChange(x)} label={f.label} />;
     case "checkbox":
-      return (
-        <label className="flex min-h-10 items-center gap-2.5 text-sm">
-          <input type="checkbox" checked={!!val} onChange={(e) => onChange(e.target.checked)} className="size-4 accent-[var(--primary)]" />
-          {f.placeholder ?? "Yes"}
-        </label>
-      );
+      return <CheckRow checked={!!val} onChange={(x) => onChange(x)}>{f.placeholder ?? "Yes"}</CheckRow>;
     case "scale": {
       const max = f.max ?? 10;
       return (
-        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label={f.label}>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={f.label}>
           {Array.from({ length: max + 1 }, (_, i) => {
             const on = val === i;
-            const tone = i / max >= 0.7 ? "border-cancel bg-cancel/15 text-cancel" : i / max >= 0.4 ? "border-merge bg-merge/15 text-merge" : "border-admit bg-admit/15 text-admit";
+            const tone = i / max >= 0.7 ? "border-cancel bg-cancel text-white" : i / max >= 0.4 ? "border-warn bg-warn text-white" : "border-[#035D53] bg-[#035D53] text-white";
             return (
               <button key={i} type="button" role="radio" aria-checked={on} onClick={() => onChange(i)}
-                className={cn("size-9 rounded-md border text-sm font-medium transition-colors", on ? cn(tone, "font-semibold ring-1 ring-current") : "border-input bg-card text-foreground hover:bg-muted dark:bg-background")}>
+                className={cn("size-10 rounded-lg border text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1", on ? cn(tone, "font-semibold shadow-sm") : "border-input bg-card text-foreground hover:border-foreground/45 hover:bg-muted dark:bg-background")}>
                 {i}
               </button>
             );
@@ -154,20 +123,38 @@ function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val
   }
 }
 
+/** The problem with one field's value: required and empty, or a number outside its range. */
+function fieldErrors(form: FormDef, v: Values): Errors {
+  const out: Errors = {};
+  for (const f of form.fields) {
+    if (!isEntry(f)) continue;
+    const val = v[f.key];
+    if (f.required && isBlank(val)) {
+      out[f.key] = ["select", "radio", "multiselect", "scale"].includes(f.type) ? "Choose an option." : f.type === "checkbox" ? "Tick to confirm." : "Enter a value.";
+      continue;
+    }
+    if (f.type === "number" && (f.min !== undefined || f.max !== undefined)) {
+      const msg = rules.range(f.min, f.max)(val, v);
+      if (msg) out[f.key] = msg;
+    }
+  }
+  return out;
+}
+
 /* ---------- the form in a side sheet ---------- */
 
 const isEmpty = (val: Values[string] | undefined) => val === undefined || val === "" || val === false || (Array.isArray(val) && val.length === 0);
 /** Fields the user fills in. The ones the system works out or fills by itself are not counted. */
 const isEntry = (f: FieldDef) => !f.compute && !f.auto;
 
-interface FormSection {
+interface Part {
   name: string;
   fields: FieldDef[];
 }
 
 /** Fields in the order of the form, grouped under their section headings. */
-function formSections(form: FormDef): FormSection[] {
-  const out: FormSection[] = [];
+function formSections(form: FormDef): Part[] {
+  const out: Part[] = [];
   for (const f of form.fields) {
     const name = f.section ?? "";
     const last = out[out.length - 1];
@@ -177,14 +164,10 @@ function formSections(form: FormDef): FormSection[] {
   return out;
 }
 
-/** How much of a list of fields is filled in, and which required ones are still empty. */
+/** How much of a list of fields is filled in. */
 function fillCount(fields: FieldDef[], v: Values) {
   const entry = fields.filter(isEntry);
-  return {
-    total: entry.length,
-    filled: entry.filter((f) => !isEmpty(v[f.key])).length,
-    needed: fields.filter((f) => f.required && (v[f.key] === undefined || v[f.key] === "" || (Array.isArray(v[f.key]) && (v[f.key] as string[]).length === 0))),
-  };
+  return { total: entry.length, filled: entry.filter((f) => !isEmpty(v[f.key])).length };
 }
 
 /** A form is long when it has enough sections and fields that it is easier to work one section at a time. */
@@ -192,87 +175,147 @@ const LONG_FORM_FIELDS = 30;
 const LONG_FORM_SECTIONS = 4;
 
 function FormSheet({
-  form, open, initial, ctx, onClose, onSave,
-}: { form: FormDef; open: boolean; initial: Values; ctx: AutoContext; onClose: () => void; onSave: (v: Values) => void }) {
+  form, open, initial, ctx, draftKey, onClose, onSave,
+}: { form: FormDef; open: boolean; initial: Values; ctx: AutoContext; draftKey: string; onClose: () => void; onSave: (v: Values) => void }) {
   const dev = useDevMode();
-  const uid = React.useId();
   const [v, setV] = React.useState<Values>(() => withAuto(form, initial, ctx));
+  /** The values the form opened with. A change from these asks before closing. */
+  const [base, setBase] = React.useState<Values>(v);
+  const [draftAt, setDraftAt] = React.useState<string | null>(null);
   const sections = React.useMemo(() => formSections(form), [form]);
   const named = sections.filter((s) => s.name).length;
   const long = form.fields.length >= LONG_FORM_FIELDS && named >= LONG_FORM_SECTIONS;
   const collapsible = named >= 2;
-  /** Indexes of the sections that are folded away. A long form opens with only its first section showing. */
-  const startClosed = React.useCallback(() => new Set(long ? sections.map((_, i) => i).filter((i) => i > 0 && sections[i].name) : []), [long, sections]);
-  const [closed, setClosed] = React.useState<Set<number>>(startClosed);
-  const sectionRefs = React.useRef<(HTMLElement | null)[]>([]);
+  /** Which sections are open. A long form opens with only its first section showing. */
+  const startOpen = React.useCallback(() => sections.map((s, i) => !long || i === 0 || !s.name), [long, sections]);
+  const [openParts, setOpenParts] = React.useState<boolean[]>(startOpen);
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const summaryRef = React.useRef<HTMLDivElement>(null);
+  const order = React.useMemo(() => form.fields.map((f) => f.key), [form]);
+  const labels = React.useMemo(() => Object.fromEntries(form.fields.map((f) => [f.key, f.label])), [form]);
+
+  const errors = fieldErrors(form, v);
+  const fe = useFormErrors(errors, order);
+
   React.useEffect(() => {
     if (!open) return;
-    setV(withAuto(form, initial, ctx));
-    setClosed(startClosed());
+    const start = withAuto(form, initial, ctx);
+    const d = loadDraft<Values>(draftKey);
+    const restored = d ? withAuto(form, { ...initial, ...d.values }, ctx) : start;
+    setV(restored);
+    setBase(restored);
+    setDraftAt(d ? d.savedAt : null);
+    setOpenParts(startOpen());
+    fe.reset();
   }, [open, initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const dirty = open && isDirty(base, v);
   const all = fillCount(form.fields, v);
-  const missing = all.needed;
   const score = scoreSummary(form, v);
+  const shownCount = Object.keys(fe.shown).length;
 
-  const toggle = (i: number) => setClosed((c) => { const n = new Set(c); if (n.has(i)) n.delete(i); else n.add(i); return n; });
-  /** Opens a section and brings it to the top. With a field key, the focus goes to that field. */
-  const jump = (i: number, fieldKey?: string) => {
-    setClosed((c) => { if (!c.has(i)) return c; const n = new Set(c); n.delete(i); return n; });
+  function saveDraftAndClose() {
+    saveDraft(draftKey, v);
+    pushToast({ tone: "ok", text: "Draft saved", detail: `${form.title} is kept on this computer. Open it again to finish and save it to the chart.` });
+    onClose();
+  }
+  const { guard, dialog } = useUnsavedChangesGuard(dirty, { onSaveDraft: () => { saveDraft(draftKey, v); pushToast({ tone: "ok", text: "Draft saved", detail: form.title }); } });
+  const close = () => guard(onClose);
+
+  function save() {
+    if (!fe.attempt()) {
+      requestAnimationFrame(() => summaryRef.current?.scrollIntoView({ block: "nearest" }));
+      return;
+    }
+    clearDraft(draftKey);
+    onSave(withAuto(form, v, ctx));
+  }
+
+  function discardDraft() {
+    clearDraft(draftKey);
+    const start = withAuto(form, initial, ctx);
+    setV(start); setBase(start); setDraftAt(null); fe.reset();
+  }
+
+  /** Opens a section and brings it to the top of the form. */
+  const jump = (i: number) => {
+    setOpenParts((o) => o.map((x, j) => (j === i ? true : x)));
     requestAnimationFrame(() => {
-      const el = sectionRefs.current[i];
+      const el = bodyRef.current?.querySelector<HTMLElement>(`[data-part="${i}"]`);
       const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      const target = fieldKey ? el?.querySelector<HTMLElement>(`[data-field="${fieldKey}"]`) : null;
-      (target ?? el)?.scrollIntoView({ block: target ? "center" : "start", behavior: reduce ? "auto" : "smooth" });
-      const focus = target?.querySelector<HTMLElement>("input, select, textarea, button") ?? el?.querySelector<HTMLElement>("button");
-      focus?.focus({ preventScroll: true });
+      el?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+      el?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
     });
   };
-  const sectionOf = (key: string) => sections.findIndex((s) => s.fields.some((f) => f.key === key));
-  const allOpen = closed.size === 0;
+  const allOpen = openParts.every(Boolean);
+
+  const fieldsOf = (fields: FieldDef[]) => (
+    <FormGrid cols={long ? 3 : 2}>
+      {fields.map((f) => (
+        <div key={f.key} className={cn("min-w-0", wide(f) && "col-span-full")}>
+          <Field name={f.key} group={grouped(f)} label={f.label} required={f.required} hint={f.hint} error={fe.shown[f.key]} hl7={dev ? f.hl7 : undefined}>
+            <FieldInput f={f} v={v} onChange={(val) => setV((x) => computeValues(form, { ...x, [f.key]: val }))} />
+          </Field>
+        </div>
+      ))}
+    </FormGrid>
+  );
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className={cn("flex w-full flex-col gap-0", long ? "sm:max-w-3xl" : "sm:max-w-xl")}>
-        <SheetHeader className="border-b border-border pr-12">
-          <SheetTitle>{form.title}</SheetTitle>
+    <Sheet open={open} onOpenChange={(o) => !o && close()}>
+      <SheetContent className={cn("flex w-full flex-col gap-0 bg-background", long ? "sm:max-w-4xl" : "sm:max-w-2xl")}>
+        <SheetHeader className="border-b border-border bg-[color:var(--glass-solid)] px-5 pr-12">
+          <SheetTitle className="text-lg">{form.title}</SheetTitle>
           <SheetDescription>{form.description ?? "Fill in the form and save it to the chart."}{dev && form.nphies ? ` NPHIES: ${form.nphies}` : ""}</SheetDescription>
         </SheetHeader>
         {collapsible && (
-          <nav aria-label="Sections of this form" className="flex items-center gap-2 border-b border-border bg-muted/40 px-5 py-2">
+          <nav aria-label="Sections of this form" className="flex items-center gap-2 border-b border-border bg-[color:var(--glass-solid)] px-5 py-2">
             <ul className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto p-0.5 [scrollbar-width:thin]">
               {sections.map((s, i) => {
                 if (!s.name) return null;
                 const c = fillCount(s.fields, v);
                 const done = c.total > 0 && c.filled === c.total;
+                const bad = countIn(fe.shown, s.fields.map((f) => f.key));
                 return (
                   <li key={i} className="shrink-0">
                     <button
                       type="button"
                       onClick={() => jump(i)}
-                      aria-label={`Go to ${s.name}, ${c.filled} of ${c.total} filled${c.needed.length ? `, ${c.needed.length} still needed` : ""}`}
+                      aria-label={`Go to ${s.name}, ${c.filled} of ${c.total} filled${bad ? `, ${bad} to fix` : ""}`}
                       className={cn(
                         "flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        c.needed.length ? "border-warn/60 bg-warn/10 text-foreground" : done ? "border-ok/50 bg-ok/10 text-foreground" : "border-border bg-card text-foreground",
+                        bad ? "border-destructive/50 bg-destructive/[0.06] text-foreground" : done ? "border-[#03C1AC] bg-card text-foreground" : "border-border bg-card text-foreground",
                       )}
                     >
-                      {done && <Check className="size-3.5 text-ok" aria-hidden="true" />}
+                      {done && !bad && <Check className="size-3.5 text-[#035D53] dark:text-[#39EDD5]" aria-hidden="true" />}
                       {s.name}
-                      <span className="tabular-nums text-muted-foreground">{c.filled}/{c.total}</span>
+                      <span className={cn("tabular-nums", bad ? "font-semibold text-destructive" : "text-muted-foreground")}>{bad ? `${bad} to fix` : `${c.filled}/${c.total}`}</span>
                     </button>
                   </li>
                 );
               })}
             </ul>
-            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setClosed(allOpen ? new Set(sections.map((_, i) => i).filter((i) => sections[i].name)) : new Set())}>
+            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setOpenParts(sections.map(() => !allOpen))}>
               {allOpen ? "Collapse All" : "Expand All"}
             </Button>
           </nav>
         )}
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div ref={bodyRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-5" {...fe.bind}>
+          {draftAt && (
+            <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[#03C1AC]/60 bg-card px-4 py-2.5 text-sm">
+              <FileClock className="size-4 shrink-0 text-[#035D53] dark:text-[#39EDD5]" aria-hidden="true" />
+              <span className="min-w-0 flex-1">Your draft from {draftTime(draftAt)} is filled in. Check it and save it to the chart.</span>
+              <Button size="sm" variant="ghost" onClick={discardDraft}>Discard Draft</Button>
+            </div>
+          )}
+          <ErrorSummary
+            ref={summaryRef}
+            items={summaryItems(fe.shown, order, labels).map((i) => ({ key: i.key, text: `${i.label}: ${i.message}` }))}
+            onJump={(k) => focusField(k, bodyRef.current ?? document)}
+          />
           {form.fields.some((f) => f.required) && <RequiredNote />}
           {form.legend && form.legend.length > 0 && (
-            <dl className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed" aria-label="Short forms used on this form">
+            <dl className="rounded-xl border border-border bg-card px-4 py-2.5 text-xs leading-relaxed" aria-label="Short forms used on this form">
               <div className="mb-0.5 font-semibold text-foreground">Short forms used here</div>
               {form.legend.map(([short, meaning]) => (
                 <div key={short}><dt className="inline font-semibold text-foreground">{short}: </dt><dd className="inline text-muted-foreground">{meaning}</dd></div>
@@ -281,87 +324,57 @@ function FormSheet({
           )}
           {sections.map((s, i) => {
             const c = fillCount(s.fields, v);
-            const framed = collapsible && !!s.name;
-            const isOpen = !framed || !closed.has(i);
-            const body = (
-              <div id={`${uid}-s${i}`} className={cn("grid gap-x-4 gap-y-5 sm:grid-cols-2", framed && "px-4 pb-5 pt-4")}>
-                {s.fields.map((f) => (
-                  <div key={f.key} data-field={f.key} className={cn("min-w-0", (f.full || f.type === "textarea" || f.type === "scale" || f.type === "radio" || f.type === "multiselect") && "sm:col-span-2")}>
-                    <Field label={f.label} required={f.required} hint={f.hint} hl7={dev ? f.hl7 : undefined}>
-                      <FieldInput f={f} v={v} onChange={(val) => setV((x) => computeValues(form, { ...x, [f.key]: val }))} />
-                    </Field>
-                  </div>
-                ))}
-              </div>
-            );
-            if (!framed) {
-              return (
-                <section key={i} ref={(el) => { sectionRefs.current[i] = el; }} className="pb-3">
-                  {s.name && <h3 className="mb-4 border-b border-border pb-2 text-sm font-semibold text-foreground">{s.name}</h3>}
-                  {body}
-                </section>
-              );
+            const bad = countIn(fe.shown, s.fields.map((f) => f.key));
+            if (!s.name) {
+              return <div key={i} data-part={i} className="rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] px-4 py-5 shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)] sm:px-5">{fieldsOf(s.fields)}</div>;
             }
             return (
-              <section key={i} ref={(el) => { sectionRefs.current[i] = el; }} className="rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)]">
-                <h3>
-                  <button
-                    type="button"
-                    onClick={() => toggle(i)}
-                    aria-expanded={isOpen}
-                    aria-controls={`${uid}-s${i}`}
-                    className={cn("flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", isOpen && "rounded-b-none border-b border-border")}
-                  >
-                    <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", isOpen && "rotate-90")} aria-hidden="true" />
-                    <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">{s.name}</span>
-                    {c.needed.length > 0 && <Badge tone="warn">{c.needed.length} Needed</Badge>}
-                    <span className={cn("shrink-0 text-xs tabular-nums", c.total > 0 && c.filled === c.total ? "font-semibold text-ok" : "text-muted-foreground")}>
-                      {c.filled} of {c.total} filled
-                    </span>
-                  </button>
-                </h3>
-                {isOpen && body}
-              </section>
+              <div key={i} data-part={i} className="scroll-mt-2">
+                <FormSection
+                  title={s.name}
+                  filled={c.filled}
+                  total={c.total}
+                  attention={bad}
+                  collapsible={collapsible}
+                  open={collapsible ? openParts[i] : true}
+                  onOpenChange={(o) => setOpenParts((x) => x.map((y, j) => (j === i ? o : y)))}
+                >
+                  {fieldsOf(s.fields)}
+                </FormSection>
+              </div>
             );
           })}
         </div>
-        <SheetFooter className="mt-0 gap-2 border-t border-border bg-background">
-          {long && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                <div className="h-full rounded-full bg-admit transition-[width] motion-reduce:transition-none" style={{ width: `${all.total ? Math.round((all.filled / all.total) * 100) : 0}%` }} />
-              </div>
-              <span className="shrink-0 tabular-nums">{all.filled} of {all.total} filled</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between gap-3">
-            <span className="min-w-0 text-sm text-muted-foreground">
-              {hasScores(form) ? `${form.scoreLabel ?? "Total score"}: ` : ""}
-              {hasScores(form) && (score.complete
-                ? <strong className="text-foreground">{score.total}{score.band ? `, ${score.band.label}` : ""}</strong>
-                : <strong className="text-foreground">{score.answered === 0 ? "not scored yet" : `${score.answered} of ${score.items} items answered`}</strong>)}
-              {hasScores(form) && form.scoreAll && !score.complete && score.answered > 0 && <span className="block">Answer every item to get the total and the risk band.</span>}
-              {missing.length > 0 && (
-                <span className="block">
-                  Still needed:{" "}
-                  {missing.slice(0, 3).map((m, n) => (
-                    <React.Fragment key={m.key}>
-                      {n > 0 && ", "}
-                      <button type="button" onClick={() => jump(sectionOf(m.key), m.key)} className="rounded font-medium text-foreground underline underline-offset-2 hover:text-admit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{m.label}</button>
-                    </React.Fragment>
-                  ))}
-                  {missing.length > 3 && ` and ${missing.length - 3} more`}
+        <FormActions
+          className="bg-[color:var(--glass-solid)] px-4 sm:px-5"
+          onCancel={close}
+          onDraft={saveDraftAndClose}
+          onSave={save}
+          status={
+            <span className="flex flex-col gap-1">
+              {shownCount > 0 ? (
+                <AttentionLink count={shownCount} onClick={() => summaryRef.current?.focus()} />
+              ) : (
+                <span className="flex items-center gap-2 text-xs">
+                  <span className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                    <span className="block h-full rounded-full bg-[#03C1AC] transition-[width] motion-reduce:transition-none" style={{ width: `${all.total ? Math.round((all.filled / all.total) * 100) : 0}%` }} />
+                  </span>
+                  <span className="tabular-nums">{all.filled} of {all.total} filled</span>
+                </span>
+              )}
+              {hasScores(form) && (
+                <span className="text-xs">
+                  {form.scoreLabel ?? "Total score"}:{" "}
+                  {score.complete
+                    ? <strong className="text-foreground">{score.total}{score.band ? `, ${score.band.label}` : ""}</strong>
+                    : <strong className="text-foreground">{score.answered === 0 ? "not scored yet" : `${score.answered} of ${score.items} items answered`}</strong>}
+                  {form.scoreAll && !score.complete && score.answered > 0 && <span className="block">Answer every item to get the total and the risk band.</span>}
                 </span>
               )}
             </span>
-            <span className="flex shrink-0 gap-2">
-              <Button onClick={onClose}>Cancel</Button>
-              <Button variant="primary" disabled={missing.length > 0} onClick={() => onSave(withAuto(form, v, ctx))} title={missing.length ? `Missing: ${missing.map((m) => m.label).join(", ")}` : undefined}>
-                Save
-              </Button>
-            </span>
-          </div>
-        </SheetFooter>
+          }
+        />
+        {dialog}
       </SheetContent>
     </Sheet>
   );
@@ -386,13 +399,18 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
   const keys = form.summaryKeys ?? form.fields.slice(0, 4).map((f) => f.key);
   const cols = keys.map((k) => form.fields.find((f) => f.key === k)).filter(Boolean) as FieldDef[];
   const scored = hasScores(form);
+  const hasDraft = !blocked && !editing && !!loadDraft(`${enc.visitNumber}:${form.id}:new`);
 
   return (
     <Card>
       <CardHeader
         title={form.title}
         subtitle={dev && form.nphies ? `NPHIES: ${form.nphies}` : form.description}
-        right={<Button variant="primary" disabled={!!blocked} onClick={() => setEditing({ id: null, initial: prefillValues(form) })} title={blocked || undefined}><Plus className="size-4" />Add New</Button>}
+        right={
+          <Button variant="primary" disabled={!!blocked} onClick={() => setEditing({ id: null, initial: prefillValues(form) })} title={blocked || undefined}>
+            {hasDraft ? <><FileClock className="size-4" />Continue Draft</> : <><Plus className="size-4" />Add New</>}
+          </Button>
+        }
       />
       {wrongSex && (
         <div className="border-b border-border bg-warn/10 px-4 py-3 text-sm" role="note">
@@ -423,7 +441,7 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
           {records.length === 0 && <tr><Td colSpan={cols.length + 4}><Empty>No records yet. Use Add New.</Empty></Td></tr>}
           {[...records].reverse().map((r) => (
             <tr key={r.id} className="hover:bg-muted/40">
-              <Td className="whitespace-nowrap text-sm tabular-nums text-foreground">{new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</Td>
+              <Td className="whitespace-nowrap text-sm tabular-nums text-foreground">{fmtDateTime(r.at)}</Td>
               {cols.map((c) => <Td key={c.key} className="max-w-[260px] truncate">{display(c, r.values)}</Td>)}
               {scored && <Td><ScoreBadge form={form} v={r.values} /></Td>}
               <Td className="whitespace-nowrap text-sm text-muted-foreground">{r.author}</Td>
@@ -442,6 +460,7 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
         open={!!editing}
         initial={editing?.initial ?? {}}
         ctx={ctx}
+        draftKey={`${enc.visitNumber}:${form.id}:${editing?.id ?? "new"}`}
         onClose={() => setEditing(null)}
         onSave={(v) => {
           if (editing?.id) updateFormRecord(enc.visitNumber, form.id, editing.id, v, enc.patientId);

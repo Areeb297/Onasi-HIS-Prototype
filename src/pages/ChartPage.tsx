@@ -1,3 +1,4 @@
+import { latestChartVitals } from "@/lib/chart-review";
 import * as React from "react";
 import { IconMessage2, IconShieldExclamation, IconShieldCheck } from "@tabler/icons-react";
 import { Activity, AlertTriangle, CheckCircle2, CircleAlert, Droplet, HeartPulse, Plus, Scale, Thermometer, Trash2, Wind } from "lucide-react";
@@ -45,6 +46,7 @@ import { EMR_MENU, type NativeId } from "@/lib/emr-menu";
 import { breakGlass, can, hasGlass, useSession } from "@/lib/session";
 import { coverageView, normalizeDx } from "@/lib/chart-entries";
 import { caseOf, useFinancial } from "@/lib/nphies-financial";
+import { fmtDateTime } from "@/lib/format";
 
 const age = (dob: string) => Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86_400_000));
 const doctorName = (id: string) => {
@@ -52,7 +54,7 @@ const doctorName = (id: string) => {
   return d ? `Dr. ${d.given} ${d.family}` : "None";
 };
 const when = (local?: string) =>
-  local ? new Date(local).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Not yet";
+  local ? fmtDateTime(local) : "Not yet";
 
 const REASONS = ["Emergency treatment", "Covering for a colleague", "Patient asked me to", "Quality or safety review", "Other"];
 
@@ -64,7 +66,8 @@ function GlassGate({ patient }: { patient: Patient }) {
       <CardHeader title="Confidential record" subtitle="Access to this patient is restricted. Break the glass only if you need it to treat or protect the patient." />
       <div className="space-y-3 p-4">
         <p className="text-sm">
-          <strong>{patientName(patient)}</strong> is marked confidential. Your access will be recorded in the audit trail with your name, the time and your reason. It lasts 30 minutes.
+          {/* The name stays hidden until the glass is broken: only the MRN identifies the record here. */}
+          This patient (MRN <span className="font-mono font-semibold">{patient.mrn}</span>) is marked confidential. Your access will be recorded in the audit trail with your name, the time and your reason. It lasts 30 minutes.
         </p>
         <Field label="Reason">
           <Select value={reason} onChange={(e) => setReason(e.target.value)}>
@@ -179,7 +182,8 @@ function VitalTile({ icon, label, value, unit, flag }: { icon: React.ReactNode; 
  */
 function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
   const st = visitStatus(enc);
-  const v = enc.vitals;
+  // The newest reading, whether it came with the visit or from a vital-signs panel, so the tiles match the SBAR.
+  const v = latestChartVitals(enc);
   const num = (s?: string) => (s ? parseFloat(s) : NaN);
   const temp = num(v?.temp), spo2 = num(v?.spo2), pulse = num(v?.pulse), rr = num(v?.rr);
   const sbp = num(v?.bp?.split("/")[0]);

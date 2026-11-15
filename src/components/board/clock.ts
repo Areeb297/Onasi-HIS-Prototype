@@ -1,3 +1,5 @@
+import { fmtDuration as formatDuration } from "@/lib/format";
+
 /** Turnaround clocks. Pure, so they are easy to test. */
 
 export type ClockState = "ok" | "warn" | "late";
@@ -15,19 +17,8 @@ export function clockState(elapsedMin: number, targetMin: number): ClockState {
 
 export const elapsedMin = (sinceIso: string, now: number): number => Math.max(0, (now - new Date(sinceIso).getTime()) / 60_000);
 
-/** 45m, 1h 20m, 2d 3h. */
-export function fmtDuration(min: number): string {
-  const m = Math.max(0, Math.round(min));
-  if (m < 60) return `${m}m`;
-  if (m < 60 * 24) {
-    const h = Math.floor(m / 60);
-    const r = m % 60;
-    return r ? `${h}h ${r}m` : `${h}h`;
-  }
-  const d = Math.floor(m / (60 * 24));
-  const h = Math.floor((m % (60 * 24)) / 60);
-  return h ? `${d}d ${h}h` : `${d}d`;
-}
+/** 45 min, 1 h 20 min, 2 d 3 h: the one duration style of the app (lib/format.ts). */
+export const fmtDuration = formatDuration;
 
 export const CLOCK_TONE: Record<ClockState, { text: string; bg: string; stroke: string }> = {
   ok: { text: "text-ok", bg: "bg-ok/12", stroke: "stroke-ok" },

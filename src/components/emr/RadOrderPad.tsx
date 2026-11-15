@@ -1,8 +1,9 @@
 import * as React from "react";
 import { X } from "lucide-react";
+import { ErrorSummary, FormField, FormGrid, FormSection, Segmented, useValidation } from "@/components/emr/entry-ui";
 import { Gate } from "@/components/emr/fhir-ui";
 import { OrderCoverageField, OrderDiagnosisField } from "@/components/emr/OrderFields";
-import { Button, Field, Input, Select, cn } from "@/components/ui/primitives";
+import { Button, Input, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { BODY_REGIONS, MODALITIES, QUICK_RAD, RAD_CATALOG, procByCode, type RadProcedure } from "@/lib/fhir/rad-catalog";
 import { PRIORITIES, type OrderCoverage, type OrderDiagnosis, type Priority } from "@/lib/fhir/types";
@@ -20,6 +21,9 @@ export interface RadOrderInput {
   coverage: OrderCoverage;
 }
 
+const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p.code, label: p.label }));
+const groupLabel = "mb-1.5 text-xs font-medium text-muted-foreground";
+
 function Chip({ proc, on, toggle, disabled }: { proc: RadProcedure; on: boolean; toggle: () => void; disabled?: boolean }) {
   const dev = useDevMode();
   return (
@@ -30,7 +34,7 @@ function Chip({ proc, on, toggle, disabled }: { proc: RadProcedure; on: boolean;
       onClick={toggle}
       title={`${proc.display} (code ${proc.code})`}
       className={cn(
-        "rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+        "min-h-8 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
         on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted",
       )}
     >
@@ -95,105 +99,111 @@ export function RadOrderPad({
     if (d && !indication.trim()) setIndication(d.text);
   };
   const picked = codes.map((c) => procByCode(c)).filter((p): p is RadProcedure => !!p);
-  const hasReason = indication.trim().length > 0;
-  const ready = canOrder && picked.length > 0 && hasReason;
-  const whyOff = !canOrder ? "" : picked.length === 0 ? "Pick an exam first." : !hasReason ? "Enter the reason for the exam. NPHIES rejects a radiology order without it." : "";
+  const v = useValidation({
+    exam: picked.length === 0 && (single ? "Choose the exam." : "Choose at least one exam."),
+    reason: indication.trim().length === 0 && "Enter the reason for the exam. NPHIES rejects a radiology order without it.",
+  });
   const value: RadOrderInput = { procCodes: codes, priority, indication, clinicalInfo, diagnosis, coverage };
   const dupes = duplicatesOf && !procLocked ? duplicatesOf(codes) : [];
-  /** A duplicate asks first. Anything else goes straight through. */
-  const submit = (andSend: boolean) => (dupes.length > 0 ? setPending({ andSend }) : onSubmit(value, andSend));
+  /** A missing exam or reason is shown under its field. A duplicate asks first. Anything else goes straight through. */
+  const submit = (andSend: boolean) => {
+    if (!v.submit()) return;
+    if (dupes.length > 0) setPending({ andSend });
+    else onSubmit(value, andSend);
+  };
+  const noExam = v.error("exam");
 
   return (
-    <div className="space-y-3">
-      {!single && (
+    <div className="space-y-5">
+      <ErrorSummary problems={v.summary} />
+      <FormSection
+        title={single ? "Exam" : "Exams"}
+        description={procLocked ? "The exam is done, so the procedure cannot change." : single ? "Tap the exam this order is for." : "Tap to add or remove an exam. One order can hold several."}
+      >
+        {!single && (
+          <div>
+            <div className={groupLabel}>Quick Orders</div>
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_RAD.map((q) => {
+                const p = procByCode(q.code)!;
+                return <Chip key={q.id} proc={p} on={codes.includes(q.code)} toggle={() => toggle(q.code)} />;
+              })}
+            </div>
+          </div>
+        )}
         <div>
-          <div className="mb-1.5 text-xs font-medium text-muted-foreground">Quick Orders</div>
+          <div className={groupLabel}>{single ? "Procedure" : "All Procedures"}</div>
           <div className="flex flex-wrap gap-1.5">
-            {QUICK_RAD.map((q) => {
-              const p = procByCode(q.code)!;
-              return <Chip key={q.id} proc={p} on={codes.includes(q.code)} toggle={() => toggle(q.code)} />;
-            })}
-          </div>
-        </div>
-      )}
-      <div>
-        <div className="mb-1.5 text-xs font-medium text-muted-foreground">{single ? "Procedure" : "All Procedures"}</div>
-        <div className="flex flex-wrap gap-1.5">
-          {RAD_CATALOG.map((p) => (
-            <Chip key={p.code} proc={p} on={codes.includes(p.code)} disabled={procLocked} toggle={() => toggle(p.code)} />
-          ))}
-        </div>
-      </div>
-      <div className="rounded-lg border border-border bg-muted/30">
-        <div className="px-3 pt-2.5 text-xs font-medium text-muted-foreground">{single ? "Exam" : `Exams In This Order (${picked.length})`}</div>
-        {picked.length === 0 ? (
-          <p className="px-3 pb-3 pt-1 text-sm text-muted-foreground">Tap an exam above to add it.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[30rem] text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted-foreground">
-                  <th scope="col" className="px-3 py-1.5 font-medium">Exam</th>
-                  <th scope="col" className="px-3 py-1.5 font-medium">Modality</th>
-                  <th scope="col" className="px-3 py-1.5 font-medium">Body Site</th>
-                  <th scope="col" className="px-3 py-1.5 font-medium">Contrast</th>
-                  {!single && <th scope="col" className="px-3 py-1.5"><span className="sr-only">Remove</span></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {picked.map((p) => (
-                  <tr key={p.code} className="border-t border-border">
-                    <td className="px-3 py-1.5 font-medium">
-                      {p.display}
-                      {dev && <div className="font-mono text-xs font-normal text-muted-foreground">{p.code}</div>}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      {MODALITIES[p.modality].display}
-                      {dev && <div className="font-mono text-xs text-muted-foreground">orderDetail {MODALITIES[p.modality].code}</div>}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      {BODY_REGIONS[p.region].display}
-                      {dev && <div className="font-mono text-xs text-muted-foreground">bodySite {BODY_REGIONS[p.region].code}</div>}
-                    </td>
-                    <td className="px-3 py-1.5">{p.contrast ? "Needed" : "No"}</td>
-                    {!single && (
-                      <td className="px-3 py-1.5 text-right">
-                        <button type="button" className="rounded p-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => toggle(p.code)} aria-label={`Remove ${p.short}`}>
-                          <X className="size-3.5" />
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {picked.length > 1 && (
-          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-            One order, {picked.length} exams. Modality and body site come with each exam. Radiology does and reports each exam on its own, and each is sent to NPHIES as its own order document.
-          </p>
-        )}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <OrderDiagnosisField diagnoses={diagnoses} value={diagnosis} onChange={pickDiagnosis} />
-        <OrderCoverageField value={coverage} onChange={setCoverage} insured={insured || coverage === "plan"} />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)_minmax(0,1fr)]">
-        <Field label="Priority" hl7="ServiceRequest.priority">
-          <Select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
-            {PRIORITIES.map((p) => (
-              <option key={p.code} value={p.code}>{p.label}</option>
+            {RAD_CATALOG.map((p) => (
+              <Chip key={p.code} proc={p} on={codes.includes(p.code)} disabled={procLocked} toggle={() => toggle(p.code)} />
             ))}
-          </Select>
-        </Field>
-        <Field label="Reason For The Exam" required hl7="Composition.section (procedure indications, LOINC 59768-2)">
-          <Input value={indication} required aria-required="true" aria-invalid={!hasReason} onChange={(e) => setIndication(e.target.value)} placeholder="For example: cough and fever" />
-        </Field>
-        <Field label="Clinical History" hl7="Composition.section (clinical information)">
-          <Input value={clinicalInfo} onChange={(e) => setClinicalInfo(e.target.value)} placeholder="Optional" />
-        </Field>
-      </div>
+          </div>
+        </div>
+        <div className={cn("rounded-lg border bg-muted/30", noExam ? "border-destructive/60" : "border-border")}>
+          <div className="px-3 pt-2.5 text-xs font-medium text-muted-foreground">{single ? "Exam" : `Exams In This Order (${picked.length})`}</div>
+          {picked.length === 0 ? (
+            <p className={cn("px-3 pb-3 pt-1 text-sm", noExam ? "font-medium text-destructive" : "text-muted-foreground")}>
+              {noExam ? "No exam chosen yet. Tap an exam above to add it." : "Tap an exam above to add it."}
+            </p>
+          ) : (
+            <ul className="mt-1.5 divide-y divide-border border-t border-border">
+              {picked.map((p) => (
+                <li key={p.code} className="flex items-start gap-3 px-3 py-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium">
+                      {p.display}
+                      {dev && <span className="ml-1.5 font-mono text-xs font-normal text-muted-foreground">{p.code}</span>}
+                    </div>
+                    <dl className="mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
+                      <div className="flex gap-1">
+                        <dt className="text-muted-foreground">Modality</dt>
+                        <dd>{MODALITIES[p.modality].display}{dev && <span className="ml-1 font-mono text-muted-foreground">orderDetail {MODALITIES[p.modality].code}</span>}</dd>
+                      </div>
+                      <div className="flex gap-1">
+                        <dt className="text-muted-foreground">Body Site</dt>
+                        <dd>{BODY_REGIONS[p.region].display}{dev && <span className="ml-1 font-mono text-muted-foreground">bodySite {BODY_REGIONS[p.region].code}</span>}</dd>
+                      </div>
+                      <div className="flex gap-1">
+                        <dt className="text-muted-foreground">Contrast</dt>
+                        <dd>{p.contrast ? "Needed" : "No"}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                  {!single && (
+                    <button type="button" className="rounded p-1.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => toggle(p.code)} aria-label={`Remove ${p.short}`}>
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {picked.length > 1 && (
+            <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+              One order, {picked.length} exams. Radiology does and reports each exam on its own, and each is sent to NPHIES as its own order document.
+            </p>
+          )}
+        </div>
+      </FormSection>
+
+      <FormSection title="Order Details">
+        <FormGrid>
+          <FormField label="Reason For The Exam" required error={v.error("reason")} hl7="Composition.section (procedure indications, LOINC 59768-2)">
+            <Input value={indication} required aria-required="true" onBlur={v.blur("reason")} onChange={(e) => setIndication(e.target.value)} placeholder="For example: cough and fever" />
+          </FormField>
+          <FormField label="Clinical History" help="Optional." hl7="Composition.section (clinical information)">
+            <Input value={clinicalInfo} onChange={(e) => setClinicalInfo(e.target.value)} placeholder="For example: smoker, pneumonia last year" />
+          </FormField>
+          <FormField group label="Priority" hl7="ServiceRequest.priority">
+            <Segmented value={priority} options={PRIORITY_OPTIONS} onChange={setPriority} />
+          </FormField>
+          <OrderCoverageField value={coverage} onChange={setCoverage} insured={insured || coverage === "plan"} />
+          <div className="sm:col-span-2">
+            <OrderDiagnosisField diagnoses={diagnoses} value={diagnosis} onChange={pickDiagnosis} />
+          </div>
+        </FormGrid>
+      </FormSection>
+
       {pending && dupes.length > 0 && (
         <div role="alert" className="space-y-2 rounded-lg border border-warn/50 bg-warn/10 p-3">
           <p className="text-sm">
@@ -206,18 +216,17 @@ export function RadOrderPad({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <Gate allowed={canOrder} reason="Your role cannot order radiology exams.">
-          <Button variant="primary" disabled={!ready || !!pending} onClick={() => submit(false)}>{submitLabel}</Button>
+          <Button variant="primary" disabled={!canOrder || !!pending} onClick={() => submit(false)}>{submitLabel}</Button>
         </Gate>
         {showSend && (
           <Gate allowed={canOrder} reason="Your role cannot order radiology exams.">
-            <Button disabled={!ready || !!pending} onClick={() => submit(true)}>{submitLabel} And Send To NPHIES</Button>
+            <Button disabled={!canOrder || !!pending} onClick={() => submit(true)}>{submitLabel} And Send To NPHIES</Button>
           </Gate>
         )}
         {onCancel && <Button variant="ghost" onClick={onCancel}>Close</Button>}
-        {!canOrder && <span className="self-center text-xs text-muted-foreground">{reason}</span>}
-        {whyOff && <span className="self-center text-xs text-muted-foreground" role="status">{whyOff}</span>}
+        {!canOrder && <span className="text-xs text-muted-foreground">{reason}</span>}
       </div>
     </div>
   );

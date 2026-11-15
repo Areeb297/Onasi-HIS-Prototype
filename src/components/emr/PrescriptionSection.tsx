@@ -1,11 +1,11 @@
 import * as React from "react";
-import { IconCircleX, IconHandStop, IconMessageReply, IconPencil, IconPlayerPause, IconPlayerPlay, IconSend, IconShieldCheck, IconShieldExclamation, IconTrash } from "@tabler/icons-react";
+import { IconCircleX, IconHandStop, IconMessageReply, IconPencil, IconPill, IconPlayerPause, IconPlayerPlay, IconSend, IconShieldCheck, IconShieldExclamation, IconTrash } from "@tabler/icons-react";
 import { ConformancePanel, ControlBadge, ItemStatusBadge, MessageViewer, RxPatientStrip, VerifyBadge, VerifyTrail } from "@/components/emr/RxShared";
-import { Textarea } from "@/components/ui/textarea";
 import { answerQuery, verifyStatusOf } from "@/lib/rx-verify";
 import { RxEditor } from "@/components/emr/RxEditor";
 import { Dialog } from "@/components/Dialog";
-import { Badge, Button, Card, CardHeader, Empty, Field, Input, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { EmptyState, FormField, RowMenu, TextArea, WithUnit, useValidation } from "@/components/emr/entry-ui";
+import { Badge, Button, Card, CardHeader, Input, cn } from "@/components/ui/primitives";
 import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
 import { dosageNarrative } from "@/lib/fhir/medication";
@@ -29,7 +29,11 @@ export function PrescriptionSection({ enc }: { enc: Encounter }) {
       <MeasuresCard enc={enc} />
       <RxEditor enc={enc} editing={editing} onDone={() => setEditing(null)} />
       {rxs.length === 0 ? (
-        <Card><Empty>No prescriptions on this visit yet.</Empty></Card>
+        <Card>
+          <EmptyState icon={<IconPill stroke={1.75} />} title="No Prescriptions On This Visit">
+            Pick a drug in New Prescription Item above, check the dose, then choose Add To Prescription.
+          </EmptyState>
+        </Card>
       ) : (
         rxs.map((rx) => <RxCard key={rx.id} rx={rx} onEdit={(itemId) => { setEditing({ rxId: rx.id, itemId }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />)
       )}
@@ -50,11 +54,20 @@ function MeasuresCard({ enc }: { enc: Encounter }) {
   React.useEffect(() => setH(m.heightCm ? String(m.heightCm) : ""), [m.heightCm, enc.visitNumber]);
   React.useEffect(() => setW(m.weightKg ? String(m.weightKg) : ""), [m.weightKg, enc.visitNumber]);
 
+  const hBad = h.trim() !== "" && !(parseFloat(h) >= 30 && parseFloat(h) <= 250);
+  const wBad = w.trim() !== "" && !(parseFloat(w) >= 0.5 && parseFloat(w) <= 400);
+  const v = useValidation({
+    height: hBad && "Enter a height from 30 to 250 cm.",
+    weight: wBad && "Enter a weight from 0.5 to 400 kg.",
+  });
+
   function saveH() {
+    v.blur("height")();
     const n = parseFloat(h);
     if (n >= 30 && n <= 250 && n !== m.heightCm) setHeight(enc.visitNumber, enc.patientId, n);
   }
   function saveW() {
+    v.blur("weight")();
     const n = parseFloat(w);
     if (!(n >= 0.5 && n <= 400) || n === m.weightKg) return;
     updateEncounter(
@@ -71,15 +84,19 @@ function MeasuresCard({ enc }: { enc: Encounter }) {
   return (
     <Card>
       <CardHeader title="Measurements And Allergies" subtitle="Height and weight go with every prescription. Weight comes from the chart vitals." right={dev ? <Badge tone="update">Visit {enc.visitNumber}</Badge> : undefined} />
-      <div className="grid gap-4 px-4 py-4 lg:grid-cols-[auto_auto_1fr]">
-        <Field label="Height (cm)" hl7="Observation 50373000">
-          <Input className="w-32" type="number" min="30" max="250" value={h} onChange={(e) => setH(e.target.value)} onBlur={saveH} disabled={!canWrite} placeholder="170" />
-        </Field>
-        <Field label="Weight (kg)" hl7="Observation 363808001">
-          <Input className="w-32" type="number" min="0.5" max="400" step="any" value={w} onChange={(e) => setW(e.target.value)} onBlur={saveW} disabled={!canWrite} placeholder="70" />
-        </Field>
+      <div className="grid gap-4 px-4 py-4 sm:grid-cols-[10rem_10rem_1fr]">
+        <FormField label="Height" error={v.error("height")} hl7="Observation 50373000">
+          <WithUnit unit="cm">
+            <Input className="pe-10" type="number" min="30" max="250" value={h} onChange={(e) => setH(e.target.value)} onBlur={saveH} disabled={!canWrite} placeholder="170" />
+          </WithUnit>
+        </FormField>
+        <FormField label="Weight" error={v.error("weight")} hl7="Observation 363808001">
+          <WithUnit unit="kg">
+            <Input className="pe-10" type="number" min="0.5" max="400" step="any" value={w} onChange={(e) => setW(e.target.value)} onBlur={saveW} disabled={!canWrite} placeholder="70" />
+          </WithUnit>
+        </FormField>
         <div className="min-w-0 text-sm">
-          <div className="mb-1 text-xs font-medium text-muted-foreground">Allergies</div>
+          <div className="mb-1.5 text-sm font-medium leading-5">Allergies</div>
           {enc.allergies.length ? (
             <div className="flex flex-wrap gap-1.5">
               {enc.allergies.map((a) => (
@@ -117,19 +134,8 @@ const ACTION_TEXT: Record<string, { title: string; verb: string; status: ItemSta
   stop: { title: "Stop Item", verb: "Stop", status: "stopped", action: "stop", help: "Dispensing already started. No more of this item will be dispensed." },
 };
 
-function PillBtn({ title, onClick, disabled, children }: { title: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      disabled={disabled}
-      className="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-    >
-      {children}
-    </button>
-  );
-}
+const NO_RX = "You do not have permission to prescribe";
+const LABEL = "mb-0.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground";
 
 function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => void }) {
   const s = useRx();
@@ -142,6 +148,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
   const [answering, setAnswering] = React.useState<RxItem | null>(null);
   const [answer, setAnswer] = React.useState("");
   const [answerProblem, setAnswerProblem] = React.useState("");
+  const [removing, setRemoving] = React.useState<RxItem | null>(null);
   const enc = his.encounters.find((e) => e.visitNumber === rx.visitNumber);
   const atPharmacy = rx.sentAt ? rx.items.filter((i) => i.status === "active" && !fillOf(s, rx, i).done) : [];
   const nQuery = atPharmacy.filter((i) => verifyStatusOf(i) === "queried").length;
@@ -149,6 +156,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
 
   function sendAnswer() {
     if (!answering) return;
+    if (answer.trim().length < 2) return setAnswerProblem("Type your answer first.");
     const res = answerQuery(rx.id, answering.id, answer);
     if (!res.ok) return setAnswerProblem(res.problem ?? "The answer could not be saved.");
     pushToast({ tone: "ok", text: "Answer sent to the pharmacy", detail: "The pharmacist checks the item again." });
@@ -219,101 +227,122 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
           {[nQuery > 0 && `The pharmacy asked a question about ${nQuery} ${nQuery === 1 ? "item" : "items"}`, nRejected > 0 && `The pharmacy rejected ${nRejected} ${nRejected === 1 ? "item" : "items"}`].filter(Boolean).join(". ")}. These items are not dispensed until this is settled.
         </p>
       )}
-      <Table>
-        <thead className="bg-muted/40">
-          <tr><Th>Drug</Th><Th>Dose And Duration</Th><Th>Supply</Th><Th>Status And Pharmacy Check</Th><Th className="w-px whitespace-nowrap">Actions</Th></tr>
-        </thead>
-        <tbody>
-          {rx.items.map((item) => {
-            const drug = getDrug(item.drugId);
-            const fill = fillOf(s, rx, item);
-            const sent = !!rx.sentAt;
-            const open = item.status === "active" || item.status === "on-hold";
-            const noEdit = fill.dispensedTotal > 0;
-            const vstatus = verifyStatusOf(item, fill.dispensedTotal);
-            return (
-              <tr key={item.id} className="hover:bg-muted/30">
-                <Td className="min-w-[11rem] align-top">
-                  <div className="font-medium">{drug.generic} {drug.strengthValue} {drug.strengthUnit}</div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    {drug.form} <ControlBadge cls={drug.controlClass} />
-                    {item.allergyOverride && <Badge tone="danger" className="whitespace-nowrap">Allergy Override</Badge>}
-                    {dev && <span className="font-mono">{item.identifier} v{item.version}</span>}
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1 text-xs">
-                    <Badge tone={item.patientProvided ? "move" : "neutral"}>{item.patientProvided ? "Provided By Patient" : "Pharmacy"}</Badge>
-                    {item.coverage ? <Badge tone={item.coverage === "Insured" ? "ok" : "warn"}>{item.coverage}</Badge> : <span className="text-muted-foreground">Coverage not recorded</span>}
-                  </div>
-                </Td>
-                <Td className="min-w-[16rem] align-top text-xs">
-                  {regimenOf(item) !== "normal" && <Badge tone="update" className="mb-1">{regimenOf(item) === "split" ? "Split Regimen" : "Taper Regimen"}</Badge>}
-                  <div>{dosageNarrative(drug, item)}</div>
-                  <div className="text-muted-foreground">{dateRange(item, rx.authoredAt)}</div>
-                  {item.patientInstruction && <div className="text-muted-foreground">{item.patientInstruction}</div>}
-                  <div className="text-muted-foreground">Reason: {item.reason.text}</div>
-                </Td>
-                <Td className="whitespace-nowrap align-top tabular-nums">
-                  <div className="font-medium">{unitCount(item.quantity, drug.unit)}{item.refills > 0 && <span className="text-xs font-normal text-muted-foreground"> · {item.refills} repeats</span>}</div>
-                  <div className="text-xs text-muted-foreground">{item.patientProvided ? "Not dispensed" : sent ? `${round(fill.dispensedTotal)} of ${item.quantity} dispensed` : "Not dispensed yet"}</div>
-                </Td>
-                <Td className="min-w-[12rem] max-w-[18rem] align-top">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <ItemStatusBadge status={item.status} />
-                    {sent && item.status === "active" && !fill.done && <VerifyBadge status={vstatus} />}
-                  </div>
-                  {sent && item.status === "active" && (
-                    <div className="mt-1">
-                      <VerifyTrail item={item} status={vstatus} />
-                      {vstatus === "rejected" && <div className="text-xs text-muted-foreground">Edit the item to send it for a new check, or cancel it.</div>}
-                      {vstatus === "queried" && (
-                        <span className="mt-1 inline-flex" title={canWrite ? undefined : "You do not have permission to prescribe"}>
-                          <Button size="sm" variant="primary" disabled={!canWrite} onClick={() => { setAnswering(item); setAnswer(""); setAnswerProblem(""); }}>
-                            <IconMessageReply className="size-4" />Answer The Pharmacist
-                          </Button>
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </Td>
-                <Td className="w-px whitespace-nowrap align-top">
-                  <div className="inline-flex flex-nowrap items-center gap-0.5 rounded-full border border-border bg-background px-1.5 py-1">
-                    {open && (
-                      <PillBtn title={!canWrite ? "You do not have permission to prescribe" : noEdit ? "Dispensing has started. This item cannot be edited." : "Edit Item"} disabled={!canWrite || noEdit} onClick={() => onEdit(item.id)}>
-                        <IconPencil className="size-[18px] text-update" stroke={1.75} />
-                      </PillBtn>
-                    )}
-                    {!sent && (
-                      <PillBtn title="Remove Draft Item" disabled={!canWrite} onClick={() => removeDraftItem(rx.id, item.id)}>
-                        <IconTrash className="size-[18px] text-cancel" stroke={1.75} />
-                      </PillBtn>
-                    )}
-                    {sent && item.status === "active" && (
-                      <PillBtn title={canWrite ? "Put On Hold" : "You do not have permission to prescribe"} disabled={!canWrite} onClick={() => setConfirm({ key: "hold", item })}>
-                        <IconPlayerPause className="size-[18px] text-warn" stroke={1.75} />
-                      </PillBtn>
-                    )}
-                    {sent && item.status === "on-hold" && (
-                      <PillBtn title={canWrite ? "Resume" : "You do not have permission to prescribe"} disabled={!canWrite} onClick={() => setConfirm({ key: "resume", item })}>
-                        <IconPlayerPlay className="size-[18px] text-ok" stroke={1.75} />
-                      </PillBtn>
-                    )}
-                    {sent && open && fill.dispensedTotal > 0 && (
-                      <PillBtn title={canWrite ? "Stop (Dispensing Started)" : "You do not have permission to prescribe"} disabled={!canWrite} onClick={() => setConfirm({ key: "stop", item })}>
-                        <IconHandStop className="size-[18px] text-cancel" stroke={1.75} />
-                      </PillBtn>
-                    )}
-                    {sent && ((open && fill.dispensedTotal === 0) || (item.status === "completed" && rx.controlled)) && (
-                      <PillBtn title={canWrite ? (item.status === "completed" ? "Cancel Completed Item" : "Cancel Item") : "You do not have permission to prescribe"} disabled={!canWrite} onClick={() => setConfirm({ key: "cancel", item })}>
-                        <IconCircleX className="size-[18px] text-cancel" stroke={1.75} />
-                      </PillBtn>
+      <ul aria-label={`Items of ${rx.number}`} className="divide-y divide-border/70">
+        {rx.items.map((item) => {
+          const drug = getDrug(item.drugId);
+          const fill = fillOf(s, rx, item);
+          const sent = !!rx.sentAt;
+          const open = item.status === "active" || item.status === "on-hold";
+          const noEdit = fill.dispensedTotal > 0;
+          const vstatus = verifyStatusOf(item, fill.dispensedTotal);
+          const name = `${drug.generic} ${drug.strengthValue} ${drug.strengthUnit}`;
+          const off = !canWrite ? NO_RX : undefined;
+          return (
+            <li key={item.id} className="relative flex flex-wrap gap-x-6 gap-y-3 px-4 py-3 pe-14">
+              <div className="min-w-0 flex-1 basis-52">
+                <div className="text-sm font-medium">{name}</div>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  {drug.form} <ControlBadge cls={drug.controlClass} />
+                  {item.allergyOverride && <Badge tone="danger" className="whitespace-nowrap">Allergy Override</Badge>}
+                  {dev && <span className="font-mono">{item.identifier} v{item.version}</span>}
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1 text-xs">
+                  <Badge tone={item.patientProvided ? "move" : "neutral"}>{item.patientProvided ? "Provided By Patient" : "Pharmacy"}</Badge>
+                  {item.coverage ? <Badge tone={item.coverage === "Insured" ? "ok" : "warn"}>{item.coverage}</Badge> : <span className="text-muted-foreground">Coverage not recorded</span>}
+                </div>
+              </div>
+              <div className="min-w-0 flex-[1.4] basis-64 text-xs">
+                <div className={LABEL}>Dose And Duration</div>
+                {regimenOf(item) !== "normal" && <Badge tone="update" className="mb-1">{regimenOf(item) === "split" ? "Split Regimen" : "Taper Regimen"}</Badge>}
+                <div className="text-sm">{dosageNarrative(drug, item)}</div>
+                <div className="text-muted-foreground">{dateRange(item, rx.authoredAt)}</div>
+                {item.patientInstruction && <div className="text-muted-foreground">{item.patientInstruction}</div>}
+                <div className="text-muted-foreground">Reason: {item.reason.text}</div>
+              </div>
+              <div className="basis-36 tabular-nums">
+                <div className={LABEL}>Supply</div>
+                <div className="text-sm font-medium">{unitCount(item.quantity, drug.unit)}{item.refills > 0 && <span className="text-xs font-normal text-muted-foreground"> · {item.refills} repeats</span>}</div>
+                <div className="text-xs text-muted-foreground">{item.patientProvided ? "Not dispensed" : sent ? `${round(fill.dispensedTotal)} of ${item.quantity} dispensed` : "Not dispensed yet"}</div>
+              </div>
+              <div className="min-w-0 flex-1 basis-48">
+                <div className={LABEL}>Status And Pharmacy Check</div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <ItemStatusBadge status={item.status} />
+                  {sent && item.status === "active" && !fill.done && <VerifyBadge status={vstatus} />}
+                </div>
+                {sent && item.status === "active" && (
+                  <div className="mt-1">
+                    <VerifyTrail item={item} status={vstatus} />
+                    {vstatus === "rejected" && <div className="text-xs text-muted-foreground">Edit the item to send it for a new check, or cancel it.</div>}
+                    {vstatus === "queried" && (
+                      <span className="mt-1 inline-flex" title={off}>
+                        <Button size="sm" variant="primary" disabled={!canWrite} onClick={() => { setAnswering(item); setAnswer(""); setAnswerProblem(""); }}>
+                          <IconMessageReply className="size-4" />Answer The Pharmacist
+                        </Button>
+                      </span>
                     )}
                   </div>
-                </Td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </Table>
+                )}
+              </div>
+              <div className="absolute end-3 top-2.5">
+                <RowMenu
+                  label={`Actions for ${name}`}
+                  items={[
+                    open && {
+                      label: "Edit Item",
+                      icon: <IconPencil className="size-4 text-update" stroke={1.75} />,
+                      disabled: !canWrite || noEdit,
+                      title: off ?? (noEdit ? "Dispensing has started. This item cannot be edited." : undefined),
+                      onSelect: () => onEdit(item.id),
+                    },
+                    sent && item.status === "active" && {
+                      label: "Put On Hold",
+                      icon: <IconPlayerPause className="size-4 text-warn" stroke={1.75} />,
+                      disabled: !canWrite,
+                      title: off,
+                      onSelect: () => setConfirm({ key: "hold", item }),
+                    },
+                    sent && item.status === "on-hold" && {
+                      label: "Resume",
+                      icon: <IconPlayerPlay className="size-4 text-ok" stroke={1.75} />,
+                      disabled: !canWrite,
+                      title: off,
+                      onSelect: () => setConfirm({ key: "resume", item }),
+                    },
+                    sent && open && fill.dispensedTotal > 0 && {
+                      label: "Stop",
+                      icon: <IconHandStop className="size-4 text-cancel" stroke={1.75} />,
+                      disabled: !canWrite,
+                      title: off ?? "Dispensing has started. No more of this item will be dispensed.",
+                      danger: true,
+                      separated: true,
+                      onSelect: () => setConfirm({ key: "stop", item }),
+                    },
+                    sent && ((open && fill.dispensedTotal === 0) || (item.status === "completed" && rx.controlled)) && {
+                      label: item.status === "completed" ? "Cancel Completed Item" : "Cancel Item",
+                      icon: <IconCircleX className="size-4" stroke={1.75} />,
+                      disabled: !canWrite,
+                      title: off,
+                      danger: true,
+                      separated: true,
+                      onSelect: () => setConfirm({ key: "cancel", item }),
+                    },
+                    !sent && {
+                      label: "Remove Draft Item",
+                      icon: <IconTrash className="size-4" stroke={1.75} />,
+                      disabled: !canWrite,
+                      title: off,
+                      danger: true,
+                      separated: open,
+                      onSelect: () => setRemoving(item),
+                    },
+                  ]}
+                />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
         <div className="text-xs text-muted-foreground">
           {own
@@ -360,9 +389,9 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
             <RxPatientStrip rx={rx} />
             <p>{ACTION_TEXT[confirm.key].help}</p>
             {(rx.raqeebRef ?? rx.nationalRef) && <p className="text-xs text-muted-foreground">Sent with {rx.raqeebRef ? "Raqeeb" : "NPHIES"} reference id {rx.raqeebRef ?? rx.nationalRef}.</p>}
-            <Field label="Reason (Optional)">
+            <FormField label="Reason" help="Optional. Kept in the audit trail.">
               <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: patient changed treatment" />
-            </Field>
+            </FormField>
           </div>
         )}
       </Dialog>
@@ -374,9 +403,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
         footer={
           <>
             <Button onClick={() => setAnswering(null)}>Close</Button>
-            <span title={answer.trim().length < 2 ? "Type your answer first" : undefined}>
-              <Button variant="primary" disabled={answer.trim().length < 2} onClick={sendAnswer}>Send Answer To Pharmacy</Button>
-            </span>
+            <Button variant="primary" onClick={sendAnswer}>Send Answer To Pharmacy</Button>
           </>
         }
       >
@@ -388,12 +415,25 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
               <div className="mt-0.5">{answering.verify?.query?.text}</div>
             </div>
             <p className="text-xs text-muted-foreground">{dosageNarrative(getDrug(answering.drugId), answering)}. To change the dose, close this and edit the item. An edited item goes back to the pharmacy for a new check.</p>
-            <Field label="Your Answer" required>
-              <Textarea rows={3} value={answer} onChange={(e) => { setAnswer(e.target.value); setAnswerProblem(""); }} />
-            </Field>
-            {answerProblem && <p role="alert" className="text-xs text-destructive">{answerProblem}</p>}
+            <FormField label="Your Answer" required error={answerProblem || undefined}>
+              <TextArea rows={3} value={answer} onChange={(e) => { setAnswer(e.target.value); setAnswerProblem(""); }} />
+            </FormField>
           </div>
         )}
+      </Dialog>
+      <Dialog
+        open={!!removing}
+        onClose={() => setRemoving(null)}
+        title="Remove Draft Item"
+        subtitle={removing ? `${getDrug(removing.drugId).generic}, ${rx.number}` : undefined}
+        footer={
+          <>
+            <Button onClick={() => setRemoving(null)}>Keep Item</Button>
+            <Button variant="danger" onClick={() => { if (removing) removeDraftItem(rx.id, removing.id); setRemoving(null); }}>Remove Item</Button>
+          </>
+        }
+      >
+        <p className="text-sm">This item was not sent yet. Removing it takes it off the prescription.</p>
       </Dialog>
     </Card>
   );

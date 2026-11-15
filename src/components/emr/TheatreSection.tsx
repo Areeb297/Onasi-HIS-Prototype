@@ -25,6 +25,7 @@ import {
   type TeamMember,
 } from "@/lib/theatre-logic";
 import { pushToast } from "@/lib/toast";
+import { fmtDateTime } from "@/lib/format";
 
 /* ---------- small shared pieces ---------- */
 
@@ -37,7 +38,7 @@ export const SCHEDULE_TONE: Record<ScheduleStatus, "neutral" | "ok" | "warn" | "
   Draft: "neutral", Scheduled: "info", Confirmed: "ok", "In Progress": "admit", Completed: "ok", Postponed: "warn", Cancelled: "danger",
 };
 
-const whenIso = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const whenIso = (iso: string) => fmtDateTime(iso);
 const whenLocal = (local: string) => (local ? whenIso(local) : "");
 const today = (): string => {
   const d = new Date();

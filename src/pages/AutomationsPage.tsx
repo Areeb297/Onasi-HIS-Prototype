@@ -18,6 +18,7 @@ import {
 import { navigate, useRoute } from "@/lib/router";
 import { useSession } from "@/lib/session";
 import { pushToast } from "@/lib/toast";
+import { fmtTime } from "@/lib/format";
 
 /**
  * Automations: the list of flows and their run history. A flow watches one HIS event, then notifies people, adds
@@ -114,7 +115,7 @@ export function AutomationsPage() {
       />
 
       <KpiStrip label="Automations today" className="grid-cols-2 lg:grid-cols-4">
-        <KpiTile icon={<IconRoute stroke={1.75} />} label="Active" value={`${active} of ${s.automations.length}`} note={s.lastCheck ? `Last check ${new Date(s.lastCheck).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "Checks every minute"} />
+        <KpiTile icon={<IconRoute stroke={1.75} />} label="Active" value={`${active} of ${s.automations.length}`} note={s.lastCheck ? `Last check ${fmtTime(s.lastCheck)}` : "Checks every minute"} />
         <KpiTile icon={<IconPlayerPlay stroke={1.75} />} label="Runs Today" value={String(today)} note="Test runs not counted" />
         <KpiTile icon={<IconUserCheck stroke={1.75} />} label="Waiting For Approval" value={String(approvals)} note={approvals ? "A person must decide" : "Nothing waiting"} onClick={() => navigate("/automations/history")} />
         <KpiTile icon={<IconListCheck stroke={1.75} />} label="Open Worklist Tasks" value={String(openTasks)} note="Added by automations" onClick={() => navigate("/automations/history")} />

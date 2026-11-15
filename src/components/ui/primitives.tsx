@@ -38,31 +38,82 @@ Button.displayName = "Button";
 
 /* ---------- Inputs ---------- */
 
+/**
+ * What a Field tells the control inside it: whether it has an error, and the ids of its help or error text.
+ * Input, Select and Textarea read it, so a field inside a Field is marked invalid and described without extra props.
+ */
+export const FieldContext = React.createContext<{ invalid: boolean; describedBy?: string } | null>(null);
+
+/** aria-invalid and aria-describedby from the Field around a control, unless the control sets them itself. */
+export function useFieldAria(props: { "aria-invalid"?: React.AriaAttributes["aria-invalid"]; "aria-describedby"?: string }) {
+  const ctx = React.useContext(FieldContext);
+  return {
+    "aria-invalid": props["aria-invalid"] ?? (ctx?.invalid ? true : undefined),
+    "aria-describedby": [props["aria-describedby"], ctx?.describedBy].filter(Boolean).join(" ") || undefined,
+  };
+}
+
 /*
  * Height comes from --field-h. A Field sets it to 2.5rem, so form fields are comfortable to read and click, while
  * search boxes and filters outside a Field stay at 2.25rem and line up with the buttons next to them.
  * A disabled field is shown as read-only: muted fill, quiet border, text still at full reading contrast.
  */
-const inputBase =
-  "h-[var(--field-h,2.25rem)] w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs dark:bg-background dark:[color-scheme:dark] " +
-  "placeholder:text-muted-foreground/80 " +
+export const inputBase =
+  "h-[var(--field-h,2.25rem)] w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-[border-color,box-shadow] dark:bg-background dark:[color-scheme:dark] " +
+  "placeholder:text-muted-foreground/80 hover:border-foreground/45 " +
   "focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
-  "aria-[invalid=true]:border-destructive " +
+  "aria-[invalid=true]:border-destructive aria-[invalid=true]:hover:border-destructive " +
   "disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-foreground/85 disabled:opacity-100 disabled:shadow-none dark:disabled:bg-muted";
 
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => <input ref={ref} className={cn(inputBase, className)} {...props} />,
-);
+/** The outline of an input that carries a unit, drawn on a wrapper so the unit sits inside the box. */
+const groupBase =
+  "flex h-[var(--field-h,2.25rem)] w-full min-w-0 items-center rounded-lg border border-input bg-card text-sm text-foreground shadow-xs transition-[border-color,box-shadow] dark:bg-background " +
+  "hover:border-foreground/45 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring " +
+  "has-[input[aria-invalid=true]]:border-destructive has-[input:disabled]:border-border has-[input:disabled]:bg-muted has-[input:disabled]:shadow-none";
+
+type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "prefix"> & {
+  /** A unit shown inside the box after the value, for example mmHg, kg or SAR. */
+  suffix?: React.ReactNode;
+  /** Text shown inside the box before the value, for example +966. */
+  prefix?: React.ReactNode;
+};
+
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, suffix, prefix, ...props }, ref) => {
+  const aria = useFieldAria(props);
+  if (suffix === undefined && prefix === undefined) return <input ref={ref} className={cn(inputBase, className)} {...props} {...aria} />;
+  return (
+    <div className={cn(groupBase, className)}>
+      {prefix !== undefined && <span className="shrink-0 ps-3 text-sm text-muted-foreground" aria-hidden="true">{prefix}</span>}
+      <input
+        ref={ref}
+        className="h-full w-full min-w-0 flex-1 rounded-lg bg-transparent px-3 text-inherit outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed disabled:text-foreground/85 dark:[color-scheme:dark]"
+        {...props}
+        {...aria}
+      />
+      {suffix !== undefined && <span className="shrink-0 pe-3 text-sm whitespace-nowrap text-muted-foreground">{suffix}</span>}
+    </div>
+  );
+});
 Input.displayName = "Input";
 
 export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
-  ({ className, children, ...props }, ref) => (
-    <select ref={ref} className={cn(inputBase, "pr-7", className)} {...props}>
-      {children}
-    </select>
-  ),
+  ({ className, children, ...props }, ref) => {
+    const aria = useFieldAria(props);
+    return (
+      <select ref={ref} className={cn(inputBase, "pr-7", className)} {...props} {...aria}>
+        {children}
+      </select>
+    );
+  },
 );
 Select.displayName = "Select";
+
+/** Multi-line text with the same outline, fill and focus ring as Input. */
+export const textareaBase =
+  "min-h-20 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm leading-relaxed text-foreground shadow-xs transition-[border-color,box-shadow] dark:bg-background " +
+  "placeholder:text-muted-foreground/80 hover:border-foreground/45 " +
+  "focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
+  "aria-[invalid=true]:border-destructive disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:opacity-100";
 
 /** Shows which HL7 field a form field maps to. Only visible in Developer View. */
 export function Hl7Tag({ children }: { children: React.ReactNode }) {
@@ -75,39 +126,88 @@ export function Hl7Tag({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** A small warning mark for field errors. Drawn here so the primitives do not need an icon package. */
+function ErrorMark() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="mt-px size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M8 4.6v4" strokeLinecap="round" />
+      <circle cx="8" cy="11.2" r=".55" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/**
+ * A form field: the label above, then the control, then help text in muted type. When there is an error, it takes
+ * the place of the help text, in red with a mark, and the control inside is marked invalid.
+ * `name` puts data-field on the field, so an error summary can jump to it. `group` is for a row of buttons, such as
+ * yes or no: a <label> would pass a click on the gaps to the first button, so the field becomes a labelled group.
+ */
 export function Field({
   label,
   hint,
   hl7,
   required,
+  error,
+  name,
+  group,
   className,
   children,
 }: {
   label: string;
-  hint?: string;
+  hint?: React.ReactNode;
   hl7?: string;
   /** Marks the label with an asterisk, and says "required" to screen readers. */
   required?: boolean;
+  /** The problem with the value. Shown in place of the hint. */
+  error?: string;
+  name?: string;
+  group?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
-  return (
-    <label className={cn("flex min-w-0 flex-col gap-1.5 [--field-h:2.5rem]", className)}>
-      <span className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium leading-5 text-foreground">
-        <span>
-          {label}
-          {required && (
-            <>
-              <span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span>
-              <span className="sr-only"> (required)</span>
-            </>
-          )}
-        </span>
-        {hl7 && <Hl7Tag>{hl7}</Hl7Tag>}
+  const id = React.useId();
+  const msgId = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
+  const labelId = `${id}-label`;
+  const head = (
+    <span id={labelId} className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium leading-5 text-foreground">
+      <span>
+        {label}
+        {required && (
+          <>
+            <span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span>
+            <span className="sr-only"> (required)</span>
+          </>
+        )}
       </span>
-      {children}
-      {hint && <span className="text-xs leading-snug text-muted-foreground">{hint}</span>}
-    </label>
+      {hl7 && <Hl7Tag>{hl7}</Hl7Tag>}
+    </span>
+  );
+  const foot = error ? (
+    <span id={msgId} className="flex items-start gap-1.5 text-xs font-medium leading-snug text-destructive">
+      <ErrorMark />
+      <span>{error}</span>
+    </span>
+  ) : hint ? (
+    <span id={msgId} className="text-xs leading-snug text-muted-foreground">{hint}</span>
+  ) : null;
+  const box = cn("flex min-w-0 flex-col gap-1.5 [--field-h:2.5rem]", className);
+  return (
+    <FieldContext.Provider value={{ invalid: !!error, describedBy: msgId }}>
+      {group ? (
+        <div role="group" aria-labelledby={labelId} aria-describedby={msgId} data-field={name} data-invalid={error ? "true" : undefined} className={box}>
+          {head}
+          {children}
+          {foot}
+        </div>
+      ) : (
+        <label data-field={name} data-invalid={error ? "true" : undefined} className={box}>
+          {head}
+          {children}
+          {foot}
+        </label>
+      )}
+    </FieldContext.Provider>
   );
 }
 

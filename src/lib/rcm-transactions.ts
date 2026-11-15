@@ -38,7 +38,7 @@ export type OutcomeTone = "ok" | "warn" | "danger" | "info" | "neutral";
 export interface Outcome { label: string; tone: OutcomeTone }
 
 /** Every outcome label, in the order the filter lists them. */
-export const OUTCOMES = ["Covered", "Not Covered", "Approved", "Queued", "Denied", "Rejected", "Question From Payer", "Payment Advice", "Cancelled", "Sent"] as const;
+export const OUTCOMES = ["Covered", "Not Covered", "Approved", "Partially Approved", "Queued", "Denied", "Rejected", "Question From Payer", "Payment Advice", "Cancelled", "Sent"] as const;
 
 export interface RcmTransaction {
   /** `${visit}-${request seq}`: the route id of the detail page. */
@@ -100,6 +100,7 @@ function outcomeOf(type: TxType, response: FinMessage | undefined): Outcome {
     case "priorauth-response":
     case "claim-response":
       if (s === "Approved") return { label: "Approved", tone: "ok" };
+      if (s === "Partially Approved") return { label: "Partially Approved", tone: "warn" };
       if (s === "Denied") return { label: "Denied", tone: "danger" };
       if (s === "Rejected") return { label: "Rejected", tone: "danger" };
       return { label: "Queued", tone: "info" };

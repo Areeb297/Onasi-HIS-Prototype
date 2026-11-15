@@ -15,10 +15,11 @@ import { navigate } from "@/lib/router";
 import { getMasterRows, useRecords } from "@/lib/records";
 import { can, useSession } from "@/lib/session";
 import { useHis, patientName } from "@/lib/store";
+import { fmtDateTime } from "@/lib/format";
 
 const sar = (n: number) => <Money value={n} />;
 const sarText = (n: number) => Math.round(n).toLocaleString("en-US");
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const when = (iso: string) => fmtDateTime(iso);
 
 export function NphiesFinancialPage() {
   const his = useHis();

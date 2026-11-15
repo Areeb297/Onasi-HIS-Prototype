@@ -4,8 +4,9 @@ import { BRAND_BTN, BrandBadge, GLASS_BTN, ICON_BTN } from "@/components/ai/chat
 import { cn } from "@/components/ui/primitives";
 import { approveTask, dismissTask, isShortcut, type Task } from "@/lib/ai/agent-work";
 import { AGENT_BY_ID } from "@/lib/ai/agents";
+import { fmtTime } from "@/lib/format";
 
-export const timeOf = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+export const timeOf = (iso: string) => fmtTime(iso);
 
 /**
  * One task an agent raised: agent icon, patient and urgency, what to do, and one action on the right.

@@ -1,14 +1,15 @@
 import { cn } from "@/components/ui/primitives";
 import type { Run, RunStep } from "@/lib/automations";
 import { KindIcon, STEP_TONE } from "./node-style";
+import { fmtDateTime, fmtTime } from "@/lib/format";
 
-export const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+export const clock = (iso: string) => fmtTime(iso);
 export const when = (iso: string, now: Date = new Date()) => {
   const d = new Date(iso);
   if (d.toDateString() === now.toDateString()) return `Today ${clock(iso)}`;
   const y = new Date(now); y.setDate(y.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return `Yesterday ${clock(iso)}`;
-  return `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${clock(iso)}`;
+  return fmtDateTime(iso);
 };
 
 /**

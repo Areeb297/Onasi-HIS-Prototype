@@ -3,9 +3,10 @@ import type { RadOrder } from "./fhir/types";
 import type { Patient } from "./model";
 import { esc, printDocument, printHtml, printableName } from "./print-doc";
 import { procByCode } from "./radiology";
+import { fmtDateTime } from "./format";
 
 const when = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 const CSS = `
 @page { size: A4; margin: 14mm }

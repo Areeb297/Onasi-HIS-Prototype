@@ -4,9 +4,10 @@ import { STATUS_LABEL, VISIT_TYPE_LABEL, dayLabel, doctorName, linkedVisit, type
 import { navigate } from "@/lib/router";
 import { useHis } from "@/lib/store";
 import { shownName } from "./BookingDialog";
+import { fmtDateTime } from "@/lib/format";
 
 const when = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 /** The appointment and its status history, as the HIS History action shows it. */
 export function AppointmentDetails({ appt, onClose }: { appt: Appointment | null; onClose: () => void }) {

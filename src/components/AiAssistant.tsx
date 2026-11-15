@@ -1,17 +1,18 @@
 import * as React from "react";
 import { IconArrowsMaximize, IconMessagePlus, IconX } from "@tabler/icons-react";
 import { AssistantChat } from "@/components/ai/AssistantChat";
+import { ChartToolGrid } from "@/components/ai/ChartToolGrid";
+import { ScopeSwitch } from "@/components/ai/ScopeSwitch";
 import { AssistantFullScreen } from "@/components/ai/AssistantFullScreen";
 import { AssistantMessage, ChatThread, Composer, ICON_BTN, MarkTile, TypingDots, UserMessage } from "@/components/ai/chat-parts";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { OutputCard } from "@/components/ai/OutputCard";
-import { UseCaseIcon } from "@/components/ai/UseCaseIcon";
 import { cn } from "@/components/ui/primitives";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
 import { runCds } from "@/lib/ai/cds";
-import { fullName, SIM_NOTE } from "@/lib/ai/context";
-import { helpText, ruleEngine, USE_CASES, type AiOutput, type UseCaseId } from "@/lib/ai/engine";
+import { fullName } from "@/lib/ai/context";
+import { helpText, ruleEngine, type AiOutput, type UseCaseId } from "@/lib/ai/engine";
 import { onOpenAssistant } from "@/lib/ai/launcher";
 import { auditSuggest, buildContext, visitFromHash } from "@/lib/ai/live";
 import { audit } from "@/lib/audit";
@@ -42,7 +43,6 @@ export function AiAssistant() {
   const { user } = useSession();
   useRoute(); // re-render when the address changes, so the open chart stays current
   const st = useHis();
-  const dev = useDevMode();
   const [open, setOpen] = React.useState(false);
   // The panel can fill the whole screen. The choice is kept for the session.
   const [full, setFullState] = React.useState(() => { try { return sessionStorage.getItem(FULL_KEY) === "1"; } catch { return false; } });
@@ -129,22 +129,7 @@ export function AiAssistant() {
           </span>
           {checks > 0 && <span className="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">{checks} safety {checks === 1 ? "check" : "checks"}</span>}
         </div>
-        <div className={cn("grid grid-cols-3 gap-2", full && "sm:grid-cols-6")} role="group" aria-label="Chart tools">
-          {USE_CASES.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              disabled={busy}
-              title={u.label}
-              onClick={() => { push({ kind: "user", text: u.label }); void run(u.id); }}
-              className="group/tool glass-card flex flex-col items-start gap-2 rounded-xl px-3 py-2.5 text-left transition-colors hover:border-[#03C1AC]/50 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
-            >
-              <span className="glass-icon flex size-7 items-center justify-center rounded-lg"><UseCaseIcon id={u.id} className="size-4" /></span>
-              <span className="text-xs font-medium leading-tight text-[#032C26] dark:text-foreground">{u.chip}</span>
-            </button>
-          ))}
-        </div>
-        {dev && <p className="text-xs text-muted-foreground">{SIM_NOTE}</p>}
+        <ChartToolGrid busy={busy} onRun={(id, label) => { push({ kind: "user", text: label }); void run(id); }} />
         {items.map((i) =>
           i.kind === "user" ? (
             <UserMessage key={i.id} text={i.text} at={i.at} />
@@ -166,26 +151,6 @@ export function AiAssistant() {
 
   const chartOn = mode === "chart" && !!enc;
   const hasContent = chartOn ? items.length > 0 : chatCount > 0;
-  const tab = (m: Mode, label: string, disabled = false) => (
-    <button
-      type="button"
-      role="tab"
-      id={`ai-tab-${m}`}
-      aria-selected={mode === m}
-      aria-controls={`ai-panel-${m}`}
-      disabled={disabled}
-      title={disabled ? "Open a patient chart first" : undefined}
-      onClick={() => setMode(m)}
-      className={cn(
-        "relative rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-45",
-        mode === m ? "bg-[#032C26] text-white shadow-[0_4px_14px_-6px_rgba(3,44,38,0.5)] dark:bg-[#39EDD5] dark:text-[#032C26]" : "text-foreground/75 hover:text-foreground",
-      )}
-    >
-      {label}
-      {m === "chart" && checks > 0 && <span className="ms-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white">{checks}</span>}
-    </button>
-  );
-
   return (
     <>
       {/* Launcher: fixed at the bottom right. The red number is the safety checks waiting on this chart. */}
@@ -221,6 +186,7 @@ export function AiAssistant() {
               scope={chartOn ? "chart" : "hospital"}
               onScope={setMode}
               chartLabel={enc && patient ? `${chartWho}, visit ${enc.visitNumber}` : ""}
+              checks={checks}
               chartTools={chartTools}
               onExitFull={() => setFull(false)}
               onClose={() => setOpen(false)}
@@ -231,7 +197,6 @@ export function AiAssistant() {
                 <div className="flex items-center gap-2.5">
                   <MarkTile size="sm" />
                   <span className="min-w-0 flex-1 truncate text-base font-semibold text-[#032C26] dark:text-foreground">{ASSISTANT_NAME}</span>
-                  {dev && <span className="rounded border border-dashed border-warn px-1.5 py-0.5 text-xs font-semibold text-warn" title={SIM_NOTE}>Simulated</span>}
                   {hasContent && (
                     <button type="button" className={ICON_BTN} onClick={() => (chartOn ? setItems([]) : (setQuestion(undefined), setChatReset((n) => n + 1)))} aria-label="New chat" title="New Chat">
                       <IconMessagePlus className="size-[1.15rem]" aria-hidden="true" />
@@ -244,10 +209,7 @@ export function AiAssistant() {
                     <IconX className="size-[1.15rem]" aria-hidden="true" />
                   </button>
                 </div>
-                <div role="tablist" aria-label="What to ask about" className="glass-pill inline-flex gap-0.5 p-0.5">
-                  {tab("hospital", "The Hospital")}
-                  {tab("chart", "This Chart", !enc)}
-                </div>
+                <ScopeSwitch scope={mode} onScope={setMode} chartOpen={!!enc} checks={checks} panels />
               </header>
               <div id="ai-panel-hospital" role="tabpanel" aria-labelledby="ai-tab-hospital" hidden={chartOn} className={cn("min-h-0 flex-1 flex-col", chartOn ? "hidden" : "flex")}>
                 <AssistantChat firstQuestion={question} resetKey={chatReset} onCount={onCount} />

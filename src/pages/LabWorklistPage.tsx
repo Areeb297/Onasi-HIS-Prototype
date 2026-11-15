@@ -27,6 +27,7 @@ import { isReceived, notesOf, receiveSample, resetLabExtras, saveNotes, sampleOf
 import { coverageLabel } from "@/lib/order-fields";
 import { can, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
+import { fmtDateTime } from "@/lib/format";
 
 const FILTERS: { id: "all" | LabStatus; label: string }[] = [
   { id: "all", label: "All" },
@@ -41,7 +42,7 @@ const FILTERS: { id: "all" | LabStatus; label: string }[] = [
 const PRIORITY_RANK: Record<string, number> = { stat: 0, asap: 1, urgent: 2, routine: 3 };
 
 const when = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 const RANGE_PROBLEMS = catalogRangeProblems();
 

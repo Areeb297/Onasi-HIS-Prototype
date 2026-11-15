@@ -19,6 +19,7 @@ import { can } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { useTheatre } from "@/lib/theatre";
 import { useVitals } from "@/lib/vitals";
+import { fmtLongDate, fmtTime } from "@/lib/format";
 
 const money = (v: unknown) => Number(v).toLocaleString("en-US");
 const sar = (v: unknown) => <Money value={Number(v)} />;
@@ -41,7 +42,7 @@ export function DashboardPage() {
   const appts = ops.appointments.online + ops.appointments.visit;
   const billing = can("billing");
   const t = (metric: string, current: number) => { const x = tileTrend(metric, current, range); return { points: x.points, current: x.current, prev: x.prev, against: x.against }; };
-  const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const today = fmtLongDate(new Date());
   const week = { Outpatient: 0, Inpatient: 0, Emergency: 0 };
   for (const d of trend) { week.Outpatient += d.Outpatient; week.Inpatient += d.Inpatient; week.Emergency += d.Emergency; }
   const weekTotal = week.Outpatient + week.Inpatient + week.Emergency;
@@ -182,7 +183,7 @@ export function DashboardPage() {
 
 /** Today's appointments and theatre cases in time order, each a small glass row with a coloured left edge. */
 function TodayCard({ items, className }: { items: AgendaItem[]; className?: string }) {
-  const nowHm = new Date().toTimeString().slice(0, 5);
+  const nowHm = fmtTime(new Date());
   const next = items.findIndex((i) => !i.done && i.end >= nowHm);
   return (
     <GlassCard solid className={cn("flex min-h-0 flex-col", className)}>

@@ -14,6 +14,7 @@ import { navigate } from "@/lib/router";
 import { currentUser } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { fmtDateTime } from "@/lib/format";
 
 /**
  * The patient journey on the chart overview. Timeline: every step of this visit with who did it, their role and the time
@@ -37,8 +38,8 @@ const KIND: Record<JourneyKind, { label: string; icon: React.ElementType; color:
 };
 
 const TONE_DOT: Record<JourneyEvent["tone"], string> = { ok: "bg-ok", warn: "bg-warn", danger: "bg-destructive", neutral: "bg-muted-foreground/50" };
-const fmt = (t: number) => new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const fmtLong = (t: number | string) => new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const fmt = (t: number) => fmtDateTime(t);
+const fmtLong = (t: number | string) => fmtDateTime(t);
 
 type Tab = "timeline" | "visits" | "audit";
 

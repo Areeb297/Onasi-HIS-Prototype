@@ -278,7 +278,7 @@ function ClaimCell({ r, onReview }: { r: WorklistRow; onReview: (v: string) => v
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        {cl ? <span className="font-mono text-xs font-semibold">{cl.claimNumber}</span> : <span className="text-xs text-muted-foreground">Not Sent Yet</span>}
+        {cl ? <span className="font-mono text-xs font-semibold">{cl.claimNumber}</span> : <span className="text-xs text-muted-foreground"><span aria-hidden="true">-</span><span className="sr-only">No claim number yet</span></span>}
         <StatusChip status={r.status} />
       </div>
       <div className="flex flex-wrap gap-1">

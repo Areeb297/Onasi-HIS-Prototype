@@ -17,6 +17,9 @@ export function CodeSearch<T extends CodedTerm>({
   meta,
   autoFocus,
   invalid,
+  onBlur,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": describedBy,
 }: {
   items: T[];
   onPick: (item: T) => void;
@@ -29,6 +32,11 @@ export function CodeSearch<T extends CodedTerm>({
   meta?: (item: T) => string | undefined;
   autoFocus?: boolean;
   invalid?: boolean;
+  /** Called when the box is left, so the form can show a missing value. */
+  onBlur?: () => void;
+  /** Set by FormField when the field has an error. */
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
 }) {
   const id = React.useId();
   const [q, setQ] = React.useState("");
@@ -62,14 +70,15 @@ export function CodeSearch<T extends CodedTerm>({
         aria-controls={`${id}-list`}
         aria-autocomplete="list"
         aria-activedescendant={show && results[active] ? `${id}-${active}` : undefined}
-        aria-invalid={invalid || undefined}
+        aria-invalid={invalid || ariaInvalid || undefined}
+        aria-describedby={describedBy}
         autoFocus={autoFocus}
         className="pl-8"
         value={q}
         placeholder={placeholder}
         onChange={(e) => { setQ(e.target.value); setOpen(true); setActive(0); }}
         onFocus={() => setOpen(true)}
-        onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+        onBlur={() => { window.setTimeout(() => setOpen(false), 150); onBlur?.(); }}
         onKeyDown={onKey}
       />
       {show && (
@@ -77,7 +86,7 @@ export function CodeSearch<T extends CodedTerm>({
           id={`${id}-list`}
           role="listbox"
           aria-label={`${label} results`}
-          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card py-1 text-sm shadow-lg"
+          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-popover py-1 text-sm text-popover-foreground shadow-lg"
         >
           {tooShort && <li className="px-3 py-2 text-muted-foreground">Type at least three letters, or the start of a code.</li>}
           {!tooShort && results.length === 0 && <li className="px-3 py-2 text-muted-foreground">No match found.</li>}
@@ -89,7 +98,7 @@ export function CodeSearch<T extends CodedTerm>({
               aria-selected={i === active}
               onMouseDown={(e) => { e.preventDefault(); pick(t); }}
               onMouseEnter={() => setActive(i)}
-              className={cn("flex cursor-pointer items-baseline gap-2 px-3 py-1.5", i === active && "bg-muted")}
+              className={cn("flex min-h-9 cursor-pointer items-baseline gap-2 px-3 py-2", i === active && "bg-accent text-accent-foreground")}
             >
               <span className="w-20 shrink-0 font-mono text-xs font-semibold">{t.code}</span>
               <span className="min-w-0 flex-1">{t.text}</span>

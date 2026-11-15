@@ -5,6 +5,7 @@ import { getFormRecords } from "./records";
 import { getRx, rxForVisit } from "./rx";
 import { DRUG_BY_ID, FREQ_BY_ID, ROUTE_LABEL, drugLabel } from "./rx-catalogue";
 import type { RxState } from "./rx-types";
+import { fmtDate, fmtDateTime } from "./format";
 
 /**
  * What the chart overview shows besides the review panels: the patient's visits, the details of this visit,
@@ -56,7 +57,7 @@ function dispositionOf(enc: Encounter): string | undefined {
   return enc.ed?.disposition ?? coded ?? (enc.discharge ? { home: "Home", transfer: "Transfer", ama: "Left against medical advice", died: "Died" }[enc.discharge.outcome] : undefined);
 }
 
-const when = (s?: string) => (s ? new Date(s).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : undefined);
+const when = (s?: string) => (s ? fmtDateTime(s) : undefined);
 
 /** The encounter details the HIS shows, filled from what the app holds. Missing ones say "Not recorded". */
 export function encounterDetails(enc: Encounter): DetailRow[] {
@@ -104,7 +105,7 @@ export function demographics(p: Patient): DetailRow[] {
     row("Identity Number", x.idNumber ?? p.nationalId),
     row("Phone", x.mobile ?? x.homePhone ?? x.otherPhone),
     row("Nationality", countryLabel(p.nationality)),
-    row("Date Of Birth", p.dob ? new Date(p.dob).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : undefined),
+    row("Date Of Birth", p.dob ? fmtDate(p.dob) : undefined),
     row("Address", address),
     row("Insurance", insurance),
   ];

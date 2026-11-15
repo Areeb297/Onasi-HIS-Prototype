@@ -1,6 +1,7 @@
 import type { AgentId } from "./agents";
 import { AGENTS } from "./agents";
 import type { Answer } from "./assistant";
+import { fmtDate, fmtTime } from "../format";
 
 /**
  * Past chats with Onasi AI, kept in the browser for each user. Used by the full screen view of the assistant.
@@ -77,10 +78,10 @@ export function chatDate(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const days = Math.round((day(now) - day(d)) / 86_400_000);
-  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const time = fmtTime(d);
   if (days === 0) return `Today, ${time}`;
   if (days === 1) return `Yesterday, ${time}`;
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return fmtDate(d);
 }
 
 /* ---------- topics for the welcome screen ---------- */

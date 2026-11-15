@@ -14,9 +14,10 @@ import {
   sendHistorical, sendPanel, setVitalsRejectNext, useVitals, validateOru, type VitalPanel,
 } from "@/lib/vitals";
 import { CONTEXTS, LOCAL_VITALS, ROUTINE_INTERVAL_HOURS, VITALS, VITAL_BY_KEY, flagFor, localFlag, localText, news2, type VitalKey } from "@/lib/vitals-spec";
+import { fmtDateTime } from "@/lib/format";
 
 const ageOf = (p: Patient) => Math.floor((Date.now() - new Date(p.dob).getTime()) / (365.25 * 86_400_000));
-const fmt = (local: string) => new Date(local).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const fmt = (local: string) => fmtDateTime(local);
 const ctxLabel = (id: string) => CONTEXTS.find((c) => c.id === id)?.label ?? id;
 
 function Spark({ points, flags, label, unit, last }: { points: (number | undefined)[]; flags: boolean[]; label: string; unit: string; last?: number }) {

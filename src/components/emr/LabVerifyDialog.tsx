@@ -14,9 +14,10 @@ import {
 import type { Patient } from "@/lib/model";
 import { useSession } from "@/lib/session";
 import { toLocalInput } from "@/lib/store";
+import { fmtDateTime } from "@/lib/format";
 
 const stamp = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 function deltaText(prev: string, cur: string): string {
   const d = resultDelta(prev, cur);

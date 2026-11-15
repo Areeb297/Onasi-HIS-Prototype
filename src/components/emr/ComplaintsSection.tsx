@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { MessageSquareText, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
-import { Button, Card, CardHeader, Empty, Field, Switch, Table, Td, Th, cn } from "@/components/ui/primitives";
-import { CodeSearch, ProblemList, RadioRow, fmtWhen } from "@/components/emr/CodeSearch";
+import { Badge, Button, Card, CardHeader } from "@/components/ui/primitives";
+import { CodeSearch, fmtWhen } from "@/components/emr/CodeSearch";
+import { ActiveToggle, EmptyState, EntryList, EntryRow, EntrySheet, FormField, RowMenu, Segmented, TextArea, useValidation } from "@/components/emr/entry-ui";
 import { audit } from "@/lib/audit";
 import { COMPLAINT_MAX, complaintProblems, complaintSystemLabel, reasonFromComplaints } from "@/lib/chart-entries";
 import type { Complaint, Encounter } from "@/lib/model";
@@ -13,6 +14,7 @@ import { pushToast } from "@/lib/toast";
 
 type System = NonNullable<Complaint["system"]>;
 type Ref = { list: "active" | "inactive"; index: number };
+type Mode = "codes" | "text";
 
 /** Chief complaints of the visit, as in the HIS: SNOMED CT or ICD-10-AM codes (several at once) or free text. */
 export function ComplaintsSection({ enc }: { enc: Encounter }) {
@@ -66,8 +68,11 @@ export function ComplaintsSection({ enc }: { enc: Encounter }) {
     if (ref.list === "active") write2(enc.complaints.filter((_, i) => i !== ref.index), inactive);
     else write2(enc.complaints, inactive.filter((_, i) => i !== ref.index));
     audit("delete", `Chart ${enc.visitNumber}`, { detail: `Chief complaint ${c?.text} removed` });
+    pushToast({ tone: "ok", text: "Chief complaint removed." });
     setRemoving(null);
   };
+
+  const addButton = <Button size="sm" variant="primary" onClick={() => setEditing({})}><Plus className="size-4" /> Add Chief Complaint</Button>;
 
   return (
     <Card>
@@ -75,44 +80,46 @@ export function ComplaintsSection({ enc }: { enc: Encounter }) {
         title="Chief Complaints"
         tag="PV2"
         subtitle="Active complaints, in words, become the reason for the visit."
-        right={write && <Button size="sm" variant="primary" onClick={() => setEditing({})}><Plus className="size-4" /> Add Chief Complaint</Button>}
+        right={write && rows.length > 0 && addButton}
       />
-      <Table>
-        <thead><tr><Th>Date And Time</Th><Th>Doctor</Th><Th>Complaint</Th><Th>Status</Th><Th className="text-right">Actions</Th></tr></thead>
-        <tbody>
-          {rows.length === 0 && <tr><Td colSpan={5}><Empty>No complaints yet.</Empty></Td></tr>}
+      {rows.length === 0 ? (
+        <EmptyState icon={<MessageSquareText />} title="No Chief Complaint Yet" action={write && <Button variant="primary" onClick={() => setEditing({})}><Plus className="size-4" /> Add Chief Complaint</Button>}>
+          Record why the patient came. Pick codes or type it in the patient's words.
+        </EmptyState>
+      ) : (
+        <EntryList label="Chief complaints">
           {rows.map(({ c, ref }) => {
             const on = ref.list === "active";
             return (
-              <tr key={`${ref.list}-${ref.index}`} className={cn(!on && "text-muted-foreground")}>
-                <Td className="whitespace-nowrap text-xs">{fmtWhen(c.at ?? enc.admitAt ?? enc.expectedAdmitAt)}</Td>
-                <Td className="whitespace-nowrap">{c.by ?? fallbackBy}</Td>
-                <Td className="min-w-56">
-                  <div className="font-medium">{c.code ? `${c.code} - ` : ""}{c.text}</div>
-                  <div className="text-xs text-muted-foreground">Type: {c.code ? complaintSystemLabel(c) : "Free text"}</div>
-                </Td>
-                <Td>
-                  <span className="flex items-center gap-2">
-                    <Switch checked={on} disabled={!write} label={`${c.text} active`} onChange={(v) => toggle(ref, v)} />
-                    <span className="text-xs">{on ? "Active" : "Inactive"}</span>
-                  </span>
-                </Td>
-                <Td className="text-right whitespace-nowrap">
-                  {write && (
-                    <>
-                      <Button size="sm" variant="ghost" aria-label={`Edit ${c.text}`} title="Edit" onClick={() => setEditing({ ref, c })}><Pencil className="size-4" /></Button>
-                      <Button size="sm" variant="ghost" aria-label={`Remove ${c.text}`} title="Remove" className="text-destructive" onClick={() => setRemoving(ref)}><Trash2 className="size-4" /></Button>
-                    </>
-                  )}
-                </Td>
-              </tr>
+              <EntryRow
+                key={`${ref.list}-${ref.index}`}
+                code={c.code || undefined}
+                title={c.text}
+                muted={!on}
+                badges={<Badge tone="neutral">{c.code ? complaintSystemLabel(c) : "Free Text"}</Badge>}
+                meta={[["Doctor", c.by ?? fallbackBy], ["Recorded", fmtWhen(c.at ?? enc.admitAt ?? enc.expectedAdmitAt)]]}
+                right={
+                  <>
+                    <ActiveToggle on={on} disabled={!write} label={`${c.text} active`} onChange={(v) => toggle(ref, v)} />
+                    {write && (
+                      <RowMenu
+                        label={`Actions for ${c.text}`}
+                        items={[
+                          { label: "Edit", icon: <Pencil className="size-4" />, onSelect: () => setEditing({ ref, c }) },
+                          { label: "Remove", icon: <Trash2 className="size-4" />, danger: true, separated: true, onSelect: () => setRemoving(ref) },
+                        ]}
+                      />
+                    )}
+                  </>
+                }
+              />
             );
           })}
-        </tbody>
-      </Table>
+        </EntryList>
+      )}
 
       {editing && (
-        <ComplaintDialog
+        <ComplaintSheet
           initial={editing.c}
           taken={enc.complaints.filter((_, i) => !(editing.ref?.list === "active" && editing.ref.index === i)).map((x) => x.code).filter(Boolean)}
           onClose={() => setEditing(null)}
@@ -123,7 +130,7 @@ export function ComplaintsSection({ enc }: { enc: Encounter }) {
         open={!!removing}
         onClose={() => setRemoving(null)}
         title="Remove Chief Complaint"
-        footer={<><Button onClick={() => setRemoving(null)}>Cancel</Button><Button variant="danger" onClick={() => removing && remove(removing)}>Remove</Button></>}
+        footer={<><Button onClick={() => setRemoving(null)}>Keep Complaint</Button><Button variant="danger" onClick={() => removing && remove(removing)}>Remove</Button></>}
       >
         <p className="text-sm">Remove <strong>{removing ? get(removing)?.text : ""}</strong> from this visit?</p>
       </Dialog>
@@ -131,82 +138,79 @@ export function ComplaintsSection({ enc }: { enc: Encounter }) {
   );
 }
 
-function ComplaintDialog({ initial, taken, onClose, onSave }: {
+function ComplaintSheet({ initial, taken, onClose, onSave }: {
   initial?: Complaint;
   /** Codes of the other active complaints. */
   taken: string[];
   onClose: () => void;
   onSave: (items: Complaint[]) => void;
 }) {
+  const [mode, setMode] = React.useState<Mode>(initial && !initial.code ? "text" : "codes");
   const [system, setSystem] = React.useState<System>(initial?.system ?? "SNOMED");
   const [codes, setCodes] = React.useState<(CodedTerm & { system: System })[]>(initial?.code ? [{ code: initial.code, text: initial.text, system: initial.system ?? "SNOMED" }] : []);
   const [text, setText] = React.useState(initial && !initial.code ? initial.text : "");
-  const [problems, setProblems] = React.useState<string[]>([]);
   const list = system === "SNOMED" ? SNOMED_COMPLAINTS : ICD10AM_DIAGNOSES;
-  const codeMode = codes.length > 0;
+  // Only the chosen way of entry is saved, so a code and free text can never be saved together.
+  const problem = complaintProblems(mode === "codes" ? codes : [], mode === "text" ? text : "")[0];
+  const v = useValidation({
+    codes: mode === "codes" && problem ? "Pick at least one code from the list." : undefined,
+    text: mode === "text" && problem ? (text.trim() ? problem : "Type the complaint.") : undefined,
+  });
+  const dirty = mode === "codes" ? codes.map((c) => c.code).join() !== (initial?.code ?? "") : text.trim() !== (initial && !initial.code ? initial.text : "");
 
   const submit = () => {
-    const p = complaintProblems(codes, text);
-    if (p.length) { setProblems(p); return; }
-    onSave(codeMode ? codes.map((c) => ({ code: c.code, text: c.text, system: c.system })) : [{ code: "", text: text.trim() }]);
+    if (!v.submit()) return;
+    onSave(mode === "codes" ? codes.map((c) => ({ code: c.code, text: c.text, system: c.system })) : [{ code: "", text: text.trim() }]);
   };
 
   return (
-    <Dialog
-      open
-      wide
+    <EntrySheet
       onClose={onClose}
+      dirty={dirty}
       title={initial ? "Edit Chief Complaint" : "Add Chief Complaint"}
-      subtitle="Select one or more codes, or enter free text. Not both."
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{initial ? "Update" : "Save"}</Button></>}
+      subtitle="Pick one or more codes, or type the complaint in words."
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{initial ? "Update Complaint" : "Save Complaint"}</Button></>}
     >
-      <div className="space-y-4">
-        <RadioRow
-          name="complaint-system"
-          label="Code System"
-          value={system}
-          options={[{ value: "SNOMED", label: "SNOMED CT" }, { value: "ICD10AM", label: "ICD-10-AM" }]}
-          onChange={(v) => { setSystem(v); setProblems([]); }}
-        />
-        <Field label="Code" hint={text.trim() ? "Clear the free text to select codes." : "You can select several codes. Each one is saved as its own complaint."}>
-          {text.trim() ? (
-            <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">Free text is entered below.</p>
-          ) : (
-            <CodeSearch
-              label="Search complaint codes"
-              placeholder={system === "SNOMED" ? "Type to search, for example fever or 3866" : "Type to search, for example cough or R05"}
-              items={list}
-              exclude={[...taken, ...codes.map((c) => c.code)]}
-              onPick={(t) => { setCodes((x) => [...x, { code: t.code, text: t.text, system }]); setProblems([]); }}
-            />
-          )}
-        </Field>
-        {codeMode && (
-          <ul className="flex flex-wrap gap-1.5" aria-label="Selected codes">
-            {codes.map((c) => (
-              <li key={c.code} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-xs">
-                <span className="font-mono font-semibold">{c.code}</span> {c.text}
-                <span className="text-muted-foreground">({c.system === "ICD10AM" ? "ICD-10-AM" : "SNOMED CT"})</span>
-                <button type="button" aria-label={`Remove ${c.text}`} className="rounded text-muted-foreground hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setCodes((x) => x.filter((y) => y.code !== c.code))}>
-                  <X className="size-3" />
-                </button>
-              </li>
-            ))}
-          </ul>
+      <div className="space-y-5">
+        <FormField label="How To Record It" group>
+          <Segmented value={mode} options={[{ value: "codes", label: "Pick Codes" }, { value: "text", label: "Free Text" }]} onChange={setMode} />
+        </FormField>
+        {mode === "codes" ? (
+          <>
+            <FormField label="Code System" group>
+              <Segmented value={system} options={[{ value: "SNOMED", label: "SNOMED CT" }, { value: "ICD10AM", label: "ICD-10-AM" }]} onChange={setSystem} />
+            </FormField>
+            <FormField label="Complaint" required error={v.error("codes")} help={initial ? undefined : "You can pick several. Each one is saved as its own complaint."}>
+              <CodeSearch
+                label="Search complaint codes"
+                placeholder={system === "SNOMED" ? "For example fever or 3866" : "For example cough or R05"}
+                items={list}
+                exclude={[...taken, ...codes.map((c) => c.code)]}
+                autoFocus
+                onBlur={v.blur("codes")}
+                onPick={(t) => setCodes((x) => [...x, { code: t.code, text: t.text, system }])}
+              />
+            </FormField>
+            {codes.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5" aria-label="Selected codes">
+                {codes.map((c) => (
+                  <li key={c.code} className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-primary/40 bg-accent/40 py-1 ps-3 pe-1.5 text-xs">
+                    <span className="font-mono font-semibold">{c.code}</span> {c.text}
+                    <span className="text-muted-foreground">{c.system === "ICD10AM" ? "ICD-10-AM" : "SNOMED CT"}</span>
+                    <button type="button" aria-label={`Remove ${c.text}`} className="flex size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setCodes((x) => x.filter((y) => y.code !== c.code))}>
+                      <X className="size-3" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <FormField label="Complaint" required error={v.error("text")} help={`${text.length} of ${COMPLAINT_MAX} characters`}>
+            <TextArea value={text} maxLength={COMPLAINT_MAX} rows={4} autoFocus placeholder="For example: chest pain since this morning" onBlur={v.blur("text")} onChange={(e) => setText(e.target.value)} />
+          </FormField>
         )}
-        <Field label="Complaint Text" hint={codeMode ? "Remove the selected code(s) to enter free text." : `${text.length}/${COMPLAINT_MAX}`}>
-          <textarea
-            value={text}
-            disabled={codeMode}
-            maxLength={COMPLAINT_MAX}
-            rows={3}
-            placeholder={codeMode ? "Remove the selected code(s) to enter free text" : `Enter chief complaint free text (up to ${COMPLAINT_MAX} characters)`}
-            onChange={(e) => { setText(e.target.value); setProblems([]); }}
-            className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-muted"
-          />
-        </Field>
-        <ProblemList problems={problems} />
       </div>
-    </Dialog>
+    </EntrySheet>
   );
 }

@@ -8,6 +8,7 @@ import { STATUS_LABEL as APPT_STATUS, doctorName, getAppointments, isLive, today
 import { allCases } from "./theatre";
 import { scheduleEnd, scheduleStatus } from "./theatre-logic";
 import { getState, patientName } from "./store";
+import { fmtDayMonth, fmtWeekday } from "./format";
 
 /**
  * Numbers for the dashboards. "Live" numbers are counted from the stores right now.
@@ -52,7 +53,7 @@ export function visitTrend(s: HisState = getState(), now = new Date()) {
   const live = liveCounts(s, now.getTime());
   return [...sample, [40 + live.opd, 8 + live.ipd, 16 + live.er]].map(([opd, ipd, er], i, all) => {
     const d = new Date(now.getTime() - (all.length - 1 - i) * 86_400_000);
-    return { day: i === all.length - 1 ? "Today" : d.toLocaleDateString("en-GB", { weekday: "short" }), Outpatient: opd, Inpatient: ipd, Emergency: er };
+    return { day: i === all.length - 1 ? "Today" : fmtWeekday(d), Outpatient: opd, Inpatient: ipd, Emergency: er };
   });
 }
 
@@ -382,22 +383,22 @@ export function claimsView(f: ClaimFilters, now = new Date()) {
 
   // Trend in equal blocks counted back from today, so no block is a part month: 30-day, 7-day and 1-day blocks.
   const dateOf = (day: number) => new Date(now.getTime() - day * 86_400_000);
-  const blocks = (size: number, fmt: Intl.DateTimeFormatOptions) => {
+  const blocks = (size: number) => {
     const n = Math.max(1, Math.floor(days / size));
     return Array.from({ length: n }, (_, i) => {
       const hi = (n - i) * size, lo = hi - size;
       const rows = list.filter((c) => c.day < hi && c.day >= lo);
-      return { label: dateOf(lo).toLocaleDateString("en-GB", fmt), claims: rows.length, amount: total(rows, (c) => c.amount) };
+      return { label: fmtDayMonth(dateOf(lo)), claims: rows.length, amount: total(rows, (c) => c.amount) };
     });
   };
-  const monthly = blocks(30, { day: "numeric", month: "short" });
-  const weekly = blocks(7, { day: "numeric", month: "short" });
+  const monthly = blocks(30);
+  const weekly = blocks(7);
   const byDay = new Map<number, Claim[]>();
   for (const c of list) byDay.set(c.day, [...(byDay.get(c.day) ?? []), c]);
   const daily = Array.from({ length: days }, (_, i) => {
     const day = days - 1 - i;
     const rows = byDay.get(day) ?? [];
-    return { label: dateOf(day).toLocaleDateString("en-GB", { day: "numeric", month: "short" }), claims: rows.length, amount: total(rows, (c) => c.amount) };
+    return { label: fmtDayMonth(dateOf(day)), claims: rows.length, amount: total(rows, (c) => c.amount) };
   });
 
   const depts = [...new Set(list.map((c) => c.dept))].map((dept) => {

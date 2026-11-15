@@ -1,3 +1,5 @@
+import { fmtDate } from "@/lib/format";
+
 /**
  * The rules every list in the app shares: search, filters, sorting, paging and CSV export. Pure functions, so the
  * same rules can be tested without a browser and every list behaves the same way.
@@ -70,10 +72,7 @@ export function applyFilters<T>(rows: T[], values: FilterValues, defs: FilterDef
   return rows.filter((r) => on.every(([d, v]) => d.test(r, v)));
 }
 
-const shortDay = (d: string) => {
-  const t = new Date(`${d}T00:00:00`);
-  return Number.isNaN(t.getTime()) ? d : t.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-};
+const shortDay = (d: string) => fmtDate(d) || d;
 
 /** The words on a filter chip, for example "Status: Pending" or "Date: 1 Nov 2026 to 15 Nov 2026". */
 export function chipText<T>(def: FilterDef<T>, value: string): string {

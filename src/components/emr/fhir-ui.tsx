@@ -9,6 +9,7 @@ import { COMMON_ASSUMPTIONS } from "@/lib/fhir/assumptions";
 import { INTERP_TEXT, type Interp } from "@/lib/fhir/lab-catalog";
 import type { NphiesResponse } from "@/lib/fhir/common";
 import type { SendRecord } from "@/lib/fhir/types";
+import { fmtTime } from "@/lib/format";
 
 type Tone = "neutral" | "primary" | "ok" | "warn" | "danger" | "info" | "admit" | "move" | "update" | "cancel" | "merge";
 
@@ -177,7 +178,7 @@ export function DocViewer({ records, filenamePrefix, empty }: { records: SendRec
         </span>
         <span className={errs ? "text-destructive" : "text-ok"}>{errs} errors</span>
         <span className={warns ? "text-warn" : ""}>{warns} warnings</span>
-        <span>Sent {new Date(rec.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+        <span>Sent {fmtTime(rec.at)}</span>
       </div>
       <div className="inline-flex rounded-lg bg-muted p-0.5 text-xs" role="tablist">
         {(["json", "checks", "response"] as DocTab[]).map((t) => (

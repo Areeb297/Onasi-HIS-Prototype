@@ -2,6 +2,7 @@ import * as React from "react";
 import { IconHistory, IconMessagePlus, IconMinimize, IconRefresh, IconSearch, IconTrash, IconX } from "@tabler/icons-react";
 import { Reply, askAssistant } from "@/components/ai/AssistantChat";
 import { BRAND_BTN, ChatThread, ChatWelcome, Composer, MarkTile, SuggestionChips, UserMessage } from "@/components/ai/chat-parts";
+import { ScopeSwitch, type AssistantScope } from "@/components/ai/ScopeSwitch";
 import { cn } from "@/components/ui/primitives";
 import { SUGGESTED, patientChoices } from "@/lib/ai/assistant";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
@@ -18,7 +19,7 @@ import { loadChats, putChat, removeChat, saveChats, searchChats, titleOf, type C
 const headerBtn = "inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-[#032C26]/80 transition-colors hover:bg-[#032C26]/[0.07] hover:text-[#032C26] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring dark:text-foreground/80 dark:hover:bg-white/10 dark:hover:text-foreground";
 const headerSelect = "glass-pill h-9 max-w-52 truncate px-3.5 text-sm font-medium text-[#032C26] outline-none transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-ring dark:text-foreground dark:hover:bg-white/10 [&>option]:text-black";
 
-export type AssistantScope = "hospital" | "chart";
+export type { AssistantScope };
 
 /** Past chats grouped by day, newest first. */
 function groupChats(chats: SavedChat[], now = new Date()): { label: string; chats: SavedChat[] }[] {
@@ -34,7 +35,7 @@ function groupChats(chats: SavedChat[], now = new Date()): { label: string; chat
 }
 
 export function AssistantFullScreen({
-  userId, firstQuestion, scope, onScope, chartLabel, chartTools, onExitFull, onClose,
+  userId, firstQuestion, scope, onScope, chartLabel, checks = 0, chartTools, onExitFull, onClose,
 }: {
   userId: string;
   /** A question passed in from another page. Asked once. */
@@ -43,6 +44,8 @@ export function AssistantFullScreen({
   onScope: (s: AssistantScope) => void;
   /** The open chart in words, for the scope list. Empty when no chart is open. */
   chartLabel: string;
+  /** Safety checks waiting on the open chart, shown on the switch. */
+  checks?: number;
   /** The tools for the open chart (the This Chart tab of the side panel). */
   chartTools: React.ReactNode;
   onExitFull: () => void;
@@ -167,12 +170,7 @@ export function AssistantFullScreen({
     </div>
   );
 
-  const scopeSelect = (cls: string) => (
-    <select value={scope} onChange={(e) => onScope(e.target.value as AssistantScope)} aria-label="What to ask about" className={cls}>
-      <option value="hospital">The Hospital</option>
-      <option value="chart" disabled={!chartLabel}>{chartLabel ? `This Chart: ${chartLabel}` : "This Chart (open a chart first)"}</option>
-    </select>
-  );
+  const scopeSwitch = <ScopeSwitch scope={scope} onScope={onScope} chartOpen={!!chartLabel} checks={checks} />;
   const aboutSelect = (cls: string) => (
     <select value={about} onChange={(e) => setAbout(e.target.value)} aria-label="Ask about one patient or all patients" className={cls}>
       <option value="">All Patients</option>
@@ -190,7 +188,7 @@ export function AssistantFullScreen({
           <p className="hidden truncate text-xs text-[#032C26]/70 sm:block dark:text-muted-foreground">Patients, results and visits</p>
         </div>
         <div className="hidden items-center gap-2 lg:flex">
-          {scopeSelect(headerSelect)}
+          {scopeSwitch}
           {scope === "hospital" && aboutSelect(headerSelect)}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -222,15 +220,15 @@ export function AssistantFullScreen({
         <main className="flex min-w-0 flex-1 flex-col">
           {/* The context lists move here when the header has no room */}
           <div className="flex gap-2 px-4 pt-3 lg:hidden">
-            {scopeSelect("glass-pill h-9 min-w-0 flex-1 px-3 text-sm text-foreground")}
+            {scopeSwitch}
             {scope === "hospital" && aboutSelect("glass-pill h-9 min-w-0 flex-1 px-3 text-sm text-foreground")}
           </div>
 
           {scope === "chart" && chartLabel ? (
-            <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">{chartTools}</div>
+            <div className="mx-auto flex min-h-0 w-full max-w-[45rem] flex-1 flex-col">{chartTools}</div>
           ) : (
             <>
-              <ChatThread label="Conversation" stick={last?.id ?? chatId} innerClassName="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+              <ChatThread label="Conversation" stick={last?.id ?? chatId} innerClassName="mx-auto w-full max-w-[45rem] px-4 py-6 sm:px-6">
                 {empty ? (
                   <ChatWelcome onAsk={ask} />
                 ) : (
@@ -247,7 +245,7 @@ export function AssistantFullScreen({
 
               {/* Three suggested questions and the box to type in */}
               <div className="shrink-0">
-                <div className="mx-auto w-full max-w-3xl space-y-2.5 px-4 pb-3 pt-2 sm:px-6">
+                <div className="mx-auto w-full max-w-[45rem] space-y-2.5 px-4 pb-3 pt-2 sm:px-6">
                   <SuggestionChips label="Suggested questions" items={suggestions} onPick={(q) => ask(q)} scroll />
                   <Composer inputRef={boxRef} value={text} onChange={setText} onSend={(v) => ask(v)} placeholder="Ask about patients, results or beds" />
                   <p className="text-center text-xs text-muted-foreground">AI can make mistakes. Check important information.</p>

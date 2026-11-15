@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { audit } from "./audit";
+import { addDemoData } from "./rcm-demo";
 import { bedInfos, bedProblem } from "./beds";
 import { assemble, buildSegments, countChecks, messageToString, segmentStatuses, validate, type BuiltMessage } from "./hl7";
 import type { BedFlag, Encounter, HisState, LogEntry, LogSource, Patient, ScenarioForm } from "./model";
@@ -679,5 +680,6 @@ export function seedState(): HisState {
   // Bed states: a bed held for the planned admission, and one out of service.
   emr("P005", (e) => { e.reservedBedId = "402-B"; });
   state.bedFlags = { "ICU2-B": { state: "out", since: at(2880), reason: "Maintenance", by: "System Administrator" } };
-  return state;
+  // Insured patients and past visits for the RCM screens (rcm-demo.ts). Their claim history is added by claims.ts.
+  return addDemoData(state);
 }

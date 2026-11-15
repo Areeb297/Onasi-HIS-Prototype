@@ -1,13 +1,13 @@
 import { isDeathDisposition } from "@/lib/cda/chartdata";
 import * as React from "react";
-import { Check as CheckIcon, Copy, Download, FilePlus2, FileX2, Send, Skull, Trash2 } from "lucide-react";
+import { Check as CheckIcon, Copy, Download, FilePlus2, FileText, FileX2, Send, Skull, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { DocPreview, ProblemList } from "@/components/emr/clinical-docs/Preview";
+import { EmptyState, FormField, TextArea } from "@/components/emr/entry-ui";
 import { AssumptionList, ConformancePanel } from "@/components/emr/clinical-docs/Conformance";
 import { copyText, downloadText } from "@/components/ui/code-block";
 import { Badge, Button, Card, CardHeader, Empty, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { conformanceSteps } from "@/lib/cda/conformance";
 import { DOC_SPECS } from "@/lib/cda/docspec";
 import { renderRequest } from "@/lib/cda/iti41";
@@ -146,6 +146,8 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
   const [selKey, setSelKey] = React.useState<string>("");
   const [amending, setAmending] = React.useState<DocRecord | null>(null);
   const [reason, setReason] = React.useState("");
+  const [reasonTried, setReasonTried] = React.useState(false);
+  const [removingDraft, setRemovingDraft] = React.useState<DocRecord | null>(null);
   const [dying, setDying] = React.useState(false);
   const [tabRaw, setTab] = React.useState("preview");
   const tab = !dev && tabRaw !== "preview" && tabRaw !== "history" ? "preview" : tabRaw;
@@ -193,12 +195,13 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
           title="Clinical Documents"
           subtitle="Create a summary from the chart, check it, and publish it to nphies. In this app, publishing is simulated and nothing leaves the browser."
           tag="CDA R2 over ITI-41"
-          right={
-            <Button size="sm" variant="danger" disabled={dead || !mayWrite} onClick={() => setDying(true)} title="Exception flow: patient death">
-              <Skull className="size-4" /> Record Patient Death
-            </Button>
-          }
         />
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
+          <p className="text-xs text-muted-foreground">Choose a document, then press Generate to fill it from the chart.</p>
+          <Button size="sm" variant="danger" disabled={dead || !mayWrite} onClick={() => setDying(true)} title="Exception flow: patient death">
+            <Skull className="size-4" /> Record Patient Death
+          </Button>
+        </div>
         {dead && (
           <p className="border-b border-border bg-destructive/8 px-4 py-2 text-sm text-destructive">
             A patient death is recorded for this visit. No clinical document is published to nphies. Death reporting is a separate process and is not sent to nphies.
@@ -211,7 +214,7 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
             return (
               <div
                 key={s.key}
-                className={cn("flex flex-col gap-2 rounded-lg border p-3 transition-colors", sel.key === s.key ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40")}
+                className={cn("flex flex-col gap-2 rounded-xl border p-3 transition-colors", sel.key === s.key ? "border-primary bg-accent/40" : "border-border hover:bg-muted/40")}
               >
                 <button className="text-left" onClick={() => setSelKey(s.key)} aria-pressed={sel.key === s.key}>
                   <span className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
@@ -222,7 +225,7 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
                   <span className="mt-0.5 block text-xs text-muted-foreground">{DOC_SPECS[s.type].blurb}</span>
                   {dev && <span className="mt-1 block font-mono text-xs text-muted-foreground">LOINC {DOC_SPECS[s.type].typeCode} · template {DOC_SPECS[s.type].templateId.split(".").slice(-2).join(".")}</span>}
                 </button>
-                <div className="mt-auto flex items-center gap-2">
+                <div className="mt-auto flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
                     variant={d ? "secondary" : "primary"}
@@ -246,7 +249,24 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
 
       {!doc ? (
         <Card>
-          <Empty>{blockedReason(sel) ?? `Press Generate on "${sel.label}" to fill it from the chart.`}</Empty>
+          <EmptyState
+            icon={<FileText />}
+            title={blockedReason(sel) ? "This Document Cannot Be Created" : `No ${sel.label} Yet`}
+            action={blockedReason(sel) ? undefined : (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => {
+                  setTab("preview");
+                  report(generateDoc(enc, patient, sel.type, { procIndex: sel.type === "operative" ? sel.procIndex : undefined }));
+                }}
+              >
+                <FilePlus2 className="size-4" /> Generate
+              </Button>
+            )}
+          >
+            {blockedReason(sel) ?? "Generate fills the document from the chart. You check it before it is published."}
+          </EmptyState>
         </Card>
       ) : (
         <Card>
@@ -254,10 +274,10 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
             title={`${doc.built.title}, version ${doc.version}`}
             subtitle={`${STATUS_LABEL[doc.status]}${doc.publishedAt ? `, published ${doc.publishedAt.slice(0, 16).replace("T", " ")} by ${doc.publishedBy}` : ""}`}
             right={
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {doc.status === "draft" && (
                   <>
-                    <Button size="sm" variant="ghost" onClick={() => deleteDraft(doc.id)}>
+                    <Button size="sm" variant="ghost" onClick={() => setRemovingDraft(doc)}>
                       <Trash2 className="size-4" /> Delete Draft
                     </Button>
                     <Button
@@ -275,7 +295,7 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
                   </>
                 )}
                 {doc.status === "published" && (
-                  <Button size="sm" variant="secondary" disabled={!mayPublish || dead} title={!mayPublish ? "Your role cannot publish documents." : undefined} onClick={() => { setReason(""); setAmending(doc); }}>
+                  <Button size="sm" variant="secondary" disabled={!mayPublish || dead} title={!mayPublish ? "Your role cannot publish documents." : undefined} onClick={() => { setReason(""); setReasonTried(false); setAmending(doc); }}>
                     <FileX2 className="size-4" /> Amend
                   </Button>
                 )}
@@ -368,14 +388,14 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
         open={!!amending}
         onClose={() => setAmending(null)}
         title="Amend This Document"
-        subtitle="A new version is built from the current chart. It replaces the published one, which becomes deprecated."
+        subtitle="A new version is built from the current chart. It replaces the published one."
         footer={
           <>
             <Button onClick={() => setAmending(null)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!reason.trim()}
               onClick={() => {
+                if (!reason.trim()) { setReasonTried(true); return; }
                 if (amending) report(amendDoc(enc, patient, amending.id, reason));
                 setAmending(null);
               }}
@@ -385,20 +405,33 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
           </>
         }
       >
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
-          Reason for the amendment
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: allergy was missing" />
-        </label>
+        <FormField label="Reason For The Amendment" required error={reasonTried && !reason.trim() ? "Write why the document is amended." : undefined} help="Kept in the version history.">
+          <TextArea value={reason} onChange={(e) => setReason(e.target.value)} onBlur={() => setReasonTried(true)} placeholder="For example: allergy was missing" />
+        </FormField>
+      </Dialog>
+
+      <Dialog
+        open={!!removingDraft}
+        onClose={() => setRemovingDraft(null)}
+        title="Delete Draft Document"
+        footer={
+          <>
+            <Button onClick={() => setRemovingDraft(null)}>Keep The Draft</Button>
+            <Button variant="danger" onClick={() => { if (removingDraft) deleteDraft(removingDraft.id); setRemovingDraft(null); }}>Delete Draft</Button>
+          </>
+        }
+      >
+        <p className="text-sm">Delete the draft of <strong>{removingDraft?.built.title}</strong>? It was not published. You can generate it again from the chart.</p>
       </Dialog>
 
       <Dialog
         open={dying}
         onClose={() => setDying(false)}
         title="Record Patient Death"
-        subtitle="Exception flow. When a patient dies, no clinical summary or operative note is published to nphies."
+        subtitle="When a patient dies, no clinical summary or operative note is published to nphies."
         footer={
           <>
-            <Button onClick={() => setDying(false)}>Cancel</Button>
+            <Button onClick={() => setDying(false)}>Do Not Record</Button>
             <Button
               variant="danger"
               onClick={() => {
@@ -411,7 +444,10 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
           </>
         }
       >
-        <p className="text-sm">After this, Generate and Publish are blocked for every document on visit {visit}. Death reporting is a separate process.</p>
+        <div className="space-y-2 text-sm">
+          <p>After this, Generate and Publish are blocked for every document on visit <strong>{visit}</strong>.</p>
+          <p className="text-muted-foreground">This cannot be undone here. Death reporting is a separate process.</p>
+        </div>
       </Dialog>
     </div>
   );

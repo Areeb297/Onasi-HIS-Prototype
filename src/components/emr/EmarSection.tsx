@@ -16,6 +16,7 @@ import { useRx } from "@/lib/rx";
 import { can, useSession } from "@/lib/session";
 import { patientName, toLocalInput, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { fmtDateTime, fmtDayHeading, fmtMonthYear, fmtTime, fmtWeekday } from "@/lib/format";
 
 /**
  * The chart "Medication Chart" tab (eMAR). A nurse works from the Now view; the day, week and month grids show the whole picture.
@@ -25,14 +26,14 @@ import { pushToast } from "@/lib/toast";
 
 const HOUR = 3_600_000;
 
-const hm = (t: number) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-const dayLabel = (t: number) => new Date(t).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-const dateTime = (t: number | string) => new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const hm = (t: number) => fmtTime(t);
+const dayLabel = (t: number) => fmtDayHeading(t);
+const dateTime = (t: number | string) => fmtDateTime(t);
 const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const addDays = (t: number, n: number) => { const d = new Date(t); d.setDate(d.getDate() + n); return d.getTime(); };
 const startOfMonth = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(1); return d.getTime(); };
 const addMonths = (t: number, n: number) => { const d = new Date(startOfMonth(t)); d.setMonth(d.getMonth() + n); return d.getTime(); };
-const monthLabel = (t: number) => new Date(t).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+const monthLabel = (t: number) => fmtMonthYear(t);
 
 const STATE_CLASS: Record<DoseState, string> = {
   given: "border-ok/40 bg-ok/12 text-ok",
@@ -458,7 +459,7 @@ function MonthGrid({ enc, orders, month, now, onPickDay }: { enc: Encounter; ord
             <Th className="sticky left-0 z-10">Medicine</Th>
             {days.map((t) => (
               <Th key={t} className={cn("px-1 text-center tabular-nums", t === today && "bg-move/12")}>
-                <span className="block text-[0.625rem] font-normal text-muted-foreground">{new Date(t).toLocaleDateString("en-GB", { weekday: "narrow" })}</span>
+                <span className="block text-[0.625rem] font-normal text-muted-foreground">{fmtWeekday(t, "narrow")}</span>
                 {new Date(t).getDate()}
               </Th>
             ))}

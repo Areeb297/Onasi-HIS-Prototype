@@ -1,7 +1,8 @@
 import * as React from "react";
-import { IconPill, IconPlus, IconSearch, IconTrash, IconX } from "@tabler/icons-react";
+import { IconPill, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { SafetyBanner, ControlBadge } from "@/components/emr/RxShared";
-import { Button, Card, CardHeader, Field, Input, Select, cn } from "@/components/ui/primitives";
+import { ErrorSummary, FormField, FormGrid, FormSection, Segmented, WithUnit, YesNo, useValidation, type SegOption } from "@/components/emr/entry-ui";
+import { Button, Card, CardHeader, Input, Select, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import type { Encounter } from "@/lib/model";
 import { visitInsured } from "@/lib/order-fields";
@@ -36,6 +37,16 @@ interface RowDraft {
   days: string;
   time?: DoseTime;
 }
+
+const SEARCH_BY: SegOption<"generic" | "brand">[] = [{ value: "generic", label: "Generic Name" }, { value: "brand", label: "Brand Name" }];
+const REGIMEN_OPTIONS: SegOption<Regimen>[] = REGIMENS.map((r) => ({ value: r.id, label: r.label }));
+const UNIT_OPTIONS: SegOption<DurationUnit>[] = DURATION_UNITS.map((u) => ({ value: u.id, label: u.label }));
+const USAGE_OPTIONS: SegOption<UsageSetting>[] = [
+  { value: "outpatient", label: "Outpatient" },
+  { value: "inpatient", label: "Inpatient" },
+  { value: "discharge", label: "Discharge" },
+  { value: "community", label: "Community" },
+];
 
 const today = () => nowLocal().slice(0, 10);
 const fmtDate = (d: string) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
@@ -148,6 +159,16 @@ export function RxEditor({ enc, editing, onDone }: Props) {
   const overrideOk = !needOverride || overrideReason.trim().length >= 5;
   const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(startDate);
   const valid = !!drug && doseN > 0 && daysN > 0 && qtyN > 0 && dateOk && errors.length === 0 && overrideOk;
+  /** What is wrong, field by field. Shown under the field once it is left, or once the add button is pressed. */
+  const v = useValidation({
+    dose: regimen === "normal" && !(doseN > 0) && "Enter a dose more than 0.",
+    days: regimen === "normal" && !(daysN > 0) && "Enter a duration of 1 or more.",
+    rows: regimen !== "normal" && !(doseN > 0 && daysN > 0) && "Every row needs a dose and a number of days more than 0.",
+    start: !dateOk && "Choose a start date.",
+    qty: !(qtyN > 0) && "Enter a quantity more than 0.",
+    safety: errors.length > 0 && "Fix the safety problem shown under Safety Checks.",
+    override: needOverride && !overrideOk && "Enter the reason for the override, 5 letters or more.",
+  });
 
   function pick(id: string) {
     const d = getDrug(id);
@@ -163,6 +184,7 @@ export function RxEditor({ enc, editing, onDone }: Props) {
     setQty(null);
     setRefills("0");
     setOverrideReason("");
+    v.reset();
     if (isControlled(d.controlClass) && usage === "inpatient" && enc.cls !== "I") setUsage("outpatient");
   }
 
@@ -232,7 +254,8 @@ export function RxEditor({ enc, editing, onDone }: Props) {
   }
 
   function submit() {
-    if (!drug || !valid) return;
+    if (!v.submit() || !drug || !valid) return;
+    v.reset();
     const base = {
       dose: doseN,
       frequencyId: freqId,
@@ -281,222 +304,230 @@ export function RxEditor({ enc, editing, onDone }: Props) {
       <CardHeader
         title={editing ? "Edit Prescription Item" : "New Prescription Item"}
         subtitle={editing ? "Change the item, then send the update." : "Pick a drug. Dose, days and quantity fill in for you."}
-        right={editing ? <Button size="sm" onClick={onDone}><IconX className="size-4" />Cancel Edit</Button> : undefined}
       />
-      <fieldset disabled={!canWrite} className="space-y-4 px-4 py-4">
-        {!editing && (
-          <div>
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-medium text-muted-foreground" id="rx-search-by">Search By</span>
-              <div role="radiogroup" aria-labelledby="rx-search-by" className="inline-flex rounded-md border border-border p-0.5">
-                {(["generic", "brand"] as const).map((b) => (
-                  <button
-                    key={b}
-                    role="radio"
-                    aria-checked={searchBy === b}
-                    onClick={() => setSearchBy(b)}
-                    className={cn("rounded px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", searchBy === b ? "bg-accent font-medium text-accent-foreground" : "hover:bg-muted")}
-                  >
-                    {b === "generic" ? "Generic Name" : "Brand Name"}
-                  </button>
-                ))}
+      <fieldset disabled={!canWrite} className="space-y-6 px-4 py-4">
+        {!canWrite && <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">Your role can read prescriptions but not write them.</p>}
+        {drug && <ErrorSummary problems={v.summary} />}
+
+        <FormSection title="Drug" description={editing ? "The drug of an existing item cannot change. Remove the item and add a new one instead." : undefined}>
+          {!editing && (
+            <div className="space-y-3">
+              <FormField group label="Search By">
+                <Segmented value={searchBy} options={SEARCH_BY} onChange={setSearchBy} />
+              </FormField>
+              <div className="relative [--field-h:2.5rem]">
+                <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  className="pl-8"
+                  placeholder={searchBy === "generic" ? "Search by generic name, for example paracetamol" : "Search by brand name, for example Paracip"}
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  aria-label={searchBy === "generic" ? "Search drug by generic name" : "Search drug by brand name"}
+                />
+                {results.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-popover p-1 shadow-lg">
+                    {results.map((d) => (
+                      <li key={d.id}>
+                        <button onClick={() => pick(d.id)} className="flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none">
+                          <span>
+                            {searchBy === "brand" ? (
+                              <><b>{d.brand}</b> <span className="text-xs text-muted-foreground">{drugLabel(d)}</span></>
+                            ) : (
+                              <>{drugLabel(d)} <span className="text-xs text-muted-foreground">{d.brand}</span></>
+                            )}
+                          </span>
+                          <ControlBadge cls={d.controlClass} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {q.trim() && results.length === 0 && <p className="mt-1 text-xs text-muted-foreground">No drug found with that {searchBy === "generic" ? "generic" : "brand"} name.</p>}
+              </div>
+              <div>
+                <div className="mb-1.5 text-xs font-medium text-muted-foreground">Often Prescribed</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_DRUG_IDS.map((id) => (
+                    <button
+                      key={id}
+                      aria-pressed={drugId === id}
+                      onClick={() => pick(id)}
+                      className={cn("min-h-8 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", drugId === id && "border-primary bg-accent text-accent-foreground")}
+                    >
+                      {getDrug(id).generic}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="relative">
-              <IconSearch className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                placeholder={searchBy === "generic" ? "Search by generic name, for example paracetamol" : "Search by brand name, for example Paracip"}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                aria-label={searchBy === "generic" ? "Search drug by generic name" : "Search drug by brand name"}
-              />
-              {results.length > 0 && (
-                <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-popover p-1 shadow-lg">
-                  {results.map((d) => (
-                    <li key={d.id}>
-                      <button onClick={() => pick(d.id)} className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none">
-                        <span>
-                          {searchBy === "brand" ? (
-                            <><b>{d.brand}</b> <span className="text-xs text-muted-foreground">{drugLabel(d)}</span></>
-                          ) : (
-                            <>{drugLabel(d)} <span className="text-xs text-muted-foreground">{d.brand}</span></>
-                          )}
-                        </span>
-                        <ControlBadge cls={d.controlClass} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {q.trim() && results.length === 0 && <p className="mt-1 text-xs text-muted-foreground">No drug found with that {searchBy === "generic" ? "generic" : "brand"} name.</p>}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {QUICK_DRUG_IDS.map((id) => (
-                <button
-                  key={id}
-                  onClick={() => pick(id)}
-                  className={cn("rounded-full border border-border px-2.5 py-1 text-xs hover:bg-muted", drugId === id && "border-primary bg-accent text-accent-foreground")}
-                >
-                  {getDrug(id).generic}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {drug ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
-              <IconPill className="size-4 text-move" />
+          )}
+          {drug ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-accent/40 px-3 py-2 text-sm">
+              <IconPill className="size-4 text-move" aria-hidden="true" />
               <b>{drugLabel(drug)}</b>
               <span className="text-xs text-muted-foreground">Brand {drug.brand}</span>
               <ControlBadge cls={drug.controlClass} />
               {dev && <span className="font-mono text-xs text-muted-foreground">{drug.code} (test code)</span>}
             </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Choose a drug to see the dose, duration and supply fields.</p>
+          )}
+        </FormSection>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Regimen Type" hint={REGIMENS.find((r) => r.id === regimen)?.help} hl7="dosageInstruction (dosing variant)">
-                <Select value={regimen} onChange={(e) => changeRegimen(e.target.value as Regimen)}>
-                  {REGIMENS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-                </Select>
-              </Field>
-              <Field label="Start Date" hl7="dosageInstruction.timing.repeat.boundsPeriod.start">
-                <Input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); }} />
-              </Field>
-              <Field label="End Date" hint={regimen === "normal" ? "Changes the duration" : "Worked out from the rows"} hl7="dosageInstruction.timing.repeat.boundsPeriod.end">
-                <Input type="date" value={endDate} min={startDate} disabled={regimen !== "normal" || !dateOk} onChange={(e) => e.target.value && changeEnd(e.target.value)} />
-              </Field>
-              <Field label={`Quantity (${drug.unit})`} hint={qty === null ? "Calculated" : "Typed by you"} hl7="dispenseRequest.quantity">
-                <div className="flex gap-1.5">
-                  <Input type="number" min="0" step="any" value={qty ?? String(autoQty)} onChange={(e) => setQty(e.target.value)} />
-                  {qty !== null && <Button size="sm" onClick={() => setQty(null)} title="Go back to the calculated quantity">Auto</Button>}
-                </div>
-              </Field>
-            </div>
-
-            {regimen === "normal" ? (
-              <>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <Field label={`Dose (${drug.unit})`} hl7="dosageInstruction.doseAndRate.doseQuantity">
-                    <Input type="number" min="0" step="any" value={dose} onChange={(e) => setDose(e.target.value)} />
-                  </Field>
-                  <Field label="Frequency" hl7="dosageInstruction.timing.repeat">
-                    <Select value={freq} onChange={(e) => setFreq(e.target.value)}>
-                      {FREQUENCIES.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="Duration" hint={unit !== "d" && daysN > 0 ? `${daysN} days` : undefined} hl7="dispenseRequest.expectedSupplyDuration">
-                    <Input type="number" min="1" value={days} onChange={(e) => { setDays(e.target.value); setQty(null); }} />
-                  </Field>
-                  <Field label="Duration Unit" hint={unit === "mo" ? "A month counts as 30 days" : undefined}>
-                    <Select value={unit} onChange={(e) => { setUnit(e.target.value as DurationUnit); setQty(null); }}>
-                      {DURATION_UNITS.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
-                    </Select>
-                  </Field>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {DURATION_CHIPS.map((d) => (
-                    <button key={d} onClick={() => { setDays(String(d)); setUnit("d"); setQty(null); }} className={cn("rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted", unit === "d" && daysN === d && "border-primary bg-accent text-accent-foreground")}>
-                      {d} days
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <ScheduleRows
-                regimen={regimen}
-                rows={rows}
-                dates={rowDates}
-                unit={drug.unit}
-                totalDays={daysN}
-                onChange={setRow}
-                onAdd={addRow}
-                onRemove={(i) => { setRows(rows.filter((_, j) => j !== i)); setQty(null); }}
-              />
-            )}
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Route" hl7="dosageInstruction.route">
-                <Select value={route} onChange={(e) => setRoute(e.target.value)}>
-                  {ROUTES.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
-                </Select>
-              </Field>
-              <Field label="Reason (Diagnosis)" hl7="reasonCode">
-                <Select value={reasonIdx} onChange={(e) => setReasonIdx(Number(e.target.value))}>
-                  {reasons.map((r, i) => <option key={r.code + i} value={i}>{r.code} {r.text}</option>)}
-                </Select>
-              </Field>
-              <Field label="Setting" hl7="category[1]">
-                <Select value={usage} onChange={(e) => setUsage(e.target.value as UsageSetting)} disabled={!!editing}>
-                  <option value="outpatient">Outpatient</option>
-                  <option value="inpatient">Inpatient</option>
-                  <option value="discharge">Discharge</option>
-                  <option value="community">Community</option>
-                </Select>
-              </Field>
-              <Field label="Repeats" hint={controlled ? "None for N, C and R" : own ? "None for the patient's own medicine" : undefined} hl7="dispenseRequest.numberOfRepeatsAllowed">
-                <Input type="number" min="0" max="11" value={controlled || own ? "0" : refills} disabled={controlled || own} onChange={(e) => setRefills(e.target.value)} />
-              </Field>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Coverage" hint={insured ? "From the visit: insured" : "From the visit: cash"}>
-                <Select value={coverage} onChange={(e) => setCoverage(e.target.value as RxCoverage)} disabled={own}>
-                  <option value="Insured" disabled={!insured}>Insured</option>
-                  <option value="Cash">Cash</option>
-                </Select>
-              </Field>
-              <Field label="Instructions For Patient" hl7="dosageInstruction.patientInstruction" className="lg:col-span-2">
-                <Input placeholder="For example: take after food" value={instr} onChange={(e) => setInstr(e.target.value)} />
-              </Field>
-              <Field label="Note For Pharmacist" hl7="note.text">
-                <Input placeholder="Optional" value={note} onChange={(e) => setNote(e.target.value)} />
-              </Field>
-            </div>
-            <div className="flex flex-wrap gap-x-6 gap-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={asNeeded} onChange={(e) => setAsNeeded(e.target.checked)} className="size-4 accent-primary" />
-                Only when needed
-                {dev && <span className="font-mono text-xs text-update">asNeededBoolean</span>}
-              </label>
-              <label className="flex items-center gap-2 text-sm" title={editing ? "This cannot be changed on an existing item. Remove it and add it again." : undefined}>
-                <input type="checkbox" checked={own} disabled={!!editing} onChange={(e) => { setOwn(e.target.checked); setQty(null); }} className="size-4 accent-primary" />
-                Medication Provided By Patient
-              </label>
-            </div>
-            {own && (
-              <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
-                Recorded on its own prescription as the patient's own medicine. It is checked for allergies and duplicates, but it is not sent to nphies and the pharmacy does not dispense it.
-              </p>
-            )}
-
-            {enc.dx.length === 0 && (
-              <SafetyBanner f={{ id: "dx", kind: "measure", level: "info", text: "No diagnosis on this visit yet. Add one in the Diagnosis tab. The visit reason is used until then." }} />
-            )}
-            {findings.length > 0 && (
-              <div className="space-y-1.5" aria-live="polite">
-                {findings.map((f) => <SafetyBanner key={f.id} f={f} />)}
-              </div>
-            )}
-            {needOverride && (
-              <div className="rounded-md border border-destructive/40 p-3">
-                <Field label="Override Reason (Required)" hint="This is saved to the audit trail with your name.">
-                  <Input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="For example: allergy history checked with patient, benefit outweighs risk" />
-                </Field>
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">Choose a drug above to start.</p>
-        )}
         {drug && (
-          <div className="flex justify-end">
-            <span title={!canWrite ? "You do not have permission to prescribe" : !valid ? (needOverride && !overrideOk ? "Enter an override reason for the allergy conflict" : "Fix the items marked above") : undefined}>
-              <Button variant="primary" disabled={!valid || !canWrite} onClick={submit}>
-                {editing ? "Save Changes" : own ? "Record Patient's Own Medicine" : "Add To Prescription"}
-              </Button>
-            </span>
-          </div>
+          <>
+            <FormSection title="Dose And Duration">
+              <FormField group label="Regimen Type" help={REGIMENS.find((r) => r.id === regimen)?.help} hl7="dosageInstruction (dosing variant)">
+                <Segmented value={regimen} options={REGIMEN_OPTIONS} onChange={changeRegimen} />
+              </FormField>
+
+              {regimen === "normal" ? (
+                <>
+                  <FormGrid className="sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,0.8fr)_auto]">
+                    <FormField label="Dose" required error={v.error("dose")} hl7="dosageInstruction.doseAndRate.doseQuantity">
+                      <WithUnit unit={drug.unit}>
+                        <Input className="pe-16" type="number" min="0" step="any" value={dose} onBlur={v.blur("dose")} onChange={(e) => setDose(e.target.value)} />
+                      </WithUnit>
+                    </FormField>
+                    <FormField label="Frequency" required hl7="dosageInstruction.timing.repeat">
+                      <Select value={freq} onChange={(e) => setFreq(e.target.value)}>
+                        {FREQUENCIES.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                      </Select>
+                    </FormField>
+                    <FormField label="Duration" required error={v.error("days")} help={unit !== "d" && daysN > 0 ? `${daysN} days${unit === "mo" ? ". A month counts as 30 days." : "."}` : undefined} hl7="dispenseRequest.expectedSupplyDuration">
+                      <Input type="number" min="1" value={days} onBlur={v.blur("days")} onChange={(e) => { setDays(e.target.value); setQty(null); }} />
+                    </FormField>
+                    <FormField group label="Duration Unit">
+                      <Segmented value={unit} options={UNIT_OPTIONS} onChange={(u) => { setUnit(u); setQty(null); }} />
+                    </FormField>
+                  </FormGrid>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Quick Duration</span>
+                    {DURATION_CHIPS.map((d) => (
+                      <button
+                        key={d}
+                        aria-pressed={unit === "d" && daysN === d}
+                        onClick={() => { setDays(String(d)); setUnit("d"); setQty(null); }}
+                        className={cn("min-h-7 rounded-full border border-border bg-card px-2.5 py-0.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", unit === "d" && daysN === d && "border-primary bg-accent text-accent-foreground")}
+                      >
+                        {d} days
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <ScheduleRows
+                    regimen={regimen}
+                    rows={rows}
+                    dates={rowDates}
+                    unit={drug.unit}
+                    totalDays={daysN}
+                    onChange={setRow}
+                    onAdd={addRow}
+                    onRemove={(i) => { setRows(rows.filter((_, j) => j !== i)); setQty(null); }}
+                  />
+                  {v.error("rows") && (
+                    <p role="alert" className="flex items-start gap-1 text-xs font-medium text-destructive">{v.error("rows")}</p>
+                  )}
+                </>
+              )}
+
+              <FormGrid cols={4}>
+                <FormField label="Start Date" required error={v.error("start")} hl7="dosageInstruction.timing.repeat.boundsPeriod.start">
+                  <Input type="date" value={startDate} onBlur={v.blur("start")} onChange={(e) => { setStartDate(e.target.value); }} />
+                </FormField>
+                <FormField label="End Date" help={regimen === "normal" ? "Changing it changes the duration." : "Worked out from the rows."} hl7="dosageInstruction.timing.repeat.boundsPeriod.end">
+                  <Input type="date" value={endDate} min={startDate} disabled={regimen !== "normal" || !dateOk} onChange={(e) => e.target.value && changeEnd(e.target.value)} />
+                </FormField>
+                <FormField group label="Only When Needed" hl7="asNeededBoolean" className="sm:col-span-2">
+                  <YesNo value={asNeeded} onChange={setAsNeeded} />
+                </FormField>
+              </FormGrid>
+            </FormSection>
+
+            <FormSection title="Supply">
+              <FormGrid cols={4}>
+                <FormField label="Quantity" required error={v.error("qty")} help={qty === null ? "Calculated from the dose and duration." : "Typed by you."} hl7="dispenseRequest.quantity">
+                  <span className="flex gap-1.5">
+                    <span className="min-w-0 flex-1">
+                      <WithUnit unit={drug.unit}>
+                        <Input className="pe-16" type="number" min="0" step="any" value={qty ?? String(autoQty)} onBlur={v.blur("qty")} onChange={(e) => setQty(e.target.value)} />
+                      </WithUnit>
+                    </span>
+                    {qty !== null && <Button className="h-10" onClick={() => setQty(null)} title="Go back to the calculated quantity">Auto</Button>}
+                  </span>
+                </FormField>
+                <FormField label="Repeats" help={controlled ? "None for narcotic, controlled and restricted drugs." : own ? "None for the patient's own medicine." : "How many times it can be dispensed again."} hl7="dispenseRequest.numberOfRepeatsAllowed">
+                  <Input type="number" min="0" max="11" value={controlled || own ? "0" : refills} disabled={controlled || own} onChange={(e) => setRefills(e.target.value)} />
+                </FormField>
+                <FormField group label="Coverage" help={insured ? "The visit is insured." : "The visit is cash, so Insured is off."}>
+                  <Segmented value={coverage} options={[{ value: "Insured", label: "Insured", disabled: !insured }, { value: "Cash", label: "Cash" }]} disabled={own} onChange={setCoverage} />
+                </FormField>
+                <FormField group label="Medication Provided By Patient" help={editing ? "Cannot change on an existing item. Remove it and add it again." : undefined}>
+                  <YesNo value={own} disabled={!!editing} onChange={(x) => { setOwn(x); setQty(null); }} />
+                </FormField>
+              </FormGrid>
+              {own && (
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+                  Recorded on its own prescription as the patient's own medicine. It is checked for allergies and duplicates, but it is not sent to nphies and the pharmacy does not dispense it.
+                </p>
+              )}
+            </FormSection>
+
+            <FormSection title="Details">
+              <FormGrid>
+                <FormField label="Route" hl7="dosageInstruction.route">
+                  <Select value={route} onChange={(e) => setRoute(e.target.value)}>
+                    {ROUTES.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                  </Select>
+                </FormField>
+                <FormField label="Reason (Diagnosis)" hl7="reasonCode">
+                  <Select value={reasonIdx} onChange={(e) => setReasonIdx(Number(e.target.value))}>
+                    {reasons.map((r, i) => <option key={r.code + i} value={i}>{r.code} {r.text}</option>)}
+                  </Select>
+                </FormField>
+                <FormField group label="Setting" hl7="category[1]" help={editing ? "Cannot change on an existing item." : undefined} className="sm:col-span-2">
+                  <Segmented value={usage} options={USAGE_OPTIONS} disabled={!!editing} onChange={setUsage} />
+                </FormField>
+                <FormField label="Instructions For Patient" hl7="dosageInstruction.patientInstruction">
+                  <Input placeholder="For example: take after food" value={instr} onChange={(e) => setInstr(e.target.value)} />
+                </FormField>
+                <FormField label="Note For Pharmacist" help="Optional." hl7="note.text">
+                  <Input placeholder="For example: patient cannot swallow tablets" value={note} onChange={(e) => setNote(e.target.value)} />
+                </FormField>
+              </FormGrid>
+            </FormSection>
+
+            {(enc.dx.length === 0 || findings.length > 0 || needOverride) && (
+              <FormSection title="Safety Checks">
+                {enc.dx.length === 0 && (
+                  <SafetyBanner f={{ id: "dx", kind: "measure", level: "info", text: "No diagnosis on this visit yet. Add one in the Diagnosis tab. The visit reason is used until then." }} />
+                )}
+                {findings.length > 0 && (
+                  <div className="space-y-1.5" aria-live="polite">
+                    {findings.map((f) => <SafetyBanner key={f.id} f={f} />)}
+                  </div>
+                )}
+                {needOverride && (
+                  <div className="rounded-md border border-destructive/40 p-3">
+                    <FormField label="Override Reason" required error={v.error("override")} help="Saved to the audit trail with your name.">
+                      <Input value={overrideReason} onBlur={v.blur("override")} onChange={(e) => setOverrideReason(e.target.value)} placeholder="For example: allergy history checked with patient, benefit outweighs risk" />
+                    </FormField>
+                  </div>
+                )}
+              </FormSection>
+            )}
+
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+              {editing ? <Button onClick={() => { v.reset(); onDone(); }}>Cancel Edit</Button> : <Button onClick={() => { v.reset(); reset(); }}>Clear</Button>}
+              <span title={!canWrite ? "You do not have permission to prescribe" : undefined}>
+                <Button variant="primary" disabled={!canWrite} onClick={submit}>
+                  {editing ? "Save Changes" : own ? "Record Patient's Own Medicine" : "Add To Prescription"}
+                </Button>
+              </span>
+            </div>
+          </>
         )}
       </fieldset>
     </Card>
@@ -531,35 +562,37 @@ function ScheduleRows({
         {rows.map((r, i) => (
           <div key={i} className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_auto]">
             {split ? (
-              <Field label={`Time Of Day ${i + 1}`}>
+              <FormField label={`Time Of Day ${i + 1}`}>
                 <Select value={r.time ?? ""} onChange={(e) => onChange(i, { time: (e.target.value || undefined) as DoseTime | undefined })}>
                   <option value="">Not set</option>
                   {DOSE_TIMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </Select>
-              </Field>
+              </FormField>
             ) : (
               <div className="pb-2 text-sm">
                 <div className="font-medium">Phase {i + 1}</div>
                 {dates[i] && <div className="text-xs text-muted-foreground">{fmtDate(dates[i].start)} to {fmtDate(dates[i].end)}</div>}
               </div>
             )}
-            <Field label={`Dose (${unit})`}>
-              <Input type="number" min="0" step="any" value={r.dose} aria-label={`Row ${i + 1} dose`} onChange={(e) => onChange(i, { dose: e.target.value })} />
-            </Field>
-            <Field label="Frequency">
+            <FormField label="Dose">
+              <WithUnit unit={unit}>
+                <Input className="pe-16" type="number" min="0" step="any" value={r.dose} aria-label={`Row ${i + 1} dose`} onChange={(e) => onChange(i, { dose: e.target.value })} />
+              </WithUnit>
+            </FormField>
+            <FormField label="Frequency">
               <Select value={r.frequencyId} aria-label={`Row ${i + 1} frequency`} onChange={(e) => onChange(i, { frequencyId: e.target.value })}>
                 {FREQUENCIES.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
               </Select>
-            </Field>
-            <Field label="Days">
+            </FormField>
+            <FormField label="Days">
               <Input type="number" min="1" step="1" value={r.days} aria-label={`Row ${i + 1} days`} onChange={(e) => onChange(i, { days: e.target.value })} />
-            </Field>
+            </FormField>
             <button
               onClick={() => onRemove(i)}
               disabled={rows.length <= 2}
               aria-label={`Remove row ${i + 1}`}
               title={rows.length <= 2 ? "A split or taper regimen needs two or more rows" : "Remove Row"}
-              className="mb-1 flex size-8 items-center justify-center rounded-full text-cancel hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+              className="mb-1 flex size-8 items-center justify-self-end justify-center rounded-full text-cancel hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
             >
               <IconTrash className="size-[18px]" stroke={1.75} />
             </button>

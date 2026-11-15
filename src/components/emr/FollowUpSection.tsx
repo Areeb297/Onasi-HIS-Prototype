@@ -1,8 +1,8 @@
 import * as React from "react";
-import { CalendarPlus } from "lucide-react";
+import { CalendarCheck, CalendarClock, CalendarPlus, CalendarX, CheckCircle2 } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
-import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Select, Table, Td, Th } from "@/components/ui/primitives";
-import { Textarea } from "@/components/ui/textarea";
+import { EmptyState, EntryList, EntryRow, EntrySheet, ErrorSummary, FormField, FormGrid, RowMenu, Segmented, TextArea, useValidation } from "@/components/emr/entry-ui";
+import { Badge, Button, Card, CardHeader, Input, RequiredNote, Select } from "@/components/ui/primitives";
 import {
   CLINICS, FOLLOW_UP_LABEL, VISIT_TYPE_LABEL, bookFollowUp, cancelFollowUp, completeFollowUp, followUpTarget, followUpTitle, followUpsOf, orderFollowUp,
   useCareRequests, type FollowUp, type FollowUpStatus, type VisitType,
@@ -37,6 +37,7 @@ export function FollowUpSection({ enc }: { enc: Encounter }) {
   const [error, setError] = React.useState("");
 
   const closeDialogs = () => { setBooking(null); setCancelling(null); setWhen(""); setWhy(""); setError(""); };
+  const startBooking = (f: FollowUp) => { setBooking(f); setWhen(f.bookedFor ?? `${f.targetDate}T09:00`); setError(""); };
 
   function book() {
     if (!booking) return;
@@ -53,73 +54,86 @@ export function FollowUpSection({ enc }: { enc: Encounter }) {
     closeDialogs();
   }
 
+  const addButton = (
+    <span title={canOrder ? undefined : "Only a doctor can order a follow-up"}>
+      <Button size="sm" variant="primary" disabled={!canOrder} onClick={() => setAdding(true)}><CalendarPlus className="size-4" aria-hidden="true" /> New Follow-Up</Button>
+    </span>
+  );
+
   return (
     <Card>
       <CardHeader
         title="Follow-Up"
         subtitle="Order a return visit. It goes to the appointments desk as a booking request."
-        right={
-          <span title={canOrder ? undefined : "Only a doctor can order a follow-up"}>
-            <Button variant="primary" disabled={!canOrder || adding} onClick={() => setAdding(true)}><CalendarPlus className="size-4" aria-hidden="true" /> New Follow-Up</Button>
-          </span>
-        }
+        right={list.length > 0 ? addButton : undefined}
       />
-      {adding && <FollowUpForm enc={enc} onClose={() => setAdding(false)} />}
       {list.length === 0 ? (
-        <Empty>{canOrder ? "No follow-up ordered for this visit. Choose New Follow-Up to ask for a return visit." : "No follow-up ordered for this visit. The doctor orders it here."}</Empty>
+        <EmptyState icon={<CalendarClock />} title="No Follow-Up Ordered" action={canOrder ? addButton : undefined}>
+          {canOrder ? "Order a return visit and the appointments desk will book it." : "The doctor orders a return visit here."}
+        </EmptyState>
       ) : (
-        <Table>
-          <thead><tr><Th>Status</Th><Th>Follow-Up</Th><Th>Clinic And Doctor</Th><Th>Ordered By</Th><Th>Booking</Th><Th>Actions</Th></tr></thead>
-          <tbody>
-            {list.map((f) => (
-              <tr key={f.id}>
-                <Td><Badge tone={TONE[f.status]}>{FOLLOW_UP_LABEL[f.status]}</Badge></Td>
-                <Td className="max-w-[20rem]">
-                  <div className="font-medium">{followUpTitle(f)}</div>
-                  <div className="text-xs text-muted-foreground">{VISIT_TYPE_LABEL[f.visitType]} · see by {dateOnly(f.targetDate)}</div>
-                  {f.instructions && <div className="mt-1 text-xs">For the patient: {f.instructions}</div>}
-                </Td>
-                <Td><div>{f.clinic}</div><div className="text-xs text-muted-foreground">{doctorName(f.doctorId)}</div></Td>
-                <Td><div>{f.orderedBy}</div><div className="text-xs text-muted-foreground">{dateTime(f.orderedAt)}</div></Td>
-                <Td className="text-xs">
-                  {f.status === "requested" && <span className="font-medium text-warn">Waiting for the appointments desk</span>}
-                  {f.bookedFor && <div><span className="font-medium">{dateTime(f.bookedFor)}</span><div className="text-muted-foreground">Booked by {f.bookedBy}, {dateTime(f.bookedAt ?? f.bookedFor)}</div></div>}
-                  {f.status === "done" && <div className="text-muted-foreground">Marked done by {f.doneBy}{f.doneAt ? `, ${dateTime(f.doneAt)}` : ""}</div>}
-                  {f.status === "cancelled" && <div className="text-muted-foreground">Cancelled by {f.cancelledBy}{f.cancelledAt ? `, ${dateTime(f.cancelledAt)}` : ""}: {f.cancelReason}</div>}
-                </Td>
-                <Td>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(f.status === "requested" || f.status === "booked") && (
-                      <Button size="sm" variant={f.status === "requested" ? "primary" : "secondary"} disabled={!canBook} onClick={() => { setBooking(f); setWhen(f.bookedFor ?? `${f.targetDate}T09:00`); }}>
-                        {f.status === "requested" ? "Mark Booked" : "Change Date"}
+        <EntryList label="Follow-ups">
+          {list.map((f) => {
+            const open = f.status === "requested" || f.status === "booked";
+            return (
+              <EntryRow
+                key={f.id}
+                title={followUpTitle(f)}
+                badges={<Badge tone={TONE[f.status]}>{FOLLOW_UP_LABEL[f.status]}</Badge>}
+                muted={f.status === "cancelled"}
+                meta={[
+                  ["See By", dateOnly(f.targetDate)],
+                  ["Visit", VISIT_TYPE_LABEL[f.visitType]],
+                  ["Clinic", f.clinic],
+                  ["Doctor", doctorName(f.doctorId)],
+                  ["Ordered By", `${f.orderedBy}, ${dateTime(f.orderedAt)}`],
+                ]}
+                right={open ? (
+                  <>
+                    {f.status === "requested" && <Button size="sm" variant="primary" disabled={!canBook} onClick={() => startBooking(f)}><CalendarCheck className="size-4" aria-hidden="true" /> Mark Booked</Button>}
+                    {f.status === "booked" && (
+                      <Button size="sm" variant="primary" disabled={!canBook} onClick={() => { if (completeFollowUp(f.id).ok) pushToast({ tone: "ok", text: "Follow-up marked done" }); }}>
+                        <CheckCircle2 className="size-4" aria-hidden="true" /> Mark Done
                       </Button>
                     )}
-                    {f.status === "booked" && <Button size="sm" disabled={!canBook} onClick={() => { if (completeFollowUp(f.id).ok) pushToast({ tone: "ok", text: "Follow-up marked done" }); }}>Mark Done</Button>}
-                    {(f.status === "requested" || f.status === "booked") && <Button size="sm" variant="danger" disabled={!canBook} onClick={() => setCancelling(f)}>Cancel Follow-Up</Button>}
-                    {(f.status === "done" || f.status === "cancelled") && <span className="text-xs text-muted-foreground">No actions</span>}
-                  </div>
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+                    {canBook && (
+                      <RowMenu
+                        label={`More actions for ${followUpTitle(f)}`}
+                        items={[
+                          f.status === "booked" && { label: "Change Date", icon: <CalendarClock className="size-4" />, onSelect: () => startBooking(f) },
+                          { label: "Cancel Follow-Up", icon: <CalendarX className="size-4" />, onSelect: () => { setCancelling(f); setError(""); }, danger: true },
+                        ]}
+                      />
+                    )}
+                  </>
+                ) : undefined}
+              >
+                {f.instructions && <p className="mt-1 text-xs"><span className="text-muted-foreground">For the patient: </span>{f.instructions}</p>}
+                <p className="mt-1 text-xs">
+                  {f.status === "requested" && <span className="font-medium text-warn">Waiting for the appointments desk</span>}
+                  {f.bookedFor && <><span className="font-medium">Booked for {dateTime(f.bookedFor)}</span><span className="text-muted-foreground"> by {f.bookedBy}, {dateTime(f.bookedAt ?? f.bookedFor)}. </span></>}
+                  {f.status === "done" && <span className="text-muted-foreground">Marked done by {f.doneBy}{f.doneAt ? `, ${dateTime(f.doneAt)}` : ""}.</span>}
+                  {f.status === "cancelled" && <span className="text-muted-foreground">Cancelled by {f.cancelledBy}{f.cancelledAt ? `, ${dateTime(f.cancelledAt)}` : ""}: {f.cancelReason}</span>}
+                </p>
+              </EntryRow>
+            );
+          })}
+        </EntryList>
       )}
+
+      {adding && <FollowUpForm enc={enc} onClose={() => setAdding(false)} />}
 
       <Dialog
         open={!!booking}
         onClose={closeDialogs}
-        title="Mark Follow-Up As Booked"
+        title={booking?.status === "booked" ? "Change Appointment Date" : "Mark Follow-Up As Booked"}
         subtitle={booking ? `${followUpTitle(booking)}, ${booking.clinic}` : undefined}
         footer={<><Button onClick={closeDialogs}>Not Now</Button><Button variant="primary" onClick={book}>Save Booking</Button></>}
       >
         {booking && (
-          <div className="space-y-3">
-            <p className="text-sm">The doctor asked for a visit by {dateOnly(booking.targetDate)}.</p>
-            <Field label="Appointment Date And Time" required>
-              <Input type="datetime-local" value={when} min={nowLocal()} onChange={(e) => { setWhen(e.target.value); setError(""); }} />
-            </Field>
-            {error && <p role="alert" className="text-[0.8125rem] text-destructive">{error}</p>}
-          </div>
+          <FormField label="Appointment Date And Time" required error={error || undefined} help={`The doctor asked for a visit by ${dateOnly(booking.targetDate)}.`}>
+            <Input type="datetime-local" value={when} min={nowLocal()} onChange={(e) => { setWhen(e.target.value); setError(""); }} />
+          </FormField>
         )}
       </Dialog>
       <Dialog
@@ -129,16 +143,16 @@ export function FollowUpSection({ enc }: { enc: Encounter }) {
         subtitle={cancelling ? `${followUpTitle(cancelling)}, ${cancelling.clinic}` : undefined}
         footer={<><Button onClick={closeDialogs}>Keep The Follow-Up</Button><Button variant="danger" onClick={cancel}>Cancel Follow-Up</Button></>}
       >
-        <div className="space-y-3">
-          <Field label="Reason" required>
-            <Input value={why} onChange={(e) => { setWhy(e.target.value); setError(""); }} placeholder="For example: patient will follow up elsewhere" />
-          </Field>
-          {error && <p role="alert" className="text-[0.8125rem] text-destructive">{error}</p>}
-        </div>
+        <FormField label="Reason" required error={error || undefined}>
+          <Input value={why} onChange={(e) => { setWhy(e.target.value); setError(""); }} placeholder="For example: patient will follow up elsewhere" />
+        </FormField>
       </Dialog>
     </Card>
   );
 }
+
+const UNIT_OPTIONS = [{ value: "days" as const, label: "Days" }, { value: "weeks" as const, label: "Weeks" }];
+const VISIT_OPTIONS = (Object.keys(VISIT_TYPE_LABEL) as VisitType[]).map((v) => ({ value: v, label: VISIT_TYPE_LABEL[v] }));
 
 function FollowUpForm({ enc, onClose }: { enc: Encounter; onClose: () => void }) {
   const [amount, setAmount] = React.useState("2");
@@ -147,61 +161,65 @@ function FollowUpForm({ enc, onClose }: { enc: Encounter; onClose: () => void })
   const [doctorId, setDoctorId] = React.useState(enc.attending);
   const [visitType, setVisitType] = React.useState<VisitType>("in-person");
   const [instructions, setInstructions] = React.useState("");
-  const [errors, setErrors] = React.useState<string[]>([]);
+  const [failed, setFailed] = React.useState<string[]>([]);
   const n = Number(amount);
-  const valid = Number.isInteger(n) && n >= 1;
+  const valid = amount.trim() !== "" && Number.isInteger(n) && n >= 1 && n <= 365;
+  const v = useValidation({
+    amount: !valid && "Enter a whole number, 1 to 365.",
+    clinic: !clinic && "Choose the clinic.",
+  });
+  const dirty = amount !== "2" || unit !== "weeks" || !!clinic || doctorId !== enc.attending || visitType !== "in-person" || !!instructions.trim();
 
   function save() {
+    if (!v.submit()) return;
     const res = orderFollowUp({ visit: enc.visitNumber, amount: n, unit, clinic, doctorId, visitType, instructions });
-    if (!res.ok) { setErrors(res.errors); return; }
+    if (!res.ok) { setFailed(res.errors); return; }
     pushToast({ tone: "ok", text: `${followUpTitle(res.value)} ordered`, detail: `Booking request sent to ${res.value.clinic}.` });
     onClose();
   }
 
   return (
-    <div className="border-b border-border bg-muted/30 px-4 py-4" role="region" aria-label="New follow-up">
-      <h3 className="text-[0.9375rem] font-semibold">New Follow-Up</h3>
-      <RequiredNote className="mt-0.5" />
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Follow Up In" required hint={valid ? `See by ${dateOnly(followUpTarget(n, unit))}.` : "Enter a whole number, 1 or more."}>
-          <Input type="number" min={1} step={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </Field>
-        <Field label="Days Or Weeks" required>
-          <Select value={unit} onChange={(e) => setUnit(e.target.value as "days" | "weeks")}>
-            <option value="days">Days</option>
-            <option value="weeks">Weeks</option>
-          </Select>
-        </Field>
-        <Field label="Clinic" required>
-          <Select value={clinic} onChange={(e) => setClinic(e.target.value)}>
-            <option value="">Choose a clinic</option>
-            {CLINICS.map((c) => <option key={c}>{c}</option>)}
-          </Select>
-        </Field>
-        <Field label="Doctor">
-          <Select value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-            <option value="">Any doctor in the clinic</option>
-            {DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}
-          </Select>
-        </Field>
-        <Field label="Visit Type" required>
-          <Select value={visitType} onChange={(e) => setVisitType(e.target.value as VisitType)}>
-            {(Object.keys(VISIT_TYPE_LABEL) as VisitType[]).map((v) => <option key={v} value={v}>{VISIT_TYPE_LABEL[v]}</option>)}
-          </Select>
-        </Field>
-        <Field label="Instructions For The Patient" className="sm:col-span-2 lg:col-span-3" hint="The patient sees this text with the appointment.">
-          <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={2} className="bg-card" placeholder="For example: come fasting, bring your blood sugar diary" />
-        </Field>
+    <EntrySheet
+      onClose={onClose}
+      title="New Follow-Up"
+      subtitle="The appointments desk books the visit."
+      dirty={dirty}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Order Follow-Up</Button></>}
+    >
+      <div className="space-y-4">
+        <RequiredNote />
+        <ErrorSummary problems={failed.length ? failed : v.summary} />
+        <FormField label="Follow Up In" required group error={v.error("amount")} help={valid ? `See by ${dateOnly(followUpTarget(n, unit))}.` : undefined}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              className="w-24" type="number" inputMode="numeric" min={1} max={365} step={1} value={amount} aria-label="Number of days or weeks"
+              aria-invalid={v.error("amount") ? true : undefined}
+              onChange={(e) => { setAmount(e.target.value); setFailed([]); }} onBlur={v.blur("amount")}
+            />
+            <Segmented label="Days or weeks" value={unit} options={UNIT_OPTIONS} onChange={setUnit} />
+          </div>
+        </FormField>
+        <FormGrid>
+          <FormField label="Clinic" required error={v.error("clinic")}>
+            <Select value={clinic} onChange={(e) => { setClinic(e.target.value); setFailed([]); }} onBlur={v.blur("clinic")}>
+              <option value="">Choose A Clinic</option>
+              {CLINICS.map((c) => <option key={c}>{c}</option>)}
+            </Select>
+          </FormField>
+          <FormField label="Doctor">
+            <Select value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+              <option value="">Any Doctor In The Clinic</option>
+              {DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}
+            </Select>
+          </FormField>
+        </FormGrid>
+        <FormField label="Visit Type" required group>
+          <Segmented value={visitType} options={VISIT_OPTIONS} onChange={setVisitType} />
+        </FormField>
+        <FormField label="Instructions For The Patient" help="The patient sees this text with the appointment.">
+          <TextArea rows={3} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="For example: come fasting, bring your blood sugar diary" />
+        </FormField>
       </div>
-      {errors.length > 0 && (
-        <ul role="alert" className="mt-3 space-y-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[0.8125rem] text-destructive">
-          {errors.map((e) => <li key={e}>{e}</li>)}
-        </ul>
-      )}
-      <div className="mt-4 flex gap-2">
-        <Button variant="primary" onClick={save}>Order Follow-Up</Button>
-        <Button onClick={onClose}>Close Without Saving</Button>
-      </div>
-    </div>
+    </EntrySheet>
   );
 }

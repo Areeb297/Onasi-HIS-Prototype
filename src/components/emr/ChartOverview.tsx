@@ -7,10 +7,11 @@ import { quickSend } from "@/lib/actions";
 import {
   CLASS_LABEL, STATUS_LABEL, activeMedicines, attachmentsOf, demographics, encounterDetails, latestHistory, patientVisits, type DetailRow,
 } from "@/lib/chart-overview";
-import { attentionFor, sbarFor, sbarText, type Attention } from "@/lib/chart-review";
+import { chartChecks, checkCounts, sbarFor, sbarText, type Attention } from "@/lib/chart-review";
 import { useCareRequests } from "@/lib/care-requests";
 import { useDocs } from "@/lib/docs";
 import { useEmar } from "@/lib/emar";
+import { fmtDate } from "@/lib/format";
 import { useLab } from "@/lib/lab";
 import type { Encounter, Patient } from "@/lib/model";
 import { useRad } from "@/lib/radiology";
@@ -93,7 +94,9 @@ function Handoff({ enc, patient }: { enc: Encounter; patient: Patient }) {
         ))}
       </dl>
       <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2.5">
-        <span className="text-xs text-muted-foreground">Written from the chart. Check it before you read it out.</span>
+        <span className="text-xs text-muted-foreground">
+          {sbar.vitalsAt ? `Vital signs taken ${sbar.vitalsAt}. ` : ""}Written from the chart. Check it before you read it out.
+        </span>
         <Button size="sm" onClick={copy}><Copy className="size-3.5" aria-hidden="true" /> Copy</Button>
       </div>
     </>
@@ -114,7 +117,7 @@ function DetailList({ rows }: { rows: DetailRow[] }) {
 }
 
 const doctorName = (id: string) => { const d = DOCTORS.find((x) => x.id === id); return d ? `Dr. ${d.given} ${d.family}` : "None"; };
-const shortDate = (s?: string) => (s ? new Date(s).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "Not set");
+const shortDate = (s?: string) => fmtDate(s) || "Not set";
 
 function EncounterHistory({ visits, current }: { visits: Encounter[]; current: string }) {
   return (
@@ -166,8 +169,8 @@ export function ChartOverview({ enc, patient, children }: { enc: Encounter; pati
   // Re-render when any source store changes.
   const state = useHis(); useLab(); useRad(); const rx = useRx(); useDocs(); useVitals(); useEmar(); useCareRequests(); useTheatre(); useRecords();
   const go = (s: string) => navigate("/chart", { visit: enc.visitNumber, s });
-  const attention = attentionFor(enc, patient);
-  const urgent = attention.filter((a) => a.level === "high").length;
+  const attention = chartChecks(enc, patient);
+  const counts = checkCounts(attention);
   const visits = patientVisits(state, patient.id);
   const visitIds = visits.map((v) => v.visitNumber);
   const meds = activeMedicines(enc.visitNumber, rx);
@@ -181,7 +184,9 @@ export function ChartOverview({ enc, patient, children }: { enc: Encounter; pati
           <CardHeader
             title="Needs Attention"
             subtitle="Found by checking this chart against the rules. Most urgent first."
-            right={urgent ? <Badge tone="danger">{urgent} urgent</Badge> : attention.length ? <Badge tone="neutral">{attention.length} to review</Badge> : <Badge tone="ok">All clear</Badge>}
+            right={counts.toAct ? <Badge tone={counts.urgent ? "danger" : "warn"}>{counts.toAct} to act on{counts.urgent ? `, ${counts.urgent} urgent` : ""}</Badge>
+              : counts.total ? <Badge tone="neutral">{counts.total} for information</Badge>
+              : <Badge tone="ok">All clear</Badge>}
           />
           <AttentionList items={attention} onGo={go} onFix={(a) => { if (a.action === "send-update") quickSend("A08", enc.visitNumber); }} />
         </Card>

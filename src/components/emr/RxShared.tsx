@@ -13,6 +13,7 @@ import type { Allergy, Patient } from "@/lib/model";
 import { ageOf, measuresFor } from "@/lib/rx-send";
 import { VERIFY_LABEL, type VerifyStatus } from "@/lib/rx-verify";
 import { useHis } from "@/lib/store";
+import { fmtDateTime, fmtTime } from "@/lib/format";
 
 /** Small pieces shared by the prescription tab and the pharmacy worklist. */
 
@@ -99,7 +100,7 @@ export function VerifyBadge({ status }: { status: VerifyStatus }) {
   return <Badge tone={VERIFY_TONE[status]}>{VERIFY_LABEL[status]}</Badge>;
 }
 
-export const fmtWhen = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+export const fmtWhen = (iso: string) => fmtDateTime(iso);
 
 /** Who checked the item and when, plus the question, answer or reason. */
 export function VerifyTrail({ item, status }: { item: RxItem; status: VerifyStatus }) {
@@ -233,7 +234,7 @@ export function MessageViewer({
             {[...(history ?? [])].reverse().map((h) => (
               <li key={h.id} className="flex flex-wrap items-center gap-2">
                 <Badge tone={h.ok ? "ok" : "danger"}>HTTP {h.http}</Badge>
-                <span className="font-mono">{new Date(h.at).toLocaleTimeString("en-GB")}</span>
+                <span className="font-mono">{fmtTime(h.at)}</span>
                 <span>{h.summary}</span>
                 {h.steps.length > 0 && <span className="font-mono text-update">steps {h.steps.join(", ")}</span>}
                 {h.refId && <span className="font-mono">{h.refId}</span>}

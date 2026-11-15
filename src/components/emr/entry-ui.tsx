@@ -2,13 +2,14 @@ import * as React from "react";
 import { AlertCircle, MoreHorizontal, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { Button, Hl7Tag, Switch, cn } from "@/components/ui/primitives";
+import { FormGrid as SharedGrid, FormSection as SharedSection, SegmentedControl } from "@/components/forms";
+import { Button, Field, Switch, cn, textareaBase, useFieldAria } from "@/components/ui/primitives";
 
 /**
  * The data-entry pattern of the chart sections: a side sheet with a pinned save bar, labels above inputs, help and
  * errors under the field, segmented buttons for short choices, an actions menu on each entry and an empty state that
- * names the next step. It follows the shared form system (src/components/forms); the chart sections use this file
- * until those components are in place.
+ * names the next step. The fields, sections, grid and segmented buttons are the shared form system (src/components/forms and
+ * ui/primitives); this file adds what a chart section needs on top: the side sheet, the entry list and the menu.
  */
 
 /* ---------- validation: errors show after the field is left, or after Save is pressed ---------- */
@@ -91,33 +92,20 @@ export function EntrySheet({
 
 /* ---------- form layout ---------- */
 
+/** A titled group of fields inside a sheet: the shared FormSection without its card. */
 export function FormSection({ title, description, right, className, children }: { title: string; description?: string; right?: React.ReactNode; className?: string; children: React.ReactNode }) {
-  return (
-    <section className={cn("space-y-3", className)}>
-      <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-1.5">
-        <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          {description && <p className="text-xs text-muted-foreground">{description}</p>}
-        </div>
-        {right}
-      </div>
-      {children}
-    </section>
-  );
+  return <SharedSection plain title={title} help={description} right={right} className={className}><div className="space-y-4">{children}</div></SharedSection>;
 }
 
 export function FormGrid({ cols = 2, className, children }: { cols?: 1 | 2 | 3 | 4; className?: string; children: React.ReactNode }) {
-  return (
-    <div className={cn("grid gap-x-4 gap-y-4", cols === 2 && "sm:grid-cols-2", cols === 3 && "sm:grid-cols-2 lg:grid-cols-3", cols === 4 && "sm:grid-cols-2 lg:grid-cols-4", className)}>
-      {children}
-    </div>
-  );
+  if (cols === 1) return <div className={cn("grid gap-y-5", className)}>{children}</div>;
+  return <SharedGrid cols={cols} className={className}>{children}</SharedGrid>;
 }
 
 /**
  * One field: label above, the control, then the error in red or the help text. Inputs inside are 40px high.
  * `group` is for controls that are not one input (segmented buttons, chips): the label names the group instead of
- * pointing at an input.
+ * pointing at an input. This is the shared Field; `help` is its hint.
  */
 export function FormField({
   label, required, help, error, hl7, group, className, children,
@@ -131,66 +119,15 @@ export function FormField({
   className?: string;
   children: React.ReactNode;
 }) {
-  const id = React.useId();
-  const head = (
-    <span id={`${id}-l`} className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium leading-5 text-foreground">
-      <span>
-        {label}
-        {required && (
-          <>
-            <span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span>
-            <span className="sr-only"> (required)</span>
-          </>
-        )}
-      </span>
-      {hl7 && <Hl7Tag>{hl7}</Hl7Tag>}
-    </span>
-  );
-  const foot = error ? (
-    <span id={`${id}-e`} role="alert" className="flex items-start gap-1 text-xs font-medium leading-snug text-destructive">
-      <AlertCircle className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-      {error}
-    </span>
-  ) : help ? (
-    <span className="text-xs leading-snug text-muted-foreground">{help}</span>
-  ) : null;
-  const cls = cn("flex min-w-0 flex-col gap-1.5 [--field-h:2.5rem]", className);
-  if (group) {
-    return (
-      <div role="group" aria-labelledby={`${id}-l`} className={cls}>
-        {head}
-        {children}
-        {foot}
-      </div>
-    );
-  }
-  const control = error && React.isValidElement(children)
-    ? React.cloneElement(children as React.ReactElement<Record<string, unknown>>, { "aria-invalid": true, "aria-describedby": `${id}-e` })
-    : children;
-  return (
-    <label className={cls}>
-      {head}
-      {control}
-      {foot}
-    </label>
-  );
+  return <Field label={label} required={required} hint={help} error={error} hl7={hl7} group={group} className={className}>{children}</Field>;
 }
 
 /** A multi-line input styled like the single-line ones. */
 export const TextArea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  ({ className, rows = 3, ...props }, ref) => (
-    <textarea
-      ref={ref}
-      rows={rows}
-      className={cn(
-        "w-full rounded-lg border border-input bg-card px-3 py-2 text-sm leading-relaxed text-foreground shadow-xs placeholder:text-muted-foreground/80 dark:bg-background",
-        "focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[invalid=true]:border-destructive",
-        "disabled:cursor-not-allowed disabled:bg-muted disabled:text-foreground/85",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  ({ className, rows = 3, ...props }, ref) => {
+    const aria = useFieldAria(props);
+    return <textarea ref={ref} rows={rows} className={cn(textareaBase, className)} {...props} {...aria} />;
+  },
 );
 TextArea.displayName = "TextArea";
 
@@ -222,19 +159,12 @@ export function Segmented<V extends string>({
   /** Stretch the buttons over the full width. */
   full?: boolean;
 }) {
-  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const live = options.filter((o) => !o.disabled);
-    const i = live.findIndex((o) => o.value === value);
-    const next = live[(i + (e.key === "ArrowRight" ? 1 : live.length - 1)) % live.length];
-    if (!next) return;
-    e.preventDefault();
-    onChange(next.value);
-    const btn = e.currentTarget.querySelector<HTMLButtonElement>(`[data-v="${CSS.escape(next.value)}"]`);
-    btn?.focus();
-  };
+  if (!options.some((o) => o.disabled || o.title)) {
+    return <SegmentedControl label={label} value={value} options={options.map((o) => ({ value: o.value, label: o.label }))} onChange={onChange} disabled={disabled} className={cn(full && "sm:w-full [&>button]:sm:flex-1", className)} />;
+  }
+  // Same look as the shared control, with single options that can be switched off.
   return (
-    <div role="radiogroup" aria-label={label} onKeyDown={onKey} className={cn("inline-flex min-h-10 max-w-full flex-wrap gap-1 rounded-lg border border-input bg-muted/60 p-1", full ? "flex w-full" : "w-fit", className)}>
+    <div role="radiogroup" aria-label={label} className={cn("inline-flex w-full max-w-full rounded-lg border border-input bg-card p-0.5 shadow-xs dark:bg-background", full ? "sm:w-full" : "sm:w-auto", disabled && "opacity-60", className)}>
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -242,16 +172,15 @@ export function Segmented<V extends string>({
             key={o.value}
             type="button"
             role="radio"
-            data-v={o.value}
             aria-checked={on}
-            tabIndex={on || (!value && o === options[0]) ? 0 : -1}
             disabled={disabled || o.disabled}
             title={o.title}
             onClick={() => onChange(o.value)}
             className={cn(
-              "min-h-8 rounded-md px-3 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-              full && "flex-1",
-              on ? "bg-card font-semibold text-foreground shadow-sm ring-1 ring-primary/60" : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
+              "h-[calc(var(--field-h,2.5rem)-0.375rem)] min-w-0 flex-1 rounded-md px-3.5 text-sm font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              !full && "sm:flex-none",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+              on ? "bg-[#032C26] text-white shadow-sm dark:bg-[#39EDD5] dark:text-[#032C26]" : "text-foreground hover:bg-muted",
             )}
           >
             {o.label}
@@ -278,9 +207,9 @@ export function ErrorSummary({ problems, title }: { problems: string[]; title?: 
   React.useEffect(() => { if (key) ref.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" }); }, [key]);
   if (!problems.length) return null;
   return (
-    <div ref={ref} role="alert" className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2.5 text-sm text-destructive">
+    <div ref={ref} role="alert" className="rounded-xl border border-destructive/35 border-l-4 border-l-destructive bg-destructive/[0.06] px-4 py-3 text-sm text-destructive">
       <p className="flex items-center gap-1.5 font-semibold"><AlertCircle className="size-4 shrink-0" aria-hidden="true" />{title ?? (problems.length === 1 ? "Fix 1 item to save" : `Fix ${problems.length} items to save`)}</p>
-      <ul className="mt-1 list-disc space-y-0.5 ps-6">
+      <ul className="mt-1 list-disc space-y-0.5 ps-6 text-foreground">
         {problems.map((p) => <li key={p}>{p}</li>)}
       </ul>
     </div>

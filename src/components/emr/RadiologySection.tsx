@@ -18,9 +18,10 @@ import {
 import { visitInsured } from "@/lib/order-fields";
 import { can, useSession } from "@/lib/session";
 import { useHis } from "@/lib/store";
+import { fmtDateTime } from "@/lib/format";
 
 const when = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 function sendLabel(o: RadOrder): string | null {
   const last = lastAttempt(o.sends, "rad-order");

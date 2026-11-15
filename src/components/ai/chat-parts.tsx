@@ -6,6 +6,7 @@ import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { cn } from "@/components/ui/primitives";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
 import { chatTopics } from "@/lib/ai/chat-history";
+import { fmtTime } from "@/lib/format";
 
 /**
  * The parts every Onasi AI chat is built from: the scrolling thread with "Jump To Latest", the two message shapes,
@@ -45,7 +46,8 @@ export function BrandBadge({ tone = "cyan", children }: { tone?: "cyan" | "ink" 
   );
 }
 
-export const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+/** 24-hour time, for example 15:48 (lib/format.ts). */
+export const clock = (iso: string) => fmtTime(iso);
 
 /* ---------- Thread ---------- */
 
@@ -316,7 +318,7 @@ export function ChatWelcome({ onAsk, compact = false, title = `Welcome to ${ASSI
   const topics = React.useMemo(() => chatTopics(), []);
   const [open, setOpen] = React.useState<string | null>(null);
   return (
-    <div className={cn("mx-auto w-full max-w-3xl", compact ? "pt-2" : "pt-4 sm:pt-10")}>
+    <div className={cn("mx-auto w-full max-w-[45rem]", compact ? "pt-2" : "pt-4 sm:pt-10")}>
       <div className={cn("flex items-center gap-3", !compact && "flex-col text-center")}>
         <MarkTile size={compact ? "lg" : "xl"} />
         <h2 className={cn("font-semibold tracking-tight text-[#032C26] dark:text-foreground", compact ? "text-lg" : "text-2xl")}>{title}</h2>

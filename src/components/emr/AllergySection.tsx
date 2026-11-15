@@ -1,8 +1,11 @@
 import * as React from "react";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { Pencil, Plus, ShieldAlert, Trash2, X } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
-import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Select, Switch, Table, Td, Th, cn } from "@/components/ui/primitives";
-import { CodeSearch, Checkbox, ProblemList, RadioRow, fmtWhen } from "@/components/emr/CodeSearch";
+import { Badge, Button, Card, CardHeader, Input, Select } from "@/components/ui/primitives";
+import { CodeSearch, fmtWhen } from "@/components/emr/CodeSearch";
+import {
+  ActiveToggle, EmptyState, EntryList, EntryRow, EntrySheet, ErrorSummary, FormField, FormGrid, FormSection, PickedCode, RowMenu, Segmented, TextArea, YesNo, useValidation,
+} from "@/components/emr/entry-ui";
 import { audit } from "@/lib/audit";
 import { allergyProblems, categoryOf, groupCategory, isLiveAllergy, placeAllergy } from "@/lib/chart-entries";
 import { useDevMode } from "@/lib/devmode";
@@ -88,61 +91,66 @@ export function AllergySection({ enc }: { enc: Encounter }) {
     setRemoving(null);
   };
 
+  const addButton = (size: "sm" | "md") => <Button size={size} variant="primary" onClick={() => setEditing({ draft: toDraft() })}><Plus className="size-4" /> Add Allergy</Button>;
+
   return (
     <Card>
       <CardHeader
         title="Allergies"
         tag="AL1"
         subtitle="Active allergies show in the red strip at the top of the chart."
-        right={write && <Button size="sm" variant="primary" onClick={() => setEditing({ draft: toDraft() })}><Plus className="size-4" /> Add Allergy</Button>}
+        right={write && rows.length > 0 && addButton("sm")}
       />
-      <Table>
-        <thead>
-          <tr>
-            <Th>Allergen</Th><Th>Category</Th><Th>Type</Th><Th>Criticality</Th><Th>Clinical Status</Th><Th>Verification</Th><Th>Reactions</Th><Th>Source</Th><Th>Status</Th><Th>Recorded</Th><Th className="text-right">Actions</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && <tr><Td colSpan={11}><Empty>No allergies recorded.</Empty></Td></tr>}
+      {rows.length === 0 ? (
+        <EmptyState icon={<ShieldAlert />} title="No Allergies Recorded" action={write && addButton("md")}>
+          Ask the patient about medicine, food and other allergies, then record each one here.
+        </EmptyState>
+      ) : (
+        <EntryList label="Allergies">
           {rows.map(({ a, ref }) => {
             const on = ref.list === "active";
             return (
-              <tr key={`${ref.list}-${ref.index}-${a.text}`} className={cn(!on && "text-muted-foreground")}>
-                <Td className="min-w-36">
-                  <div className="font-medium">{a.text}</div>
-                  <div className="text-xs text-muted-foreground">{a.code ? `SNOMED CT ${a.code}` : "Free text"}</div>
-                  {a.notes && <div className="mt-0.5 text-xs text-muted-foreground">{a.notes}</div>}
-                </Td>
-                <Td>{categoryOf(a)}</Td>
-                <Td>{a.reactionType ?? "Allergy"}</Td>
-                <Td>{a.criticality ? <Badge tone={a.criticality === "High" ? "danger" : a.criticality === "Low" ? "neutral" : "warn"}>{a.criticality}</Badge> : "Not recorded"}</Td>
-                <Td>{a.clinicalStatus ?? "Active"}</Td>
-                <Td>{a.verification ?? "Not recorded"}</Td>
-                <Td className="min-w-44 text-xs">
-                  {reactionSummary(a)}
-                  {dev && <div className="mt-1 font-mono text-[0.6875rem] text-muted-foreground">AL1-2 {a.type ?? "DALG"}, AL1-4 {a.severity}</div>}
-                </Td>
-                <Td>{a.source ?? "Not recorded"}</Td>
-                <Td>
-                  <span className="flex items-center gap-2">
-                    <Switch checked={on} disabled={!write} label={`${a.text} active`} onChange={(v) => toggle(ref, v)} />
-                    <span className="text-xs">{on ? "Active" : "Inactive"}</span>
-                  </span>
-                </Td>
-                <Td className="whitespace-nowrap text-xs">{a.by ? <>{a.by}<br /></> : null}{fmtWhen(a.at)}</Td>
-                <Td className="text-right whitespace-nowrap">
-                  {write && (
-                    <>
-                      <Button size="sm" variant="ghost" aria-label={`Edit ${a.text}`} title="Edit" onClick={() => setEditing({ ref, draft: toDraft(a) })}><Pencil className="size-4" /></Button>
-                      <Button size="sm" variant="ghost" aria-label={`Remove ${a.text}`} title="Remove" className="text-destructive" onClick={() => setRemoving(ref)}><Trash2 className="size-4" /></Button>
-                    </>
-                  )}
-                </Td>
-              </tr>
+              <EntryRow
+                key={`${ref.list}-${ref.index}-${a.text}`}
+                title={a.text}
+                muted={!on}
+                badges={
+                  <>
+                    <Badge tone="neutral">{categoryOf(a)}</Badge>
+                    {a.criticality && <Badge tone={!on ? "neutral" : a.criticality === "High" ? "danger" : a.criticality === "Low" ? "neutral" : "warn"}>{a.criticality === "Unable To Assess" ? "Criticality Not Assessed" : `${a.criticality} Criticality`}</Badge>}
+                  </>
+                }
+                meta={[
+                  ["Reactions", reactionSummary(a)],
+                  ["Type", a.reactionType ?? "Allergy"],
+                  ["Clinical Status", a.clinicalStatus ?? "Active"],
+                  ["Verification", a.verification ?? "Not recorded"],
+                  ["Source", a.source ?? "Not recorded"],
+                  ["Code", a.code ? `SNOMED CT ${a.code}` : "Free text"],
+                  ["Recorded", `${a.by ? `${a.by}, ` : ""}${fmtWhen(a.at)}`],
+                  dev && ["AL1", <span className="font-mono">AL1-2 {a.type ?? "DALG"}, AL1-4 {a.severity}</span>],
+                ]}
+                right={
+                  <>
+                    <ActiveToggle on={on} disabled={!write} label={`${a.text} active`} onChange={(v) => toggle(ref, v)} />
+                    {write && (
+                      <RowMenu
+                        label={`Actions for ${a.text}`}
+                        items={[
+                          { label: "Edit", icon: <Pencil className="size-4" />, onSelect: () => setEditing({ ref, draft: toDraft(a) }) },
+                          { label: "Remove", icon: <Trash2 className="size-4" />, danger: true, separated: true, onSelect: () => setRemoving(ref) },
+                        ]}
+                      />
+                    )}
+                  </>
+                }
+              >
+                {a.notes && <p className="mt-1 text-xs text-muted-foreground">Note: {a.notes}</p>}
+              </EntryRow>
             );
           })}
-        </tbody>
-      </Table>
+        </EntryList>
+      )}
       {dev && (
         <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
           Sent in AL1 for active allergies only. AL1-2 from the category (Medication DALG, Food FALG, others ALG), AL1-3 the SNOMED CT code or the text, AL1-4 the worst reaction severity (anaphylaxis is severe, otherwise the criticality), AL1-5 the manifestations.
@@ -150,7 +158,7 @@ export function AllergySection({ enc }: { enc: Encounter }) {
       )}
 
       {editing && (
-        <AllergyDialog
+        <AllergySheet
           initial={editing.draft}
           isNew={!editing.ref}
           taken={enc.allergies.filter((_, i) => !(editing.ref?.list === "active" && editing.ref.index === i)).map((x) => x.text.toLowerCase())}
@@ -162,7 +170,7 @@ export function AllergySection({ enc }: { enc: Encounter }) {
         open={!!removing}
         onClose={() => setRemoving(null)}
         title="Remove Allergy"
-        footer={<><Button onClick={() => setRemoving(null)}>Cancel</Button><Button variant="danger" onClick={() => removing && remove(removing)}>Remove</Button></>}
+        footer={<><Button onClick={() => setRemoving(null)}>Keep Allergy</Button><Button variant="danger" onClick={() => removing && remove(removing)}>Remove</Button></>}
       >
         <p className="text-sm">
           Remove <strong>{removing ? get(removing)?.text : ""}</strong> from the chart? If the patient no longer has this allergy, set it to Inactive or change its clinical status instead, so the history is kept.
@@ -172,7 +180,9 @@ export function AllergySection({ enc }: { enc: Encounter }) {
   );
 }
 
-function AllergyDialog({ initial, isNew, taken, onClose, onSave }: {
+const seg = (list: readonly string[]) => list.map((x) => ({ value: x, label: x }));
+
+function AllergySheet({ initial, isNew, taken, onClose, onSave }: {
   initial: Allergy;
   isNew: boolean;
   /** Lower-case names of the other active allergies. */
@@ -186,132 +196,151 @@ function AllergyDialog({ initial, isNew, taken, onClose, onSave }: {
   const set = (p: Partial<Allergy>) => { setA((x) => ({ ...x, ...p })); setProblems([]); };
   const reactions = a.reactions ?? [];
   const setReaction = (i: number, p: Partial<AllergyReaction>) => set({ reactions: reactions.map((r, j) => (j === i ? { ...r, ...p } : r)) });
+  const name = a.text.trim();
+
+  const errors: Record<string, string | false | undefined> = {
+    text: mode === "coded" && !a.code
+      ? "Pick the allergen from the list, or switch to Text."
+      : !name ? "Enter the allergen." : taken.includes(name.toLowerCase()) && `${name} is already recorded as an active allergy.`,
+    category: !a.category && "Choose the category.",
+    verification: !a.verification && "Choose the verification status.",
+    criticality: !a.criticality && "Choose the criticality.",
+    source: !a.source && "Choose the source.",
+  };
+  reactions.forEach((r, i) => { errors[`r${i}`] = !r.manifestations.some((m) => m.trim()) && `Reaction ${i + 1} needs at least one manifestation.`; });
+  const v = useValidation(errors);
 
   const submit = () => {
+    if (!v.submit()) return;
     const out = allergyProblems(a);
-    if (mode === "coded" && !a.code) out.unshift("Pick the allergen from the list, or switch to Text.");
-    if (a.text.trim() && taken.includes(a.text.trim().toLowerCase())) out.unshift(`${a.text.trim()} is already recorded as an active allergy.`);
     if (out.length) { setProblems(out); return; }
     onSave({ ...a, reactions: reactions.map((r) => ({ ...r, manifestations: r.manifestations.map((m) => m.trim()).filter(Boolean) })) });
   };
 
   return (
-    <Dialog
-      open
-      wide
+    <EntrySheet
       onClose={onClose}
-      title={isNew ? "Add Allergy Record" : "Update Allergy Record"}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{isNew ? "Save Record" : "Update Record"}</Button></>}
+      dirty={JSON.stringify(a) !== JSON.stringify(initial)}
+      title={isNew ? "Add Allergy" : "Edit Allergy"}
+      subtitle="Fields marked * are required."
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{isNew ? "Save Allergy" : "Update Allergy"}</Button></>}
     >
-      <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
-        <RequiredNote />
-        <RadioRow
-          name="allergy-entry"
-          label="Entry Method"
-          value={mode}
-          options={[{ value: "text", label: "Text" }, { value: "coded", label: "Select From List" }]}
-          onChange={(m) => { setMode(m); if (m === "text") set({ code: undefined }); else set({ code: undefined, text: "" }); }}
-        />
-        <Field label="Allergen" required>
-          {mode === "text" ? (
-            <Input value={a.text} placeholder="For example Penicillin" onChange={(e) => set({ text: e.target.value })} />
-          ) : a.code ? (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-              <span className="font-mono text-xs font-semibold">{a.code}</span>
-              <span className="min-w-0 flex-1">{a.text}</span>
-              <Button size="sm" variant="ghost" aria-label="Change allergen" title="Change" onClick={() => set({ code: undefined, text: "" })}><X className="size-4" /></Button>
-            </div>
-          ) : (
-            <CodeSearch
-              label="Search allergies"
-              placeholder="Search allergies, for example peni or latex"
-              items={ALLERGENS}
-              meta={(t) => GROUP_LABEL[t.group]}
-              onPick={(t) => set({ code: t.code, text: t.text, category: a.category && !isNew ? a.category : groupCategory(t.group) })}
-            />
-          )}
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Pick label="Category" value={a.category} options={ALLERGY_CATEGORIES} onChange={(v) => set({ category: v as Allergy["category"] })} />
-          <Pick label="Type" value={a.reactionType} options={ALLERGY_REACTION_TYPES} onChange={(v) => set({ reactionType: v as Allergy["reactionType"] })} />
-          <Pick label="Clinical Status" value={a.clinicalStatus} options={ALLERGY_CLINICAL_STATUSES} onChange={(v) => set({ clinicalStatus: v as Allergy["clinicalStatus"] })} />
-          <Pick label="Verification Status" value={a.verification} options={ALLERGY_VERIFICATION} onChange={(v) => set({ verification: v as Allergy["verification"] })} />
-          <Pick label="Criticality" value={a.criticality} options={ALLERGY_CRITICALITY} onChange={(v) => set({ criticality: v as Allergy["criticality"] })} />
-          <Pick label="Source" value={a.source} options={ALLERGY_SOURCES} onChange={(v) => set({ source: v })} />
-        </div>
+      <div className="space-y-6">
+        <ErrorSummary problems={v.summary.length > 1 ? v.summary : problems} />
 
-        <fieldset className="space-y-3">
-          <legend className="flex w-full items-center justify-between gap-2 text-sm font-semibold">
-            Reactions
-          </legend>
-          {reactions.length === 0 && <p className="text-sm text-muted-foreground">No reactions added.</p>}
+        <FormSection title="Allergen">
+          <FormField label="How To Record It" group>
+            <Segmented
+              value={mode}
+              options={[{ value: "text", label: "Type It" }, { value: "coded", label: "Pick From List" }]}
+              onChange={(m) => { setMode(m); if (m === "text") set({ code: undefined }); else set({ code: undefined, text: "" }); }}
+            />
+          </FormField>
+          <FormField label="Allergen" required error={v.error("text")} group={mode === "coded" && !!a.code}>
+            {mode === "text" ? (
+              <Input value={a.text} placeholder="For example Penicillin" onBlur={v.blur("text")} onChange={(e) => set({ text: e.target.value })} />
+            ) : a.code ? (
+              <PickedCode code={a.code} text={a.text} changeLabel="Change allergen" onChange={() => set({ code: undefined, text: "" })} />
+            ) : (
+              <CodeSearch
+                label="Search allergies"
+                placeholder="For example peni or latex"
+                items={ALLERGENS}
+                meta={(t) => GROUP_LABEL[t.group]}
+                onBlur={v.blur("text")}
+                onPick={(t) => set({ code: t.code, text: t.text, category: a.category && !isNew ? a.category : groupCategory(t.group) })}
+              />
+            )}
+          </FormField>
+        </FormSection>
+
+        <FormSection title="Details">
+          <FormGrid>
+            <FormField label="Category" required error={v.error("category")}>
+              <Select value={a.category ?? ""} onBlur={v.blur("category")} onChange={(e) => set({ category: e.target.value as Allergy["category"] })}>
+                <option value="" disabled>Select Category</option>
+                {ALLERGY_CATEGORIES.map((o) => <option key={o}>{o}</option>)}
+              </Select>
+            </FormField>
+            <FormField label="Type" required group>
+              <Segmented value={a.reactionType ?? ""} options={seg(ALLERGY_REACTION_TYPES)} onChange={(x) => set({ reactionType: x as Allergy["reactionType"] })} />
+            </FormField>
+            <FormField label="Criticality" required group error={v.error("criticality")} className="sm:col-span-2">
+              <Segmented value={a.criticality ?? ""} options={seg(ALLERGY_CRITICALITY)} onChange={(x) => set({ criticality: x as Allergy["criticality"] })} />
+            </FormField>
+            <FormField label="Clinical Status" required group className="sm:col-span-2">
+              <Segmented value={a.clinicalStatus ?? ""} options={seg(ALLERGY_CLINICAL_STATUSES)} onChange={(x) => set({ clinicalStatus: x as Allergy["clinicalStatus"] })} />
+            </FormField>
+            <FormField label="Verification Status" required error={v.error("verification")}>
+              <Select value={a.verification ?? ""} onBlur={v.blur("verification")} onChange={(e) => set({ verification: e.target.value as Allergy["verification"] })}>
+                <option value="" disabled>Select Verification Status</option>
+                {ALLERGY_VERIFICATION.map((o) => <option key={o}>{o}</option>)}
+              </Select>
+            </FormField>
+            <FormField label="Source" required error={v.error("source")} help="Who told you about it.">
+              <Select value={a.source ?? ""} onBlur={v.blur("source")} onChange={(e) => set({ source: e.target.value })}>
+                <option value="" disabled>Select Source</option>
+                {ALLERGY_SOURCES.map((o) => <option key={o}>{o}</option>)}
+              </Select>
+            </FormField>
+          </FormGrid>
+          {!isLiveAllergy(a) && a.text && (
+            <p role="status" className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">With this status the allergy is saved as Inactive. It is not sent and not shown in the allergy strip.</p>
+          )}
+        </FormSection>
+
+        <FormSection
+          title="Reactions"
+          description="What happened when the patient was exposed."
+          right={<Button size="sm" onClick={() => set({ reactions: [...reactions, { manifestations: [] }] })}><Plus className="size-4" /> Add Reaction</Button>}
+        >
+          {reactions.length === 0 && <p className="text-sm text-muted-foreground">No reactions added. Add one if the patient can describe it.</p>}
           {reactions.map((r, i) => (
-            <div key={i} className="space-y-3 rounded-lg border border-border p-3">
+            <div key={i} className="space-y-4 rounded-xl border border-border bg-muted/20 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Reaction {i + 1}</span>
+                <span className="text-sm font-semibold">Reaction {i + 1}</span>
                 <Button size="sm" variant="ghost" className="text-destructive" onClick={() => set({ reactions: reactions.filter((_, j) => j !== i) })}>
                   <Trash2 className="size-4" /> Remove
                 </Button>
               </div>
-              <Manifestations value={r.manifestations} onChange={(m) => setReaction(i, { manifestations: m })} />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Severity">
-                  <Select value={r.severity ?? ""} onChange={(e) => setReaction(i, { severity: (e.target.value || undefined) as AllergyReaction["severity"] })}>
-                    <option value="">Select Severity</option>
-                    {ALLERGY_SEVERITIES.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Exposure Route">
+              <Manifestations value={r.manifestations} error={v.error(`r${i}`)} onChange={(m) => setReaction(i, { manifestations: m })} />
+              <FormField label="Severity" group>
+                <Segmented value={r.severity ?? ""} options={ALLERGY_SEVERITIES.map((s) => ({ value: s.code, label: s.label }))} onChange={(x) => setReaction(i, { severity: x })} />
+              </FormField>
+              <FormGrid>
+                <FormField label="Exposure Route">
                   <Select value={r.route ?? ""} onChange={(e) => setReaction(i, { route: e.target.value || undefined })}>
-                    <option value="">Select Route</option>
+                    <option value="">Not Recorded</option>
                     {EXPOSURE_ROUTES.map((s) => <option key={s}>{s}</option>)}
                   </Select>
-                </Field>
-                <Field label="Outcome">
+                </FormField>
+                <FormField label="Outcome">
                   <Select value={r.outcome ?? ""} onChange={(e) => setReaction(i, { outcome: e.target.value || undefined })}>
-                    <option value="">Select Outcome</option>
+                    <option value="">Not Recorded</option>
                     {REACTION_OUTCOMES.map((s) => <option key={s}>{s}</option>)}
                   </Select>
-                </Field>
-              </div>
-              <Checkbox checked={!!r.anaphylaxis} onChange={(v) => setReaction(i, { anaphylaxis: v })} label="Anaphylaxis" hint="Sent as a severe reaction." />
-              <Field label="Reaction Notes">
+                </FormField>
+              </FormGrid>
+              <FormField label="Anaphylaxis" group help="Yes is sent as a severe reaction.">
+                <YesNo value={!!r.anaphylaxis} onChange={(x) => setReaction(i, { anaphylaxis: x })} />
+              </FormField>
+              <FormField label="Reaction Notes">
                 <Input value={r.notes ?? ""} maxLength={500} onChange={(e) => setReaction(i, { notes: e.target.value })} />
-              </Field>
+              </FormField>
             </div>
           ))}
-          <Button size="sm" onClick={() => set({ reactions: [...reactions, { manifestations: [] }] })}><Plus className="size-4" /> Add Reaction</Button>
-        </fieldset>
+        </FormSection>
 
-        <Field label="Notes">
-          <textarea
-            value={a.notes ?? ""}
-            maxLength={1000}
-            rows={2}
-            onChange={(e) => set({ notes: e.target.value })}
-            className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </Field>
-        {!isLiveAllergy(a) && a.text && <p className="text-sm text-muted-foreground">With this status the allergy is saved as Inactive and is not sent or shown in the allergy strip.</p>}
-        <ProblemList problems={problems} />
+        <FormField label="Notes" help={`${(a.notes ?? "").length} of 1000 characters`}>
+          <TextArea value={a.notes ?? ""} maxLength={1000} rows={2} onChange={(e) => set({ notes: e.target.value })} />
+        </FormField>
       </div>
-    </Dialog>
+    </EntrySheet>
   );
 }
 
-function Pick({ label, value, options, onChange }: { label: string; value?: string; options: readonly string[]; onChange: (v: string) => void }) {
-  return (
-    <Field label={label} required>
-      <Select value={value ?? ""} aria-invalid={!value || undefined} onChange={(e) => onChange(e.target.value)}>
-        <option value="" disabled>Select {label}</option>
-        {options.map((o) => <option key={o}>{o}</option>)}
-      </Select>
-    </Field>
-  );
-}
-
-/** Manifestations of one reaction, typed one at a time and shown as removable chips. */
-function Manifestations({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+/** Manifestations of one reaction, typed one at a time and shown as removable chips. Leaving the box adds what was typed. */
+function Manifestations({ value, error, onChange }: { value: string[]; error?: string; onChange: (v: string[]) => void }) {
   const [t, setT] = React.useState("");
   const add = () => {
     const s = t.trim();
@@ -319,23 +348,23 @@ function Manifestations({ value, onChange }: { value: string[]; onChange: (v: st
     setT("");
   };
   return (
-    <div>
-      <div className="mb-1.5 text-sm font-medium">Manifestations <span aria-hidden="true" className="font-semibold text-destructive">*</span></div>
+    <FormField label="Manifestations" required group error={error} help="Type one and press Enter. For example Rash, Hives.">
       <div className="flex gap-2">
-        <Input value={t} placeholder="For example Rash, Hives" aria-label="Manifestation" onChange={(e) => setT(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
-        <Button disabled={!t.trim()} onClick={add}>Add</Button>
+        <Input value={t} placeholder="For example Rash" aria-label="Manifestation" aria-invalid={error ? true : undefined} onChange={(e) => setT(e.target.value)} onBlur={add} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+        <Button className="h-10" disabled={!t.trim()} onClick={add}>Add</Button>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {value.length === 0 && <span className="text-xs text-muted-foreground">No manifestations added.</span>}
-        {value.map((m) => (
-          <span key={m} className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs">
-            {m}
-            <button type="button" aria-label={`Remove ${m}`} className="rounded text-muted-foreground hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring" onClick={() => onChange(value.filter((x) => x !== m))}>
-              <X className="size-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-    </div>
+      {value.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5" aria-label="Manifestations added">
+          {value.map((m) => (
+            <li key={m} className="inline-flex min-h-7 items-center gap-1 rounded-full border border-primary/40 bg-accent/40 py-0.5 ps-2.5 pe-1 text-xs">
+              {m}
+              <button type="button" aria-label={`Remove ${m}`} className="flex size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring" onClick={() => onChange(value.filter((x) => x !== m))}>
+                <X className="size-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </FormField>
   );
 }

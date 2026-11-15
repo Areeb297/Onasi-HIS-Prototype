@@ -5,6 +5,7 @@ import { CLINIC_NAME, SELLER_VAT_NUMBER, type InvoiceView } from "@/lib/invoice"
 import type { Patient } from "@/lib/model";
 import { patientName } from "@/lib/store";
 import { ZatcaQr } from "./InvoiceParts";
+import { fmtDateTime } from "@/lib/format";
 
 /** Prints only the receipt, at till-roll width. */
 const PRINT_CSS = `
@@ -39,7 +40,7 @@ export function Receipt({ view, patient }: { view: InvoiceView; patient: Patient
       </div>
       <hr className="my-2 border-dashed border-black/40" />
       <Row label="Invoice" value={`#${view.invoice.number}`} />
-      <Row label="Date" value={new Date(view.invoice.createdAt).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} />
+      <Row label="Date" value={fmtDateTime(view.invoice.createdAt)} />
       <Row label="Patient" value={patientName(patient)} />
       <Row label="MRN" value={patient?.mrn ?? ""} />
       {view.invoice.insurer && <Row label="Insurer" value={view.invoice.insurer} />}

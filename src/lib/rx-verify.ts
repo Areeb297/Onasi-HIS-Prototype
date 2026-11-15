@@ -7,6 +7,7 @@ import { sendDispense, type DispenseRequest, type SendOutcome } from "./rx-send"
 import { batchesFor, stockProblem } from "./rx-stock";
 import type { Dispense, Drug, Prescription, RxItem, RxState, RxVerification, Witness } from "./rx-types";
 import { currentUser } from "./session";
+import { fmtDate } from "./format";
 
 /**
  * Pharmacy rules that belong to the hospital, not to nphies:
@@ -173,7 +174,7 @@ export function kidneyNotes(
   if (last) {
     const high = last.interp === "H" || last.interp === "HH";
     const when = new Date(last.at);
-    const date = Number.isNaN(when.getTime()) ? last.at : when.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    const date = Number.isNaN(when.getTime()) ? last.at : fmtDate(when);
     out.push({ text: `Creatinine ${last.value} mg/dL on ${date}${high ? ", above the normal range. Check if the dose needs lowering." : ", in or below the normal range."}`, concern: high });
   }
   return out;

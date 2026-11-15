@@ -1,6 +1,7 @@
 import { CONSULT_TARGET_MIN, URGENCY_LABEL, consultTimes, consultsPastTarget, followUpTitle, minutesText, unbookedFollowUps } from "./care-requests";
 import { overdueDoses } from "./emar";
 import type { Encounter } from "./model";
+import { fmtTime } from "./format";
 
 /**
  * Items for the chart's "needs attention" list that come from the medication chart, consults and follow-up orders.
@@ -13,7 +14,7 @@ export interface CareAttention {
   section: string;
 }
 
-const hm = (t: number) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+const hm = (t: number) => fmtTime(t);
 
 export function careAttention(enc: Encounter, now: number = Date.now()): CareAttention[] {
   const out: CareAttention[] = [];

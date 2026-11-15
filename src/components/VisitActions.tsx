@@ -13,6 +13,7 @@ import { ACTIVITY_LEVELS, ADMISSION_TYPES, ADMITTING_DEPARTMENTS, PATIENT_CONDIT
 import { OUT_OF_SERVICE_REASONS, availableBeds, bedInfos, bedProblem, heldBedOf, reservedBedFor, unavailableLabel, type BedInfo } from "@/lib/beds";
 import { CLINICS, VISIT_TYPE_LABEL, followUpTarget, type VisitType } from "@/lib/care-requests";
 import { useDevMode } from "@/lib/devmode";
+import { fmtDate } from "@/lib/format";
 import {
   APPROVAL_ROLES, ATTENDANT_ID_TYPES, ATTENDANT_RELATIONS, CANCEL_REASONS, DISCHARGE_CONDITIONS, OUTCOMES, OVERRIDE_MIN, TRANSFER_REASONS,
   TRANSPORT_MODES, canGiveClearance, clearanceLabel, clearanceList, departureGap, detailProblems, emptyApproval, emptyAttendant, emptyDeath,
@@ -704,7 +705,7 @@ export function OutpatientDialog({ visit, onClose }: { visit: string; onClose: (
       </label>
       {withFollowUp && (
         <div className="mt-3 grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-2">
-          <Field label="Follow Up In" required hint={Number.isInteger(n) && n > 0 && n <= 365 ? `To be seen by ${new Date(`${followUpTarget(n, unit)}T00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.` : undefined}>
+          <Field label="Follow Up In" required hint={Number.isInteger(n) && n > 0 && n <= 365 ? `To be seen by ${fmtDate(followUpTarget(n, unit))}.` : undefined}>
             <div className="flex gap-2">
               <Input type="number" inputMode="numeric" min={1} max={365} value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="How many" className="w-24" />
               <Select value={unit} onChange={(e) => setUnit(e.target.value as "days" | "weeks")} aria-label="Days or weeks">

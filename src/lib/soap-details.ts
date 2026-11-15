@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { listSoap, type SoapNote } from "./ai/soap-store";
 import type { Encounter, Patient } from "./model";
+import { fmtDateTime } from "./format";
 
 /**
  * The structured parts of a SOAP note, as the HIS keeps them: history of present illness, past medical, family and
@@ -124,7 +125,7 @@ export function fillFromChart(d: SoapDetail, enc: Encounter): SoapDetail {
   };
 }
 
-const stamp = (iso?: string) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+const stamp = (iso?: string) => (iso ? fmtDateTime(iso) : "");
 const line = (label: string, value: string) => `${label}: ${value.trim() || "Not recorded"}`;
 
 /** The note as plain text, for Download. */

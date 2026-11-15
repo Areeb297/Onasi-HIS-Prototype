@@ -16,8 +16,9 @@ import { useRx } from "@/lib/rx";
 import { can, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { fmtDateTime } from "@/lib/format";
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const when = (iso: string) => fmtDateTime(iso);
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (

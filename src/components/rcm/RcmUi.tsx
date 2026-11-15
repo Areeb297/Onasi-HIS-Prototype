@@ -14,6 +14,7 @@ import { useRx } from "@/lib/rx";
 import { can, useSession } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 
 /**
  * Shared parts of the RCM case screens (rejections, denials, FWA, AR, reconciliation, import): page top, filter bar,
@@ -57,8 +58,8 @@ export function run(r: Res, okText?: string): boolean {
   return false;
 }
 
-export const fmtDay = (d?: string) => (d ? new Date(d.length === 10 ? `${d}T00:00:00` : d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
-export const fmtTime = (d: string) => new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+export const fmtDay = (d?: string) => (d ? fmtDate(d.length === 10 ? `${d}T00:00:00` : d) : "");
+export const fmtTime = (d: string) => fmtDateTime(d);
 
 /* ---------- page frame ---------- */
 

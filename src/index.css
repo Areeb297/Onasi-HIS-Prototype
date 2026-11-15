@@ -38,7 +38,6 @@
   --brand-deep: #032c26;
   --brand-mint: #0ce69f;
   --brand-green: #00a671;
-  --brand-blue: #1d63d8;
   /* Status and domain colors. Used for text and icons on light tints, so they are dark. */
   --warn: #84540b;
   --ok: #0a6b4f;
@@ -91,7 +90,6 @@
   --border: #254a3f;
   --input: #4a7868;
   --ring: #39edd5;
-  --brand-blue: #7db5ff;
   --admit: #34e0b0;
   --ok: #4ade9e;
   --warn: #fbbf24;

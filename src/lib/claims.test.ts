@@ -201,7 +201,7 @@ describe("claim from the visit", () => {
     const c = caseOf(v);
     expect(c.claim).toBeDefined();
     expect(c.messages.some((x) => x.kind === "claim-request")).toBe(true);
-    expect(claimStatusOf(c).label).not.toBe("Not Started");
+    expect(claimStatusOf(c).label).not.toBe("Drafted");
     // The claim sent the invoice net, the same figure the invoice holds.
     const after = claimFor(v)!;
     expect(after.draft?.sends?.at(-1)?.amount).toBe(estimateCharge(after.enc).total);
@@ -262,7 +262,7 @@ describe("billing worklist", () => {
     expect(filterRows(rows, { ...f, payer: "Tawuniya" }).length).toBeGreaterThan(0);
     expect(filterRows(rows, { ...f, payer: "Tawuniya" }).every((r) => r.payer === "Tawuniya")).toBe(true);
     expect(filterRows(rows, { ...f, type: "institutional" }).every((r) => r.m.type === "institutional")).toBe(true);
-    expect(filterRows(rows, { ...f, status: "Not Started" })).toHaveLength(rows.length);
+    expect(filterRows(rows, { ...f, status: "Drafted" })).toHaveLength(rows.filter((r) => r.status.label === "Drafted").length);
     expect(filterRows(rows, { ...f, status: "Claim Approved" })).toHaveLength(0);
     expect(filterRows(rows, { ...f, from: "2999-01-01" })).toHaveLength(0);
     expect(filterRows(rows, { ...f, to: "2000-01-01" })).toHaveLength(0);

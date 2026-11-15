@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Stethoscope, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
-import { Badge, Button, Card, CardHeader, Empty, Field, Select, Switch, Table, Td, Th, cn } from "@/components/ui/primitives";
-import { CodeSearch, Checkbox, ProblemList, fmtWhen } from "@/components/emr/CodeSearch";
+import { Badge, Button, Card, CardHeader } from "@/components/ui/primitives";
+import { CodeSearch, fmtWhen } from "@/components/emr/CodeSearch";
+import { ActiveToggle, EmptyState, EntryList, EntryRow, EntrySheet, ErrorSummary, FormField, PickedCode, RowMenu, Segmented, YesNo, useValidation } from "@/components/emr/entry-ui";
 import { audit } from "@/lib/audit";
 import {
   DX_KINDS, canRetireDx, dxKind, dxKindLabel, dxListProblems, normalizeDx, reactivateDx, saveDx, type DxDraft, type DxKind,
@@ -67,7 +68,13 @@ export function DiagnosisSection({ enc }: { enc: Encounter }) {
     const d = active[i];
     updateEncounter(enc.visitNumber, (e) => { e.dx = normalizeDx(active.filter((_, j) => j !== i)); });
     audit("delete", `Chart ${enc.visitNumber}`, { detail: `Diagnosis ${d.code} removed` });
+    pushToast({ tone: "ok", text: `Diagnosis ${d.code} removed.` });
     setRemoving(null);
+  };
+  const askRemove = (i: number) => {
+    const b = canRetireDx(active, i);
+    if (b) pushToast({ tone: "warn", text: b });
+    else setRemoving(i);
   };
 
   const rows: { d: Dx; i: number; on: boolean }[] = [...active.map((d, i) => ({ d, i, on: true })), ...inactive.map((d, i) => ({ d, i, on: false }))];
@@ -77,57 +84,56 @@ export function DiagnosisSection({ enc }: { enc: Encounter }) {
       <CardHeader
         title="Diagnosis"
         tag="DG1"
-        subtitle="ICD-10-AM. One Principal diagnosis is mandatory, and only one is allowed."
-        right={write && <Button size="sm" variant="primary" onClick={startAdd}><Plus className="size-4" /> Add Diagnosis</Button>}
+        subtitle="ICD-10-AM. Each visit needs one Principal diagnosis, and only one."
+        right={write && rows.length > 0 && <Button size="sm" variant="primary" onClick={startAdd}><Plus className="size-4" /> Add Diagnosis</Button>}
       />
-      {problems.length > 0 && (
+      {problems.length > 0 && rows.length > 0 && (
         <p role="alert" className="border-b border-warn/40 bg-warn/10 px-4 py-2 text-sm text-warn">{problems[0]} Edit a diagnosis and set its type to Principal.</p>
       )}
-      <Table>
-        <thead>
-          <tr>
-            <Th>Code</Th><Th>Description</Th><Th>Type</Th><Th>On Admission</Th><Th>Status</Th><Th>Doctor</Th><Th>Date And Time</Th><Th className="text-right">Actions</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && <tr><Td colSpan={8}><Empty>No diagnoses yet. A discharge needs at least one, and the first must be Principal.</Empty></Td></tr>}
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={<Stethoscope />}
+          title="No Diagnosis Yet"
+          action={write && <Button variant="primary" onClick={startAdd}><Plus className="size-4" /> Add Diagnosis</Button>}
+        >
+          A discharge needs at least one diagnosis. The first one is saved as Principal.
+        </EmptyState>
+      ) : (
+        <EntryList label="Diagnoses">
           {rows.map(({ d, i, on }) => {
             const kind = on ? dxKind(d, i) : d.kind ?? "S";
             return (
-              <tr key={`${on ? "a" : "i"}-${d.code}-${i}`} className={cn(!on && "text-muted-foreground")}>
-                <Td className="font-mono text-xs font-semibold">{d.code}</Td>
-                <Td className="min-w-48">{d.text}</Td>
-                <Td>
-                  <Badge tone={on ? KIND_TONE[kind] : "neutral"}>{dxKindLabel(kind)}</Badge>
-                  {dev && <div className="mt-1 font-mono text-[0.6875rem] text-muted-foreground">DG1-6 {d.type}</div>}
-                </Td>
-                <Td>{d.onAdmission ?? d.onset === "2" ? "Yes" : "No"}</Td>
-                <Td>
-                  <span className="flex items-center gap-2">
-                    <Switch checked={on} disabled={!write} label={`${d.code} active`} onChange={(v) => setActive(i, v, d)} />
-                    <span className="text-xs">{on ? "Active" : "Inactive"}</span>
-                  </span>
-                </Td>
-                <Td className="whitespace-nowrap">{d.by ?? fallbackBy}</Td>
-                <Td className="whitespace-nowrap text-xs">{fmtWhen(d.at)}</Td>
-                <Td className="text-right whitespace-nowrap">
-                  {write && on && (
-                    <>
-                      <Button size="sm" variant="ghost" aria-label={`Edit ${d.code}`} title="Edit" onClick={() => startEdit(i)}><Pencil className="size-4" /></Button>
-                      <Button
-                        size="sm" variant="ghost" aria-label={`Remove ${d.code}`} title="Remove" className="text-destructive"
-                        onClick={() => { const b = canRetireDx(active, i); if (b) pushToast({ tone: "warn", text: b }); else setRemoving(i); }}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </>
-                  )}
-                </Td>
-              </tr>
+              <EntryRow
+                key={`${on ? "a" : "i"}-${d.code}-${i}`}
+                code={d.code}
+                title={d.text}
+                muted={!on}
+                badges={<Badge tone={on ? KIND_TONE[kind] : "neutral"}>{dxKindLabel(kind)}</Badge>}
+                meta={[
+                  ["On Admission", d.onAdmission ?? d.onset === "2" ? "Yes" : "No"],
+                  ["Doctor", d.by ?? fallbackBy],
+                  ["Recorded", fmtWhen(d.at)],
+                  dev && ["DG1-6", <span className="font-mono">{d.type}</span>],
+                ]}
+                right={
+                  <>
+                    <ActiveToggle on={on} disabled={!write} label={`${d.code} active`} onChange={(v) => setActive(i, v, d)} />
+                    {write && on && (
+                      <RowMenu
+                        label={`Actions for ${d.code}`}
+                        items={[
+                          { label: "Edit", icon: <Pencil className="size-4" />, onSelect: () => startEdit(i) },
+                          { label: "Remove", icon: <Trash2 className="size-4" />, danger: true, separated: true, onSelect: () => askRemove(i) },
+                        ]}
+                      />
+                    )}
+                  </>
+                }
+              />
             );
           })}
-        </tbody>
-      </Table>
+        </EntryList>
+      )}
       {dev && (
         <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
           Sent in DG1. DG1-15 is 1 for the Principal diagnosis. DG1-6: Admitting is A, Differential is W, Principal and Secondary are W while the visit is open and F in the discharge (A03) and the discharge update (A08). On Admission sets ZDG1-3 (2 present on admission, 1 arose during the stay) for inpatients. Inactive diagnoses are not sent.
@@ -135,7 +141,7 @@ export function DiagnosisSection({ enc }: { enc: Encounter }) {
       )}
 
       {editing && (
-        <DxDialog
+        <DxSheet
           editing={editing}
           active={active}
           onClose={() => setEditing(null)}
@@ -155,7 +161,7 @@ export function DiagnosisSection({ enc }: { enc: Encounter }) {
         open={removing !== null}
         onClose={() => setRemoving(null)}
         title="Remove Diagnosis"
-        footer={<><Button onClick={() => setRemoving(null)}>Cancel</Button><Button variant="danger" onClick={() => removing !== null && remove(removing)}>Remove</Button></>}
+        footer={<><Button onClick={() => setRemoving(null)}>Keep Diagnosis</Button><Button variant="danger" onClick={() => removing !== null && remove(removing)}>Remove</Button></>}
       >
         <p className="text-sm">
           Remove <strong>{removing !== null ? `${active[removing]?.code} ${active[removing]?.text}` : ""}</strong> from this visit? Set it to Inactive instead if it was entered correctly but no longer applies.
@@ -165,7 +171,7 @@ export function DiagnosisSection({ enc }: { enc: Encounter }) {
   );
 }
 
-function DxDialog({ editing, active, inpatient, onClose, onSave }: {
+function DxSheet({ editing, active, inpatient, onClose, onSave }: {
   editing: Editing;
   active: Dx[];
   inpatient: boolean;
@@ -179,50 +185,44 @@ function DxDialog({ editing, active, inpatient, onClose, onSave }: {
   const otherPrincipal = others.find((x) => x.kind === "P");
   const taken = others.map((x) => x.code);
   const set = (p: Partial<DxDraft>) => { setD((x) => ({ ...x, ...p })); setError(null); };
+  const v = useValidation({ code: !d.code && "Pick a diagnosis from the list." });
+  const isNew = editing.index === null;
+  const dirty = JSON.stringify(d) !== JSON.stringify(editing.draft);
+  const submit = () => { if (v.submit()) setError(onSave(d)); };
 
   return (
-    <Dialog
-      open
-      wide
+    <EntrySheet
       onClose={onClose}
-      title={editing.index === null ? "Add Diagnosis" : "Edit Diagnosis"}
+      dirty={dirty}
+      title={isNew ? "Add Diagnosis" : "Edit Diagnosis"}
       subtitle="Search the ICD-10-AM list by name or code."
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!d.code} onClick={() => setError(onSave(d))}>{editing.index === null ? "Save" : "Update"}</Button></>}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{isNew ? "Save Diagnosis" : "Update Diagnosis"}</Button></>}
     >
-      <div className="space-y-4">
-        <Field label="Diagnosis" required>
+      <div className="space-y-5">
+        <ErrorSummary problems={error ? [error] : []} />
+        <FormField label="Diagnosis" required error={v.error("code")} group={!!d.code}>
           {d.code ? (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-              <span className="font-mono text-xs font-semibold">{d.code}</span>
-              <span className="min-w-0 flex-1">{d.text}</span>
-              <Button size="sm" variant="ghost" aria-label="Change diagnosis" title="Change" onClick={() => set({ code: "", text: "" })}><X className="size-4" /></Button>
-            </div>
+            <PickedCode code={d.code} text={d.text} changeLabel="Change diagnosis" onChange={() => set({ code: "", text: "" })} />
           ) : (
-            <CodeSearch label="Search diagnosis codes" placeholder="Search diagnosis codes, for example pneu or J18" items={ICD10AM_DIAGNOSES} exclude={taken} autoFocus onPick={(t) => set({ code: t.code, text: t.text })} />
+            <CodeSearch label="Search diagnosis codes" placeholder="For example pneu or J18" items={ICD10AM_DIAGNOSES} exclude={taken} autoFocus onBlur={v.blur("code")} onPick={(t) => set({ code: t.code, text: t.text })} />
           )}
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Type" required hint={!otherPrincipal ? "This visit has no Principal diagnosis yet, so this one must be Principal." : undefined}>
-            <Select value={d.kind} onChange={(e) => set({ kind: e.target.value as DxKind, onAdmission: e.target.value === "AD" ? true : d.onAdmission })}>
-              {DX_KINDS.map((k) => <option key={k.code} value={k.code}>{k.label}</option>)}
-            </Select>
-          </Field>
-          <div className="sm:pt-7">
-            <Checkbox
-              checked={d.onAdmission}
-              onChange={(v) => set({ onAdmission: v })}
-              label="On Admission"
-              hint={inpatient ? "The condition was present when the patient was admitted." : "Recorded for the chart. Sent only for inpatients."}
-            />
-          </div>
-        </div>
+        </FormField>
+        <FormField label="Type" required group help={!otherPrincipal ? "This visit has no Principal diagnosis yet, so this one must be Principal." : undefined}>
+          <Segmented
+            value={d.kind}
+            options={DX_KINDS.map((k) => ({ value: k.code, label: k.label }))}
+            onChange={(k: DxKind) => set({ kind: k, onAdmission: k === "AD" ? true : d.onAdmission })}
+          />
+        </FormField>
         {d.kind === "P" && otherPrincipal && (
-          <p className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
+          <p role="status" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
             Only one Principal diagnosis is allowed. <strong>{otherPrincipal.code} {otherPrincipal.text}</strong> will become Secondary.
           </p>
         )}
-        <ProblemList problems={error ? [error] : []} />
+        <FormField label="On Admission" group help={inpatient ? "Yes when the condition was present when the patient was admitted." : "Recorded for the chart. Sent only for inpatients."}>
+          <YesNo value={d.onAdmission} onChange={(x) => set({ onAdmission: x })} />
+        </FormField>
       </div>
-    </Dialog>
+    </EntrySheet>
   );
 }

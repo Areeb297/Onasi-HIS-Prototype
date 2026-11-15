@@ -10,6 +10,7 @@ import {
 import type { Encounter, Patient } from "@/lib/model";
 import { patientName, toLocalInput } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { fmtDayHeading, fmtTime } from "@/lib/format";
 
 /**
  * Record every medicine due at one hour in one dialog, as on a ward round.
@@ -17,8 +18,8 @@ import { pushToast } from "@/lib/toast";
  * applies to each high-alert medicine. If any medicine fails the checks, nothing in the round is saved.
  */
 
-const hm = (t: number) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-const dayLabel = (t: number) => new Date(t).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+const hm = (t: number) => fmtTime(t);
+const dayLabel = (t: number) => fmtDayHeading(t);
 
 interface Row {
   outcome: DoseOutcome | null;

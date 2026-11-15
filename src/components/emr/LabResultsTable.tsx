@@ -5,6 +5,7 @@ import { FlagPill } from "@/components/emr/fhir-ui";
 import { ANTIBIOTICS, refTextFor, rangeFor, testByCode, unitText, type LabTest } from "@/lib/fhir/lab-catalog";
 import { formatResult } from "@/lib/fhir/lab-bundles";
 import type { LabOrder } from "@/lib/fhir/types";
+import { fmtDateTime } from "@/lib/format";
 
 /** Short reference range for the table: "13 - 17 g/dL" when it has both ends, otherwise the narrative. */
 export function shortRange(t: LabTest, sex: "M" | "F"): string {
@@ -15,7 +16,7 @@ export function shortRange(t: LabTest, sex: "M" | "F"): string {
 }
 
 const stamp = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 /** Who entered and who verified the results, and the critical result call. Shown under the results, also in the chart. */
 export function LabSignOff({ order }: { order: LabOrder }) {

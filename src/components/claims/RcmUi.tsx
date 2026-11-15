@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge, Button, Select, cn } from "@/components/ui/primitives";
+import { fmtDate as baseDate, fmtDateTime as baseDateTime, fmtTime as baseTime } from "@/lib/format";
 import { ITEM_CHIPS, type ItemCounts, type StatusTone } from "@/lib/claims";
 
 /**
@@ -169,7 +170,7 @@ export function useIsPhone(): boolean {
   return phone;
 }
 
-export const fmtDate = (iso: string | undefined) =>
-  iso ? new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "Not Recorded";
-export const fmtTime = (iso: string | undefined) => (iso && iso.length > 10 ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "");
-export const fmtDateTime = (iso: string | undefined) => (iso ? `${fmtDate(iso)}, ${fmtTime(iso)}` : "Not Recorded");
+/** App-wide 24-hour formats (format.ts), with "Not Recorded" for a missing date and no time for a date-only value. */
+export const fmtDate = (iso: string | undefined) => (iso ? baseDate(iso) || "Not Recorded" : "Not Recorded");
+export const fmtTime = (iso: string | undefined) => (iso && iso.length > 10 ? baseTime(iso) : "");
+export const fmtDateTime = (iso: string | undefined) => (iso ? (iso.length > 10 ? baseDateTime(iso) : baseDate(iso)) || "Not Recorded" : "Not Recorded");

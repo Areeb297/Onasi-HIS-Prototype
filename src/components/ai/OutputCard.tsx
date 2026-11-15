@@ -91,7 +91,6 @@ export function OutputCard({ out, enc, patient }: { out: AiOutput; enc: Encounte
           <h3 className="text-sm font-semibold leading-tight text-[#032C26] dark:text-foreground">{out.title}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-medium text-muted-foreground">{AI_LABEL}</span>
-            {dev && out.simulated && <span className="font-mono text-xs text-muted-foreground">simulated</span>}
             {verdict === "accepted" && <BrandBadge>Accepted{edited ? " (edited)" : ""}</BrandBadge>}
             {verdict === "rejected" && <BrandBadge tone="ink">Rejected</BrandBadge>}
           </div>

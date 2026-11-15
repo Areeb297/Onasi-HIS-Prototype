@@ -1,5 +1,6 @@
 import type { Clearance, ClearanceKey, DischargeApproval, DischargeAttendant, DischargeDetails, DischargeOutcome, DischargeRecord, DischargeSummary, Encounter } from "./model";
 import type { Permission } from "./session";
+import { fmtDateTime } from "./format";
 
 /**
  * Discharge rules: the four clearances, the outcomes and their PV1-36 codes, and the wait between the
@@ -232,11 +233,10 @@ export function gapText(mins: number): string {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
-/** The date format of the worklists: 14 November 2026 3:05 PM. */
+/** The date format of the worklists: 14 Nov 2026, 15:05 (lib/format.ts). */
 export function niceDate(local: string | undefined): string {
   if (!local) return "None";
-  const d = new Date(local);
-  return `${d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  return fmtDateTime(local) || "None";
 }
 
 /* ---------- reasons for destructive actions ---------- */

@@ -1,37 +1,32 @@
 import * as React from "react";
-import { RotateCcw } from "lucide-react";
+import { FolderOpen, RotateCcw, Scissors } from "lucide-react";
 import { IconCalendarEvent, IconCalendarPause, IconCircleCheck, IconClipboardList, IconHeartbeat, IconScissors } from "@tabler/icons-react";
-import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { SCHEDULE_TONE, STAGE_TONE } from "@/components/emr/TheatreSection";
-import { Badge, Button, Card, Empty, Field, Input, PageHeader, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { DataTable, ListPage, ListToolbar, StatFilters, useList, type Column, type FilterDef } from "@/components/list";
+import { Badge } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
+import { fmtDate } from "@/lib/format";
 import { navigate } from "@/lib/router";
-import { useSession } from "@/lib/session";
+import { hasGlass, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { resetTheatre, useTheatre } from "@/lib/theatre";
 import { STEPS, caseStage, isBooked, nextAction, scheduleEnd, scheduleStatus, stepDone, type SurgeryCase } from "@/lib/theatre-logic";
 
-type FilterId = "action" | "postponed" | "today" | "theatre" | "recovery" | "closed" | "all";
+type FilterId = "action" | "postponed" | "today" | "theatre" | "recovery" | "closed";
 
 const today = (): string => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-const FILTERS: { id: FilterId; label: string; test: (c: SurgeryCase) => boolean }[] = [
-  { id: "action", label: "Needs Action", test: (c) => !c.closed },
-  { id: "postponed", label: "Postponed", test: (c) => caseStage(c) === "Postponed" },
-  { id: "today", label: "Today", test: (c) => (c.schedule?.date ?? c.request.plannedDate) === today() },
-  { id: "theatre", label: "In Theatre", test: (c) => ["In Theatre", "Note Needed"].includes(caseStage(c)) },
-  { id: "recovery", label: "In Recovery", test: (c) => caseStage(c) === "In Recovery" },
-  { id: "closed", label: "Closed", test: (c) => !!c.closed },
-  { id: "all", label: "All", test: () => true },
+const STAGES: { id: FilterId; label: string; icon: React.ReactNode; test: (c: SurgeryCase) => boolean }[] = [
+  { id: "action", label: "Needs Action", icon: <IconClipboardList stroke={1.75} />, test: (c) => !c.closed },
+  { id: "postponed", label: "Postponed", icon: <IconCalendarPause stroke={1.75} />, test: (c) => caseStage(c) === "Postponed" },
+  { id: "today", label: "Today", icon: <IconCalendarEvent stroke={1.75} />, test: (c) => (c.schedule?.date ?? c.request.plannedDate) === today() },
+  { id: "theatre", label: "In Theatre", icon: <IconScissors stroke={1.75} />, test: (c) => ["In Theatre", "Note Needed"].includes(caseStage(c)) },
+  { id: "recovery", label: "In Recovery", icon: <IconHeartbeat stroke={1.75} />, test: (c) => caseStage(c) === "In Recovery" },
+  { id: "closed", label: "Closed", icon: <IconCircleCheck stroke={1.75} />, test: (c) => !!c.closed },
 ];
-
-const FILTER_ICON: Record<FilterId, React.ReactNode> = {
-  action: <IconClipboardList stroke={1.75} />, postponed: <IconCalendarPause stroke={1.75} />, today: <IconCalendarEvent stroke={1.75} />,
-  theatre: <IconScissors stroke={1.75} />, recovery: <IconHeartbeat stroke={1.75} />, closed: <IconCircleCheck stroke={1.75} />, all: null,
-};
 
 /** When the case is due: the booked slot, or the planned date while it is not booked yet. */
 const sortKey = (c: SurgeryCase) => (c.schedule?.date ? `${c.schedule.date}T${c.schedule.start || "99:99"}` : `${c.request.plannedDate}T99:99`);
@@ -42,115 +37,100 @@ export function TheatreListPage() {
   const his = useHis();
   const dev = useDevMode();
   useSession();
-  const [filter, setFilter] = React.useState<FilterId>("action");
-  const [q, setQ] = React.useState("");
 
-  const active = FILTERS.find((f) => f.id === filter)!;
-  const query = q.trim().toLowerCase();
-  const rows = theatre.cases
-    .filter(active.test)
-    .filter((c) => {
-      if (!query) return true;
-      const p = his.patients.find((x) => x.id === c.patientId);
-      return `${patientName(p)} ${p?.mrn ?? ""} ${c.visit} ${c.id} ${c.request.procedure} ${c.request.surgeon} ${c.schedule?.room ?? ""} ${scheduleStatus(c) ?? ""}`.toLowerCase().includes(query);
-    })
-    .sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  const rows = theatre.cases.map((c) => {
+    const p = his.patients.find((x) => x.id === c.patientId);
+    return { c, p, name: p?.confidential && !hasGlass(p.id) ? "Confidential Patient" : patientName(p), stage: caseStage(c), sched: scheduleStatus(c) };
+  });
+  type Row = (typeof rows)[number];
+
+  const filters: FilterDef<Row>[] = [
+    { id: "stage", label: "Stage", options: STAGES.map((s) => ({ value: s.id, label: s.label })), test: (r, v) => STAGES.find((s) => s.id === v)!.test(r.c) },
+    { id: "surgeon", label: "Surgeon", quick: true, options: [...new Set(theatre.cases.map((c) => c.request.surgeon))].sort().map((s) => ({ value: s, label: s })), test: (r, v) => r.c.request.surgeon === v },
+    { id: "room", label: "Room", options: [...new Set(theatre.cases.map((c) => c.schedule?.room).filter(Boolean) as string[])].sort().map((s) => ({ value: s, label: s })), test: (r, v) => r.c.schedule?.room === v },
+    { id: "urgency", label: "Urgency", options: [...new Set(theatre.cases.map((c) => c.request.urgency))].sort().map((s) => ({ value: s, label: s })), test: (r, v) => r.c.request.urgency === v },
+  ];
+
+  const columns: Column<Row>[] = [
+    {
+      id: "patient", header: "Patient", hideable: false, value: (r) => r.name,
+      cell: (r) => <div className="min-w-40"><div className="font-semibold text-[#032c26] dark:text-foreground">{r.name}</div><div className="text-xs text-muted-foreground"><span className="font-mono">{r.p?.mrn}</span>{dev ? `, ${r.c.id}` : ""}</div></div>,
+    },
+    {
+      id: "procedure", header: "Procedure", value: (r) => r.c.request.procedure,
+      cell: (r) => <div className="min-w-44"><div className="font-medium">{r.c.request.procedure}</div><div className="text-xs text-muted-foreground">{r.c.request.side} side, {r.c.request.urgency}</div></div>,
+    },
+    { id: "surgeon", header: "Surgeon", value: (r) => r.c.request.surgeon, cell: (r) => <span className="whitespace-nowrap">{r.c.request.surgeon}</span> },
+    {
+      id: "when", header: "Room And Time", value: (r) => sortKey(r.c), csv: (r) => (r.c.schedule ? `${r.c.schedule.room ?? ""} ${r.c.schedule.date} ${r.c.schedule.start ?? ""}` : `Planned ${r.c.request.plannedDate}`),
+      cell: (r) => r.c.schedule ? (
+        <div className="whitespace-nowrap">
+          <div className="font-medium">{r.c.schedule.room || "No Room Yet"}</div>
+          <div className="text-xs tabular-nums text-muted-foreground" title={isBooked(r.c) ? undefined : "Does not hold the room"}>
+            {fmtDate(r.c.schedule.date)}{r.c.schedule.start ? `, ${r.c.schedule.start} to ${scheduleEnd(r.c.schedule)}` : ""}{r.sched ? `, ${r.sched}` : ""}
+          </div>
+        </div>
+      ) : (
+        <div className="whitespace-nowrap"><div className="text-muted-foreground">Not Scheduled</div><div className="text-xs tabular-nums text-muted-foreground">Planned {fmtDate(r.c.request.plannedDate)}</div></div>
+      ),
+    },
+    {
+      id: "stage", header: "Stage", value: (r) => (r.c.closed ? `Closed: ${r.c.closed.outcome}` : r.stage),
+      cell: (r) => (
+        <div className="whitespace-nowrap">
+          <Badge tone={STAGE_TONE[r.stage]}>{r.c.closed ? `Closed: ${r.c.closed.outcome}` : r.stage}</Badge>
+          <div className="mt-1 text-xs text-muted-foreground">{STEPS.filter((s) => stepDone(r.c, s.id)).length} of {STEPS.length} steps done</div>
+        </div>
+      ),
+    },
+    { id: "next", header: "Next Step", value: (r) => nextAction(r.c), cell: (r) => <span className="block max-w-60">{nextAction(r.c)}</span> },
+    { id: "sched", header: "Schedule", defaultHidden: true, value: (r) => r.sched ?? "", cell: (r) => (r.sched ? <Badge tone={SCHEDULE_TONE[r.sched]}>{r.sched}</Badge> : <span className="text-muted-foreground">None</span>) },
+  ];
+
+  const list = useList({
+    id: "theatre",
+    title: "Theatre List",
+    rows,
+    columns,
+    getId: (r) => r.c.id,
+    filters,
+    initialFilters: { stage: "action" },
+    initialSort: { key: "when", dir: "asc" },
+    unit: ["case", "cases"],
+    search: (r) => `${r.name} ${r.p?.mrn ?? ""} ${r.c.visit} ${r.c.id} ${r.c.request.procedure} ${r.c.request.surgeon} ${r.c.schedule?.room ?? ""} ${r.sched ?? ""}`,
+  });
+  const openCase = (r: Row) => navigate("/chart", { visit: r.c.visit, s: "surgery", case: r.c.id });
 
   return (
-    <div>
-      <PageHeader
-        title="Theatre List"
-        subtitle="Every surgery case and the step it is waiting for. A step opens only when the one before it is done. Open a case to work on it in the patient chart."
-        right={dev ? (
-          <Button variant="ghost" size="sm" onClick={resetTheatre} title="Brings back the demo cases and removes the others">
-            <RotateCcw className="size-4" />
-            Reset Theatre Demo Data
-          </Button>
-        ) : undefined}
+    <ListPage
+      title="Theatre List"
+      subtitle="Every surgery case and the step it is waiting for."
+      more={[dev && { label: "Reset Theatre Demo Data", icon: <RotateCcw className="size-4" />, title: "Brings back the demo cases and removes the others", onClick: resetTheatre }]}
+      kpis={<StatFilters label="Cases by stage" value={list.filterValues.stage ?? ""} onChange={(v) => list.setFilter("stage", v)}
+        items={STAGES.map((s) => ({ id: s.id, label: s.label, icon: s.icon, value: theatre.cases.filter(s.test).length }))} />}
+    >
+      <ListToolbar list={list} placeholder="Patient, procedure or surgeon" />
+      <DataTable
+        list={list}
+        label="Surgery cases"
+        rowLabel={(r) => `${r.name}, ${r.c.request.procedure}`}
+        onRowClick={openCase}
+        actions={(r) => [{ id: "open", label: "Open Case", icon: <FolderOpen />, emphasis: !r.c.closed, onClick: () => openCase(r) }]}
+        inline={1}
+        card={(r) => ({
+          title: r.name,
+          aside: <Badge tone={STAGE_TONE[r.stage]}>{r.c.closed ? "Closed" : r.stage}</Badge>,
+          lines: [
+            <span key="a">{r.c.request.procedure}, {r.c.request.surgeon}</span>,
+            <span key="b" className="tabular-nums">{r.c.schedule ? `${r.c.schedule.room || "No room"}, ${fmtDate(r.c.schedule.date)}${r.c.schedule.start ? ` ${r.c.schedule.start}` : ""}` : `Planned ${fmtDate(r.c.request.plannedDate)}`}</span>,
+          ],
+        })}
+        empty={{
+          icon: <Scissors />,
+          title: "No Surgery Cases Yet",
+          text: "A case starts with a surgery request in the patient chart, under Surgery Case. A step opens only when the one before it is done.",
+        }}
       />
-
-      <KpiStrip label="Cases by step" className="mb-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
-        {FILTERS.filter((f) => f.id !== "all").map((f) => (
-          <KpiTile key={f.id} icon={FILTER_ICON[f.id]} label={f.label} value={theatre.cases.filter(f.test).length}
-            note={filter === f.id ? "Shown below" : `Show ${f.label.toLowerCase()}`} tone={filter === f.id ? "ok" : undefined}
-            className={filter === f.id ? "outline-2 outline-offset-0 outline-[#03C1AC]" : undefined} onClick={() => setFilter(filter === f.id ? "all" : f.id)} />
-        ))}
-      </KpiStrip>
-
-      <Card className="mb-4 px-4 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <p className="min-w-0 text-sm text-muted-foreground" aria-live="polite">
-            Showing <span className="font-medium text-foreground">{active.label === "All" ? "all cases" : active.label.toLowerCase()}</span>, {rows.length} {rows.length === 1 ? "case" : "cases"}.
-            {filter !== "all" && <Button size="sm" variant="ghost" className="ms-1" onClick={() => setFilter("all")}>Show All {theatre.cases.length}</Button>}
-          </p>
-          <Field label="Search" className="ml-auto w-full sm:w-64">
-            <Input placeholder="Patient, procedure, surgeon, room or status" value={q} onChange={(e) => setQ(e.target.value)} />
-          </Field>
-        </div>
-      </Card>
-
-      <Card>
-        <Table>
-          <thead>
-            <tr>
-              <Th>Patient</Th>
-              <Th>Procedure</Th>
-              <Th>Surgeon</Th>
-              <Th>Room And Time</Th>
-              <Th>Stage</Th>
-              <Th>Next Step</Th>
-              <Th>Actions</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr><Td colSpan={7}><Empty>{theatre.cases.length === 0 ? "No surgery cases yet. A case starts with a surgery request in the patient chart, under Surgery Case." : "No cases match this filter."}</Empty></Td></tr>
-            )}
-            {rows.map((c) => {
-              const p = his.patients.find((x) => x.id === c.patientId);
-              const stage = caseStage(c);
-              const sched = scheduleStatus(c);
-              const doneCount = STEPS.filter((s) => stepDone(c, s.id)).length;
-              return (
-                <tr key={c.id} className="hover:bg-muted/40">
-                  <Td>
-                    <div className="font-semibold">{patientName(p)}</div>
-                    <div className="text-xs text-muted-foreground">{p?.mrn} · Visit {c.visit}{dev ? ` · ${c.id}` : ""}</div>
-                  </Td>
-                  <Td>
-                    <div className="font-medium">{c.request.procedure}</div>
-                    <div className="text-xs text-muted-foreground">Side: {c.request.side} · {c.request.urgency}</div>
-                  </Td>
-                  <Td>{c.request.surgeon}</Td>
-                  <Td>
-                    {c.schedule ? (
-                      <>
-                        <div className="font-medium">{c.schedule.room || "No room yet"}</div>
-                        <div className="text-xs tabular-nums text-muted-foreground">{c.schedule.date}{c.schedule.start ? `, ${c.schedule.start} to ${scheduleEnd(c.schedule)}` : ""}</div>
-                        {sched && <Badge tone={SCHEDULE_TONE[sched]} className="mt-1">{sched}</Badge>}
-                        {!isBooked(c) && <div className="text-xs text-muted-foreground">Does not hold the room</div>}
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-muted-foreground">Not scheduled</div>
-                        <div className="text-xs tabular-nums text-muted-foreground">Planned {c.request.plannedDate}</div>
-                      </>
-                    )}
-                  </Td>
-                  <Td>
-                    <Badge tone={STAGE_TONE[stage]}>{c.closed ? `Closed: ${c.closed.outcome}` : stage}</Badge>
-                    <div className="mt-1 text-xs text-muted-foreground">{doneCount} of {STEPS.length} steps done</div>
-                  </Td>
-                  <Td className="max-w-[240px]">{nextAction(c)}</Td>
-                  <Td>
-                    <Button size="sm" variant={c.closed ? "secondary" : "primary"} onClick={() => navigate("/chart", { visit: c.visit, s: "surgery", case: c.id })}>Open Case</Button>
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </Card>
-    </div>
+    </ListPage>
   );
 }

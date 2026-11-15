@@ -22,6 +22,7 @@ import {
 import { resetRadExtras } from "@/lib/rad-extras";
 import { can, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
+import { fmtDateTime } from "@/lib/format";
 
 const FILTERS: { id: "all" | RadStatus; label: string }[] = [
   { id: "all", label: "All" },
@@ -35,7 +36,7 @@ const FILTERS: { id: "all" | RadStatus; label: string }[] = [
 const PRIORITY_RANK: Record<string, number> = { stat: 0, asap: 1, urgent: 2, routine: 3 };
 
 const when = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 /** Worklist for radiology: record the exam, write the report, sign it, release it, add addenda. */
 export function RadiologyWorklistPage() {

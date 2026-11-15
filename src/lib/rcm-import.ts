@@ -12,6 +12,19 @@ import { RCM_PAYERS, type ClaimState, type ImportClaim } from "./rcm-cases";
 
 /* ---------- reading the file ---------- */
 
+/** Limits that keep a large or hostile file from freezing the browser tab. */
+export const IMPORT_LIMITS = {
+  /** The file as uploaded. */
+  fileBytes: 10 * 1024 * 1024,
+  /** All the XML inside an .xlsx after unzipping. A real 10 MB workbook unzips to well under this. */
+  unzippedBytes: 60 * 1024 * 1024,
+  /** Claim rows under the header row. */
+  rows: 5000,
+} as const;
+
+const mb = (n: number) => `${Math.round(n / (1024 * 1024))} MB`;
+const TOO_BIG_UNZIPPED = `The workbook is too large once opened (over ${mb(IMPORT_LIMITS.unzippedBytes)}). Split it into smaller files, or save it as .csv.`;
+
 /** Splits CSV text into rows. Handles quotes, doubled quotes, commas and line breaks inside quotes, and a leading BOM. */
 export function parseCsv(text: string): string[][] {
   const src = text.replace(/^﻿/, "");
@@ -42,14 +55,29 @@ export function parseCsv(text: string): string[][] {
 const u16 = (b: Uint8Array, o: number) => b[o] | (b[o + 1] << 8);
 const u32 = (b: Uint8Array, o: number) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
 
-async function inflate(data: Uint8Array): Promise<Uint8Array> {
-  const ds = new DecompressionStream("deflate-raw");
-  const out = new Response(new Blob([data as BlobPart]).stream().pipeThrough(ds));
-  return new Uint8Array(await out.arrayBuffer());
+/** Inflates one entry, stopping as soon as it passes `limit` bytes, so a zip bomb never fills memory. */
+async function inflate(data: Uint8Array, limit: number): Promise<Uint8Array> {
+  const reader = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      await reader.cancel();
+      throw new Error(TOO_BIG_UNZIPPED);
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) { out.set(part, at); at += part.length; }
+  return out;
 }
 
-/** The files inside a zip, by name. Stored and deflated entries only. */
-export async function unzip(buf: ArrayBuffer): Promise<Map<string, string>> {
+/** The files inside a zip, by name. Stored and deflated entries only. Stops when the unzipped total passes `limit`. */
+export async function unzip(buf: ArrayBuffer, limit: number = IMPORT_LIMITS.unzippedBytes): Promise<Map<string, string>> {
   const b = new Uint8Array(buf);
   let eocd = -1;
   for (let i = b.length - 22; i >= Math.max(0, b.length - 65_557); i--) if (u32(b, i) === 0x06054b50) { eocd = i; break; }
@@ -58,6 +86,7 @@ export async function unzip(buf: ArrayBuffer): Promise<Map<string, string>> {
   let p = u32(b, eocd + 16);
   const dec = new TextDecoder();
   const files = new Map<string, string>();
+  let used = 0;
   for (let n = 0; n < count; n++) {
     if (u32(b, p) !== 0x02014b50) throw new Error("The workbook is damaged.");
     const method = u16(b, p + 10);
@@ -70,7 +99,10 @@ export async function unzip(buf: ArrayBuffer): Promise<Map<string, string>> {
     const start = local + 30 + u16(b, local + 26) + u16(b, local + 28);
     const raw = b.subarray(start, start + size);
     if (method !== 0 && method !== 8) throw new Error("The workbook uses a compression this page cannot read. Save it again as .xlsx or .csv.");
-    files.set(name, dec.decode(method === 8 ? await inflate(raw) : raw));
+    const bytes = method === 8 ? await inflate(raw, limit - used) : raw;
+    used += bytes.length;
+    if (used > limit) throw new Error(TOO_BIG_UNZIPPED);
+    files.set(name, dec.decode(bytes));
   }
   return files;
 }
@@ -118,13 +150,26 @@ export async function readXlsx(buf: ArrayBuffer): Promise<string[][]> {
 
 export interface Table { headers: string[]; rows: string[][] }
 
-export async function readTable(file: { name: string; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }): Promise<Table> {
+export async function readTable(file: { name: string; size?: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }): Promise<Table> {
   const name = file.name.toLowerCase();
+  if (!name.endsWith(".csv") && !name.endsWith(".xlsx")) throw new Error("Choose a .csv or .xlsx file. Older .xls files are not supported: save them as .xlsx first.");
+  if ((file.size ?? 0) > IMPORT_LIMITS.fileBytes) {
+    throw new Error(`The file is ${mb(file.size ?? 0)}. The largest file this page reads is ${mb(IMPORT_LIMITS.fileBytes)}. Split it into smaller files.`);
+  }
   let all: string[][];
-  if (name.endsWith(".csv")) all = parseCsv(await file.text());
-  else if (name.endsWith(".xlsx")) all = await readXlsx(await file.arrayBuffer());
-  else throw new Error("Choose a .csv or .xlsx file. Older .xls files are not supported: save them as .xlsx first.");
+  if (name.endsWith(".csv")) {
+    const text = await file.text();
+    if (text.length > IMPORT_LIMITS.fileBytes) throw new Error(`The file is larger than ${mb(IMPORT_LIMITS.fileBytes)}. Split it into smaller files.`);
+    all = parseCsv(text);
+  } else {
+    const buf = await file.arrayBuffer();
+    if (buf.byteLength > IMPORT_LIMITS.fileBytes) throw new Error(`The file is larger than ${mb(IMPORT_LIMITS.fileBytes)}. Split it into smaller files.`);
+    all = await readXlsx(buf);
+  }
   if (all.length < 2) throw new Error("The file has no rows under the header row.");
+  if (all.length - 1 > IMPORT_LIMITS.rows) {
+    throw new Error(`The file has ${(all.length - 1).toLocaleString("en-US")} claim rows. The most this page imports at once is ${IMPORT_LIMITS.rows.toLocaleString("en-US")}. Split it into smaller files.`);
+  }
   const headers = all[0].map((h) => h.trim());
   const width = headers.length;
   return { headers, rows: all.slice(1).map((r) => Array.from({ length: width }, (_, i) => (r[i] ?? "").trim())) };

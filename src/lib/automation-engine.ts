@@ -19,6 +19,7 @@ import { BED_BY_ID, SERVICES, cnhiAdmissionMethod } from "./reference-data";
 import { currentUser, useSession } from "./session";
 import { getState, patientName } from "./store";
 import { pushToast } from "./toast";
+import { fmtTime } from "./format";
 
 /**
  * The automation engine. It reads two kinds of HIS events:
@@ -220,7 +221,7 @@ interface Ctx {
 }
 
 const iso = (t: number) => new Date(t).toISOString();
-const timeText = (t: number) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+const timeText = (t: number) => fmtTime(t);
 
 const CLEARANCE_WORK: Record<ClearanceKey, { worklist: string; role: RoleId }> = {
   clinical: { worklist: "Doctor Tasks", role: "attending" },

@@ -1,6 +1,6 @@
 import { deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { autoMap, checkRows, IMPORT_FIELDS, missingRequired, parseCsv, readAmount, readDate, readTable, readXlsx, templateCsv, type ImportContext } from "./rcm-import";
+import { autoMap, checkRows, IMPORT_FIELDS, IMPORT_LIMITS, missingRequired, parseCsv, readAmount, readDate, readTable, readXlsx, templateCsv, unzip, type ImportContext } from "./rcm-import";
 
 const TODAY = new Date(2026, 10, 15);
 const ctx = (): ImportContext => ({ ledger: new Set(["CLM-26-4436"]), live: new Set(["CLM-00002A"]), mrns: new Set(["MRN-100302"]), nationalIds: new Set(["1072215546"]), today: TODAY });
@@ -109,5 +109,31 @@ describe("claim import", () => {
       "Approved Amount cannot be more than the Claimed Amount.",
     ]);
     expect(out[5].issues[0]).toMatch(/sent from this system/);
+  });
+});
+
+describe("claim import limits", () => {
+  const csv = (rows: number) => ["Claim Number", ...Array.from({ length: rows }, (_, i) => `CLM-${i}`)].join("\n");
+
+  it("refuses a file over the size limit before reading it", async () => {
+    let read = false;
+    const big = { name: "claims.csv", size: IMPORT_LIMITS.fileBytes + 1, text: async () => { read = true; return ""; }, arrayBuffer: async () => new ArrayBuffer(0) };
+    await expect(readTable(big)).rejects.toThrow(/largest file this page reads is 10 MB/);
+    expect(read).toBe(false);
+  });
+
+  it("refuses more claim rows than the limit, and accepts exactly the limit", async () => {
+    const ok = await readTable({ name: "c.csv", text: async () => csv(IMPORT_LIMITS.rows), arrayBuffer: async () => new ArrayBuffer(0) });
+    expect(ok.rows).toHaveLength(IMPORT_LIMITS.rows);
+    await expect(readTable({ name: "c.csv", text: async () => csv(IMPORT_LIMITS.rows + 1), arrayBuffer: async () => new ArrayBuffer(0) }))
+      .rejects.toThrow(/5,001 claim rows. The most this page imports at once is 5,000/);
+  });
+
+  it("stops unzipping a workbook that grows past the unzipped limit (zip bomb)", async () => {
+    const bomb = storedZip({ "xl/worksheets/sheet1.xml": " ".repeat(200_000) }, true);
+    await expect(unzip(bomb, 50_000)).rejects.toThrow(/too large once opened/);
+    const twoParts = storedZip({ "xl/a.xml": "x".repeat(30_000), "xl/b.xml": "y".repeat(30_000) }, true);
+    await expect(unzip(twoParts, 50_000)).rejects.toThrow(/too large once opened/);
+    expect((await unzip(twoParts, 100_000)).size).toBe(2);
   });
 });

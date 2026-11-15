@@ -11,8 +11,9 @@ import { listName } from "@/lib/registration";
 import { can, currentUser, hasGlass, useSession } from "@/lib/session";
 import { nowLocal, useHis } from "@/lib/store";
 import { useDevMode } from "@/lib/devmode";
+import { fmtDate } from "@/lib/format";
 
-const dateText = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const dateText = (iso: string) => fmtDate(iso);
 
 /** Eligible or Not Eligible with the date of the answer. "None" when the payer was never asked. */
 export function EligibilityBadge({ answer, className }: { answer?: EligibilityAnswer; className?: string }) {

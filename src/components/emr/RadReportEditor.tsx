@@ -15,11 +15,12 @@ import { audit } from "@/lib/audit";
 import { can, useSession } from "@/lib/session";
 import { getState, patientName } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { fmtDateTime, fmtTime } from "@/lib/format";
 
 const stamp = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
-const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+const clock = (iso: string) => fmtTime(iso);
 
 /** What the technologist recorded: machine, times, contrast and the pregnancy check. */
 export function ExamSummary({ order }: { order: RadOrder }) {

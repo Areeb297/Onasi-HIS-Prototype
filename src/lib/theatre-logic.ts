@@ -1,3 +1,4 @@
+import { fmtDate, fmtTime } from "./format";
 /**
  * The surgery pathway as pure rules: the steps, what each step needs before it can start, and the checks on what is entered.
  * No storage, no session and no React here. The store (theatre.ts) and the screens both ask these functions, so the gate
@@ -859,7 +860,7 @@ const parseLocalDateTime = (v: string | undefined): Date | null => {
 export const slotStartAt = (c: Pick<SurgeryCase, "schedule">): Date | null => parseLocal(c.schedule?.date, c.schedule?.start);
 
 const when = (d: Date): string =>
-  `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} at ${clock(d.getHours() * 60 + d.getMinutes())}`;
+  `${fmtDate(d)} at ${fmtTime(d)}`;
 
 export type TimedStep = "signIn" | "timeOut" | "signOut";
 

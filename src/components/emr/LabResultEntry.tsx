@@ -12,11 +12,12 @@ import {
 import type { Patient } from "@/lib/model";
 import { can } from "@/lib/session";
 import type { LabOrder } from "@/lib/fhir/types";
+import { fmtDateTime } from "@/lib/format";
 
 const COLS = 7;
 
 const stamp = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 /** One analyte: value, unit, reference range, critical range and the flag the system works out. */
 function ResultRow({ order, test, sex, editable, indent }: { order: LabOrder; test: LabTest; sex: "M" | "F"; editable: boolean; indent: boolean }) {

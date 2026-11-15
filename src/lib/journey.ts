@@ -12,6 +12,7 @@ import { ROLES, USERS } from "./session";
 import { getState } from "./store";
 import { getVitals, panelsOf } from "./vitals";
 import { listSoap } from "./ai/soap-store";
+import { fmtDateTime } from "./format";
 
 /**
  * The patient journey: every step of a visit in order, with who did it, their role, and the time since the step before.
@@ -243,7 +244,7 @@ export function auditCounts(entries: AuditEntry[]): { total: number; creations: 
 /* ---------- print ---------- */
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const stamp = (t: number) => new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const stamp = (t: number) => fmtDateTime(t);
 
 /** A plain page with the journey, ready for the browser's print dialog. */
 export function journeyPrintHtml(opts: { patient: Patient; enc: Encounter; events: JourneyEvent[]; visits: VisitSummary[]; total: number | null; hospital: string; printedBy: string; now?: number }): string {

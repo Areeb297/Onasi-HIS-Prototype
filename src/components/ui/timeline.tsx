@@ -10,6 +10,7 @@ import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { cn } from "./primitives";
+import { fmtDayMonth, fmtTime, fmtWeekday } from "@/lib/format";
 
 export interface TimelineEvent {
   id: string;
@@ -43,11 +44,11 @@ function dayLabel(t: number): string {
   const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
   if (same(d, today)) return "Today";
   if (same(d, y)) return "Yesterday";
-  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  return `${fmtWeekday(d, "long")} ${fmtDayMonth(d)}`;
 }
 
 function clock(t: number): string {
-  return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return fmtTime(t);
 }
 
 function Row({

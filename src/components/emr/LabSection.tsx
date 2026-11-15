@@ -19,9 +19,10 @@ import type { Encounter } from "@/lib/model";
 import { can, useSession } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { lastAccepted, lastAttempt, type LabOrder } from "@/lib/fhir/types";
+import { fmtDateTime } from "@/lib/format";
 
 const when = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 /** What the "send" button should say, depending on where the order stands. */
 function sendLabel(o: LabOrder): string | null {

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronDown, Minus, Plus, Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { Input, cn } from "@/components/ui/primitives";
 import { EMR_FORM_BY_ID, fitsSex } from "@/lib/emr-forms";
 import { EMR_GROUPS, EMR_MENU, type EmrGroup } from "@/lib/emr-menu";
@@ -9,8 +9,8 @@ import { getFormRecords, useRecords } from "@/lib/records";
 import { useHis } from "@/lib/store";
 
 /**
- * The chart's left menu: grouped sections, page search, Expand All and Collapse All.
- * The group that holds the open page stays open.
+ * The chart's left menu: grouped sections and Find Section. Each group folds on its own; the group that holds the open
+ * page starts open. (Expand All and Collapse All live only in the main sidebar, so the two menus never look alike.)
  */
 export function ChartMenu({ active, visit, onPick }: { active: string; visit: string; onPick: (id: string) => void }) {
   useRecords();
@@ -33,12 +33,8 @@ export function ChartMenu({ active, visit, onPick }: { active: string; visit: st
   return (
     <nav aria-label="Chart sections" className="h-fit max-h-[calc(100vh-14rem)] overflow-y-auto rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)] p-2 lg:sticky lg:top-44">
       <div className="relative mb-2">
-        <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-        <Input className="h-9 pl-8" placeholder="Search pages" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search chart pages" />
-      </div>
-      <div className="mb-2 flex gap-1.5">
-        <button onClick={() => setOpen(new Set(EMR_GROUPS))} className="flex flex-1 items-center justify-center gap-1 rounded-md border border-border py-1 text-xs hover:bg-muted"><Plus className="size-3" />Expand All</button>
-        <button onClick={() => setOpen(new Set())} className="flex flex-1 items-center justify-center gap-1 rounded-md border border-border py-1 text-xs hover:bg-muted"><Minus className="size-3" />Collapse All</button>
+        <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden="true" />
+        <Input className="h-9 pl-8" placeholder="Find Section" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find a section of this chart" />
       </div>
       {EMR_GROUPS.map((g) => {
         const items = EMR_MENU.filter((i) => i.group === g && (!query || i.label.toLowerCase().includes(query)) && (i.id === active || forAge(i.id)));

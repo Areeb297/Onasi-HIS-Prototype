@@ -18,6 +18,10 @@ import type { RxState } from "./rx-types";
 import { can, currentUser } from "./session";
 import { getState, patientName } from "./store";
 import { claimReadiness, type ClaimLine as VitalClaimLine } from "./vitals";
+import { DEMO_MARK, demoTargetOf } from "./rcm-demo";
+import { buildDemoClaims, type DemoClaimInput, type PayerAnswer } from "./rcm-demo-claims";
+
+export type { AnswerError, AnswerLine, PayerAnswer } from "./rcm-demo-claims";
 
 /**
  * The biller's claim for a visit: header, care team, supporting information, diagnoses, service lines, totals and the
@@ -118,7 +122,14 @@ export interface ClaimDraft {
   sends?: SendLog[];
 }
 
-interface ClaimState { drafts: ClaimDraft[]; seq: number }
+interface ClaimState {
+  drafts: ClaimDraft[];
+  seq: number;
+  /** Payer answers kept beyond NPHIES Financial: rejection errors and line approvals and denials, by visit. */
+  answers?: Record<string, PayerAnswer>;
+  /** The demo claim history was added once; a reset of NPHIES Financial does not bring it back. */
+  demoSeeded?: boolean;
+}
 
 const store = createStore<ClaimState>("onasi-emr-claims-v1", () => ({ drafts: [], seq: 0 }));
 export const useClaims = store.use;
@@ -180,6 +191,8 @@ export interface ClaimModel {
   /** A claim the payer is holding or has approved cannot be changed. */
   locked: boolean;
   draft: ClaimDraft | undefined;
+  /** The payer's answer for the claim now on file (or the denied prior authorization), when one was recorded. */
+  answer?: PayerAnswer;
 }
 
 const dateOnly = (s: string | undefined) => (s ?? "").slice(0, 10);
@@ -212,6 +225,7 @@ export interface BuildInput {
   chart: VitalClaimLine[];
   fin: FinCase;
   draft?: ClaimDraft;
+  answer?: PayerAnswer;
   today?: Date;
 }
 
@@ -323,6 +337,7 @@ export function buildClaim(i: BuildInput): ClaimModel {
     drg: enc.cls === "I" ? estimateDrg(dx, dateOnly(enc.admitAt) || today, dateOnly(enc.dischargeAt) || today) : null,
     locked: !!claim && (claim.status === "approved" || claim.status === "pended" || claim.status === "needs-info"),
     draft,
+    answer: answerFor(i.answer, i.fin),
   };
 }
 
@@ -459,8 +474,31 @@ export function claimFor(visit: string, today: Date = new Date()): ClaimModel | 
   if (!enc || !patient) return null;
   return buildClaim({
     enc, patient, invoice: invoiceFor(enc, patient), insurancePaid: payerPaid(visit), labOrders: getLab().orders, radOrders: getRad().orders,
-    rx: getRx(), chart: claimReadiness(visit).lines, fin: caseOf(visit), draft: draftOf(visit), today,
+    rx: getRx(), chart: withVisitVitals(claimReadiness(visit).lines, enc), fin: caseOf(visit), draft: draftOf(visit), answer: store.get().answers?.[visit], today,
   });
+}
+
+/**
+ * Vital signs recorded on the visit at the nurse station (the visit record) count for the claim when the chart has no
+ * reading of that sign. Readings in the chart always win.
+ */
+export function withVisitVitals(lines: VitalClaimLine[], enc: Pick<Encounter, "vitals">): VitalClaimLine[] {
+  const v = enc.vitals;
+  if (!v) return lines;
+  const [sbp, dbp] = (v.bp ?? "").split("/").map((x) => x.trim());
+  const val: Record<string, string | undefined> = {
+    sbp: sbp ? `${sbp} mmHg` : undefined, dbp: dbp ? `${dbp} mmHg` : undefined, pulse: v.pulse ? `${v.pulse} /min` : undefined,
+    rr: v.rr ? `${v.rr} /min` : undefined, temp: v.temp ? `${v.temp} °C` : undefined, spo2: v.spo2 ? `${v.spo2} %` : undefined,
+    weight: v.weight ? `${v.weight} kg` : undefined, height: v.height ? `${v.height} cm` : undefined,
+  };
+  return lines.map((l) => (l.state === "missing" && val[l.key] ? { ...l, state: "measured" as const, value: val[l.key] } : l));
+}
+
+/** A stored answer belongs to the claim on file only; a claim sent again gets a new number and its own answer. */
+function answerFor(a: PayerAnswer | undefined, fin: FinCase): PayerAnswer | undefined {
+  if (!a) return undefined;
+  if (a.claimNumber) return fin.claim?.claimNumber === a.claimNumber ? a : undefined;
+  return fin.authorization?.status === "denied" && !fin.claim ? a : undefined;
 }
 
 /** Insured visits that can carry a claim: billable visits whose patient is not a cash patient. */
@@ -481,22 +519,38 @@ export function insuredVisits(): { enc: Encounter; patient: Patient; payer: stri
 
 export type StatusTone = "neutral" | "ok" | "warn" | "danger" | "info";
 
-export function claimStatusOf(fin: FinCase): { label: string; tone: StatusTone } {
+/** Every status the worklist can show, in the HIS words, in the order of the claim's life. */
+export const CLAIM_STATUSES = [
+  "Drafted", "Reviewed", "Not Eligible", "PreAuth Pended", "PreAuth Approved", "PreAuth Rejected", "PreAuth Cancelled", "Claim Submitted", "Claim Pended",
+  "Claim Approved", "Claim Partially Approved", "Claim Rejected", "Claim Cancelled", "Payment Received", "Partially Paid", "Paid",
+] as const;
+
+/**
+ * Where the claim stands, in the HIS words. A visit with no claim sent is Drafted, or Reviewed once the review ran.
+ * Partially Approved compares the line answers with the claim; Partially Paid compares the payment with the approved amount.
+ */
+export function claimStatusOf(fin: FinCase, extra: { draft?: ClaimDraft; answer?: PayerAnswer } = {}): { label: string; tone: StatusTone } {
   const { eligibility: el, authorization: au, claim: cl, payment: pay } = fin;
+  const partlyApproved = !!extra.answer?.lines.some((l) => l.denied > 0.004);
+  if (pay && cl?.approved !== undefined && pay.amount + 0.004 < cl.approved) return { label: "Partially Paid", tone: "warn" };
   if (pay?.status === "notice-sent") return { label: "Paid", tone: "ok" };
-  if (pay) return { label: "Payment Advice Received", tone: "ok" };
-  if (cl?.status === "approved") return { label: "Claim Approved", tone: "ok" };
-  if (cl?.status === "needs-info") return { label: "Payer Asked A Question", tone: "warn" };
-  if (cl?.status === "pended") return { label: "Claim Waiting For Payer", tone: "info" };
+  if (pay) return { label: "Payment Received", tone: "ok" };
+  if (cl?.status === "approved") return partlyApproved ? { label: "Claim Partially Approved", tone: "warn" } : { label: "Claim Approved", tone: "ok" };
+  if (cl?.status === "needs-info") return { label: "Claim Pended", tone: "warn" };
+  if (cl?.status === "pended") return { label: "Claim Submitted", tone: "info" };
   if (cl?.status === "rejected") return { label: "Claim Rejected", tone: "danger" };
   if (cl?.status === "cancelled") return { label: "Claim Cancelled", tone: "neutral" };
-  if (au?.status === "pended") return { label: "Authorization Waiting", tone: "info" };
-  if (au?.status === "denied") return { label: "Authorization Denied", tone: "danger" };
-  if (au?.status === "approved") return { label: "Authorization Approved", tone: "ok" };
+  if (au?.status === "pended") return { label: "PreAuth Pended", tone: "info" };
+  if (au?.status === "denied") return { label: "PreAuth Rejected", tone: "danger" };
+  if (au?.status === "approved") return { label: "PreAuth Approved", tone: "ok" };
+  if (au?.status === "cancelled") return { label: "PreAuth Cancelled", tone: "neutral" };
   if (el?.status === "not-eligible") return { label: "Not Eligible", tone: "danger" };
-  if (el?.status === "eligible") return { label: "Eligible", tone: "neutral" };
-  return { label: "Not Started", tone: "neutral" };
+  if (extra.draft?.reviewedAt) return { label: "Reviewed", tone: "info" };
+  return { label: "Drafted", tone: "neutral" };
 }
+
+/** Status of a built claim, with its draft and payer answer. */
+export const statusOfClaim = (m: Pick<ClaimModel, "fin" | "draft" | "answer">) => claimStatusOf(m.fin, { draft: m.draft, answer: m.answer });
 
 export interface SendOption {
   enabled: boolean;
@@ -523,9 +577,17 @@ export function sendOptions(enc: Encounter, fin = getFinancial()): { eligibility
   };
   return {
     eligibility: opt(el, { "Check Eligibility": "Check Eligibility", "Check Again": "Check Eligibility Again" }, "Check Eligibility", []),
-    priorAuth: opt(au, PA_LABEL, "Send Prior Authorization", ["authorization"]),
+    priorAuth: claimSent(enc.visitNumber, fin)
+      ? { enabled: false, label: "Send Prior Authorization", action: null, reviewed: false, why: "The claim is already with the payer. Prior authorization comes before the claim." }
+      : opt(au, PA_LABEL, "Send Prior Authorization", ["authorization"]),
     claim: opt(cl, CLAIM_LABEL, "Send Claim", ["claim"]),
   };
+}
+
+/** A claim the payer holds, answered or not (a rejected or cancelled claim can be sent again). */
+function claimSent(visit: string, fin: ReturnType<typeof getFinancial>): boolean {
+  const c = caseOf(visit, fin).claim;
+  return !!c && c.status !== "rejected" && c.status !== "cancelled";
 }
 
 /* ---------- actions ---------- */
@@ -752,7 +814,7 @@ export function billingRows(fin = getFinancial(), today: Date = new Date()): Wor
     const m = claimFor(enc.visitNumber, today)!;
     return {
       visit: enc.visitNumber, enc, patient, payer, m,
-      status: claimStatusOf(m.fin), findings: reviewModel(m, "claim"), options: sendOptions(enc, fin),
+      status: statusOfClaim(m), findings: reviewModel(m, "claim"), options: sendOptions(enc, fin),
       visitAt: enc.admitAt ?? enc.ed?.arrivalAt ?? "", invoiceNumber: invoiceOf(enc.visitNumber)?.number || undefined,
       items: itemCounts(m),
     };
@@ -899,3 +961,74 @@ export function checkEligibility(visit: string): ActionResult {
   if (!opt.enabled || !opt.action) return { ok: false, problems: [opt.why || "Eligibility is already confirmed."] };
   return runFinancial(visit, opt.action) ? { ok: true } : { ok: false, problems: ["NPHIES Financial did not run this step."] };
 }
+
+/* ---------- demo claim history ---------- */
+
+const FIN_KEY = "onasi-emr-nphies-financial-v1";
+
+/**
+ * Gives every demo visit (rcm-demo.ts) its claim history once: NPHIES Financial cases with their messages, the claim
+ * drafts (saved, reviewed, sent) and the payer answers. Amounts are the visit invoice figures, so the claim page, the
+ * invoice and Submitted Transactions agree. Runs only when the demo patients are in the seed and the visit has no
+ * financial history yet. Returns the number of visits it gave a history to.
+ */
+export function seedDemoClaims(now: Date = new Date()): number {
+  const s0 = store.get();
+  if (s0.demoSeeded) return 0;
+  const his = getState();
+  if (!his.patients.some((p) => p.id === DEMO_MARK)) return 0;
+  const fin = getFinancial();
+  const inputs: DemoClaimInput[] = [];
+  const models = new Map<string, ClaimModel>();
+  for (const enc of his.encounters) {
+    const target = demoTargetOf(enc);
+    if (!target || caseOf(enc.visitNumber, fin).messages.length) continue;
+    const m = claimFor(enc.visitNumber, now);
+    const start = enc.admitAt ?? enc.ed?.arrivalAt;
+    if (!m || !m.payer || !start) continue;
+    models.set(enc.visitNumber, m);
+    const share = m.totals.taxable > 0 ? m.totals.insuranceAmount / m.totals.taxable : 0;
+    const lines = m.lines.map((l) => ({ seq: l.seq, key: l.key, net: l.net, insurance: round2(l.net * share) }));
+    // Rounding goes to the last line, so the lines add up to the invoice insurance share.
+    if (lines.length) lines[lines.length - 1].insurance = round2(lines[lines.length - 1].insurance + m.totals.insuranceAmount - lines.reduce((n, l) => n + l.insurance, 0));
+    inputs.push({
+      visit: enc.visitNumber, target, cls: enc.cls === "I" ? "I" : enc.cls === "E" ? "E" : "O", start: new Date(start), end: enc.dischargeAt ? new Date(enc.dischargeAt) : now,
+      healthId: m.patient.healthId, payer: m.payer, net: m.net, insurance: m.totals.insuranceAmount, lines, dxCount: m.dx.length,
+    });
+  }
+  if (!inputs.length) return 0;
+  const r = buildDemoClaims(inputs, now, fin.seq);
+  // NPHIES Financial has no import: its state object takes the cases and is saved under its own key.
+  fin.cases.push(...r.cases);
+  fin.seq = r.seq;
+  try { if (typeof localStorage !== "undefined") localStorage.setItem(FIN_KEY, JSON.stringify(fin)); } catch { /* storage blocked */ }
+
+  const biller = "Majed Aldosari";
+  const drafts = [...s0.drafts];
+  for (const i of inputs) {
+    const st = r.steps[i.visit];
+    const m = models.get(i.visit)!;
+    const soft = reviewModel(m, "claim").filter((f) => f.severity === "soft").map((f) => f.id);
+    const sentDay = (st.sentAt ?? st.savedAt).slice(0, 10);
+    const sends: SendLog[] = [
+      ...(st.paSentAt ? [{ at: st.paSentAt, by: biller, use: "priorauth" as const, action: "authorization" as const, amount: m.net }] : []),
+      ...(st.sentAt ? [{ at: st.sentAt, by: biller, use: "claim" as const, action: "claim" as const, amount: m.net }] : []),
+    ];
+    const d: ClaimDraft = {
+      visit: i.visit, savedAt: st.savedAt, savedBy: biller, claimDate: sentDay, accountingDate: sentDay,
+      ...(st.reviewedAt ? { reviewedAt: st.reviewedAt } : {}),
+      ...(st.sentAt && soft.length ? { ack: { at: st.sentAt, by: biller, reason: "Height not measured at the visit; the payer accepts it for this plan.", ids: soft } } : {}),
+      ...(sends.length ? { sends } : {}),
+    };
+    const at = drafts.findIndex((x) => x.visit === i.visit);
+    if (at >= 0) drafts[at] = { ...drafts[at], ...d }; else drafts.push(d);
+  }
+  store.set({ ...s0, drafts, answers: { ...(s0.answers ?? {}), ...r.answers }, demoSeeded: true });
+  return inputs.length;
+}
+
+// In the browser the demo history is added on first load. Tests call seedDemoClaims themselves.
+if (typeof window !== "undefined") {
+  try { seedDemoClaims(); } catch { /* the demo history is optional */ }
+}
+

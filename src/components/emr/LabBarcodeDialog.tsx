@@ -9,6 +9,7 @@ import { leafTests } from "@/lib/lab";
 import { markLabelsPrinted, sampleOf, specimenBarcode, useLabExtras } from "@/lib/lab-extras";
 import type { Patient } from "@/lib/model";
 import { esc, printDocument, printableName } from "@/lib/print-doc";
+import { fmtDateTime } from "@/lib/format";
 
 interface Label {
   barcode: string;
@@ -18,7 +19,7 @@ interface Label {
 }
 
 const stamp = (iso: string) =>
-  `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  fmtDateTime(iso);
 
 /** One label per specimen: the tube is what the bench scans, so the label lists every test that goes in it. */
 export function labelsFor(order: LabOrder): Label[] {
