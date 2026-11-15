@@ -1,7 +1,9 @@
 import * as React from "react";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { IconArrowsExchange, IconFileDollar, IconFileInvoice, IconLayoutDashboard, IconUser, IconUserShield } from "@tabler/icons-react";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy, List, Pencil, Pin, PinOff, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy, List, MonitorX, Pencil, Pin, PinOff, ShieldAlert, X } from "lucide-react";
+import { Button } from "@/components/ui/primitives";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -11,9 +13,13 @@ import { NAV } from "@/lib/nav";
 import { caseOf, useFinancial } from "@/lib/nphies-financial";
 import { RouteProvider, routeOf } from "@/lib/router";
 import { hasGlass, useSession } from "@/lib/session";
-import { patientName, useHis } from "@/lib/store";
+import { getState, patientName, useHis } from "@/lib/store";
+import { patientMarker, type PatientMarker } from "@/lib/patient-marker";
+import { answerPatientCheck, notePatientActivity, usePatientCheck } from "@/lib/wrong-patient";
+import { switchToOther, useItHere, type BlockReason } from "@/lib/single-session";
 import {
-  activeTab, getTabs, kindOf, loadTabs, requestNewTab, splitRoute, syncRoute, tabActions, tabsUser, useTabs, type WorkspaceTab,
+  activeTab, canDuplicate, CHART_LIMIT, chartsOldestFirst, getTabs, kindOf, loadTabs, requestNewTab, splitRoute, syncRoute, tabActions, tabsUser, useTabs,
+  type WorkspaceTab,
 } from "@/lib/workspace-tabs";
 
 /**
@@ -35,7 +41,7 @@ const EXTRA_LABELS: Record<string, string> = {
 };
 const words = (path: string) => path.split("/").filter(Boolean).pop()?.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") || "Dashboard";
 
-export interface TabLook { title: string; icon: React.ElementType; masked?: boolean }
+export interface TabLook { title: string; icon: React.ElementType; masked?: boolean; marker?: PatientMarker; mrn?: string }
 
 export function useTabLook(tab: WorkspaceTab): TabLook {
   const his = useHis();
@@ -50,8 +56,8 @@ export function useTabLook(tab: WorkspaceTab): TabLook {
       const enc = his.encounters.find((e) => e.visitNumber === visit);
       const p = enc && his.patients.find((x) => x.id === enc.patientId);
       if (!p) return { title: `Chart ${visit}`, icon: IconUser };
-      if (p.confidential && !hasGlass(p.id)) return { title: "Confidential patient", icon: IconUserShield, masked: true };
-      return { title: patientName(p), icon: IconUser };
+      if (p.confidential && !hasGlass(p.id)) return { title: "Confidential patient", icon: IconUserShield, masked: true, marker: patientMarker(p, true), mrn: p.mrn };
+      return { title: patientName(p), icon: IconUser, marker: patientMarker(p, false), mrn: p.mrn };
     }
     if (kind === "claim") return { title: `Claim ${caseOf(visit).claim?.claimNumber ?? visit}`, icon: IconFileDollar };
     if (kind === "invoice") {
@@ -96,11 +102,27 @@ export function useWorkspace(): void {
     const onHash = () => {
       const r = currentHash();
       if (!r) return showRoute(activeTab(getTabs()).route);
-      syncRoute(r);
+      // When a chart has to wait for the close-a-chart dialog, the address goes back to the tab still showing.
+      const want = syncRoute(r);
+      if (want !== r) showRoute(want);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  // Wrong-patient check: record which patient the user is working on (the chart tab shown, and clicks and keys in it).
+  React.useEffect(() => {
+    const pid = chartPatientId(active.route);
+    if (pid) notePatientActivity(pid);
+    const onUse = () => {
+      const id = chartPatientId(activeTab(getTabs()).route);
+      if (id) notePatientActivity(id);
+    };
+    const panel = document.getElementById("workspace-panel");
+    panel?.addEventListener("pointerdown", onUse, true);
+    panel?.addEventListener("keydown", onUse, true);
+    return () => { panel?.removeEventListener("pointerdown", onUse, true); panel?.removeEventListener("keydown", onUse, true); };
+  }, [active.route]);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -116,6 +138,13 @@ export function useWorkspace(): void {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+}
+
+/** The patient of a chart route, or "" for any other page. */
+function chartPatientId(route: string): string {
+  if (kindOf(route) !== "chart") return "";
+  const visit = splitRoute(route).params.get("visit");
+  return getState().encounters.find((e) => e.visitNumber === visit)?.patientId ?? "";
 }
 
 /** For links and menus: a Ctrl+click or a middle click opens the target in a new tab. Call before navigating. */
@@ -179,7 +208,9 @@ function TabMenuItems({ tab, onRename }: { tab: WorkspaceTab; onRename: () => vo
       <DropdownMenuItem onSelect={() => tabActions.togglePin(tab.id)}>
         {tab.pinned ? <><PinOff className="size-4" aria-hidden="true" />Unpin</> : <><Pin className="size-4" aria-hidden="true" />Pin</>}
       </DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => tabActions.duplicate(tab.id)}><Copy className="size-4" aria-hidden="true" />Duplicate</DropdownMenuItem>
+      <DropdownMenuItem disabled={!canDuplicate(getTabs(), tab.id)} onSelect={() => tabActions.duplicate(tab.id)}>
+        <Copy className="size-4" aria-hidden="true" />Duplicate{!canDuplicate(getTabs(), tab.id) && <span className="ms-auto text-xs">{CHART_LIMIT} charts open</span>}
+      </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem onSelect={() => tabActions.close(tab.id)}><X className="size-4" aria-hidden="true" />Close<span className="ms-auto text-xs text-muted-foreground">Alt+W</span></DropdownMenuItem>
       <DropdownMenuItem onSelect={() => tabActions.closeOthers(tab.id)}>Close Others</DropdownMenuItem>
@@ -255,7 +286,7 @@ function Tab({ tab, index, active, focusId, setFocusId, onKeyNav }: {
           {...drag.listeners}
         >
           {tab.pinned && <Pin className="size-3 shrink-0 text-[#032C26]/60 dark:text-foreground/60" aria-hidden="true" />}
-          <Icon className={cn("size-4 shrink-0", look.masked ? "text-warn" : active ? "text-[#032C26] dark:text-foreground" : "")} stroke={1.75} aria-hidden="true" />
+          {look.marker ? <Marker m={look.marker} /> : <Icon className={cn("size-4 shrink-0", active ? "text-[#032C26] dark:text-foreground" : "")} stroke={1.75} aria-hidden="true" />}
           <span className={cn("truncate", active && "font-medium")}>{look.title}</span>
         </button>
       )}
@@ -390,6 +421,140 @@ export function WorkspaceTabs() {
           <p className="px-2 pb-1.5 pt-0.5 text-xs text-muted-foreground">Off: a page replaces the current tab unless it is pinned. Ctrl+click or middle click always opens a new tab.</p>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+/* ---------- patient safety: markers, the chart limit, the wrong-patient check ---------- */
+
+/** The patient's colour and initials. A confidential patient shows a neutral marker with a shield. */
+export function Marker({ m, size = "sm" }: { m: PatientMarker; size?: "sm" | "md" }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-semibold leading-none ring-1 ring-black/10",
+        size === "sm" ? "size-[1.125rem] text-[0.625rem]" : "size-7 text-xs")}
+      style={{ background: m.bg, color: m.fg }}
+    >
+      {m.masked ? <ShieldAlert className={size === "sm" ? "size-3" : "size-4"} /> : m.initials}
+    </span>
+  );
+}
+
+/** A thin band in the active patient's colour across the top of the chart, matching the marker on its tab. */
+export function PatientBand() {
+  const s = useTabs();
+  const look = useTabLook(activeTab(s));
+  if (!look.marker) return null;
+  return (
+    <div className="-mt-2 mb-3 flex items-center gap-2" data-patient-band="">
+      <div className="h-1.5 flex-1 rounded-full shadow-[inset_0_0_0_1px_rgba(3,44,38,0.3)]" style={{ background: look.marker.bg }} aria-hidden="true" />
+      <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <Marker m={look.marker} />
+        <span>{look.title}{look.mrn ? `, MRN ${look.mrn}` : ""}</span>
+      </span>
+    </div>
+  );
+}
+
+function ChartRow({ tab, onPick }: { tab: WorkspaceTab; onPick: () => void }) {
+  const look = useTabLook(tab);
+  const opened = new Date(tab.openedAt);
+  return (
+    <li>
+      <button type="button" onClick={onPick} className="flex w-full items-center gap-3 rounded-lg border border-border bg-white px-3 py-2 text-left hover:border-[#39EDD5] hover:bg-[#f2fbf8] focus-visible:outline-2 focus-visible:outline-ring dark:bg-card">
+        {look.marker && <Marker m={look.marker} size="md" />}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{look.title}</span>
+          <span className="block text-xs text-muted-foreground">{look.mrn ? `MRN ${look.mrn}, ` : ""}opened {String(opened.getHours()).padStart(2, "0")}:{String(opened.getMinutes()).padStart(2, "0")}</span>
+        </span>
+        <span className="shrink-0 text-xs font-medium text-[#016b5f] dark:text-primary">Close This Chart</span>
+      </button>
+    </li>
+  );
+}
+
+/** Opening one chart more than CHART_LIMIT asks which open chart to close. Nothing closes without the user's choice. */
+export function ChartLimitDialog() {
+  const s = useTabs();
+  const pending = s.pendingChart;
+  const waiting = useTabLook({ id: "pending", route: pending ?? "/dashboard", pinned: false, openedAt: 0, usedAt: 0, scroll: 0 });
+  return (
+    <Dialog open={!!pending} onOpenChange={(o) => { if (!o) tabActions.cancelChart(); }}>
+      <DialogContent className="max-w-md">
+        <DialogTitle>{CHART_LIMIT} Patient Charts Are Open</DialogTitle>
+        <DialogDescription>
+          To open {waiting.title}, close one of these charts first. Keeping few charts open helps avoid working on the wrong patient.
+        </DialogDescription>
+        <ul className="mt-1 space-y-2">
+          {chartsOldestFirst(s).map((t) => <ChartRow key={t.id} tab={t} onPick={() => tabActions.resolveChart(t.id)} />)}
+        </ul>
+        <div className="flex justify-end">
+          <Button onClick={() => tabActions.cancelChart()}>Cancel</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const nameFor = (id: string) => {
+  const p = getState().patients.find((x) => x.id === id);
+  if (!p) return { name: "this patient", mrn: "", marker: undefined as PatientMarker | undefined };
+  const masked = !!p.confidential && !hasGlass(p.id);
+  return { name: masked ? "Confidential patient" : patientName(p), mrn: p.mrn, marker: patientMarker(p, masked) };
+};
+
+/** The wrong-patient question raised by confirmPatient(). */
+export function PatientCheckDialog() {
+  const check = usePatientCheck();
+  useHis();
+  if (!check) return null;
+  const target = nameFor(check.patientId);
+  const other = nameFor(check.otherId);
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) answerPatientCheck(false); }}>
+      <DialogContent className="max-w-md" showCloseButton={false}>
+        <DialogTitle className="flex items-center gap-2">{target.marker && <Marker m={target.marker} size="md" />}Check The Patient</DialogTitle>
+        <DialogDescription className="text-sm text-foreground">
+          You are about to sign for <strong>{target.name}</strong>{target.mrn ? <>, MRN <span className="font-mono">{target.mrn}</span></> : null}.
+          You were just working on <strong>{other.name}</strong>. Continue?
+        </DialogDescription>
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => answerPatientCheck(false)}>Cancel</Button>
+          <Button variant="primary" autoFocus onClick={() => answerPatientCheck(true)}>Continue For {target.name}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------- one copy per browser ---------- */
+
+/** Shown instead of the app when Onasi HIS is active in another tab or window of this browser. */
+export function SessionNotice({ reason }: { reason: BlockReason | null }) {
+  const [asked, setAsked] = React.useState(false);
+  const text = reason === "taken-over"
+    ? "Onasi HIS is now in use in another tab. This tab has stopped so the two cannot overwrite each other."
+    : reason === "other-closed"
+      ? "The other Onasi HIS tab was closed. You can use it here now."
+      : "Using two copies at once can mix up patients and overwrite saved work, so only one copy can be used at a time.";
+  return (
+    <div className="flex min-h-full items-center justify-center bg-background p-4">
+      <div role="alertdialog" aria-labelledby="session-title" aria-describedby="session-text" className="w-full max-w-md rounded-2xl border border-[color:var(--glass-border)] bg-white/90 p-6 shadow-[var(--glass-shadow)] backdrop-blur dark:bg-card">
+        <img src="/brand/onasi-logo.png" alt="Onasi" className="mb-4 h-8 w-auto" />
+        <div className="flex items-start gap-3">
+          <MonitorX className="mt-0.5 size-6 shrink-0 text-[#016b5f] dark:text-primary" aria-hidden="true" />
+          <div>
+            <h1 id="session-title" className="text-lg font-semibold">{reason === "other-closed" ? "The Other Tab Was Closed" : "Onasi HIS Is Already Open In Another Tab"}</h1>
+            <p id="session-text" className="mt-1 text-sm text-muted-foreground">{text}</p>
+          </div>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {reason !== "other-closed" && <Button onClick={() => { switchToOther(); setAsked(true); }}>Switch To That Tab</Button>}
+          <Button variant="primary" onClick={useItHere}>Use It Here Instead</Button>
+        </div>
+        {asked && <p className="mt-3 text-xs text-muted-foreground">If your browser did not switch, click the other Onasi HIS tab in the browser's tab bar. Browsers do not always let a page bring another tab to the front.</p>}
+      </div>
     </div>
   );
 }

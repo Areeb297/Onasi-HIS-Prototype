@@ -5,7 +5,8 @@ import { EventBadge } from "@/components/badges";
 import { IdleLock } from "@/components/IdleLock";
 import { DisplayMenu } from "@/components/DisplayMenu";
 import { ToastHost } from "@/components/ToastHost";
-import { TabPanels, WorkspaceTabs, useWorkspace, wantsNewTab } from "@/components/WorkspaceTabs";
+import { ChartLimitDialog, PatientBand, PatientCheckDialog, SessionNotice, TabPanels, WorkspaceTabs, useWorkspace, wantsNewTab } from "@/components/WorkspaceTabs";
+import { useSingleSession } from "@/lib/single-session";
 import { Button, Card, CardHeader } from "@/components/ui/primitives";
 import { AiAssistant } from "@/components/AiAssistant";
 import { FullScreenButton } from "@/components/FullScreenButton";
@@ -376,7 +377,18 @@ const RAIL = {
   "--admit": "#34e0b0", "--ok": "#4ade9e", "--move": "#8ec0ff", "--update": "#c3adff", "--cancel": "#ff9db0", "--merge": "#fbbf24", "--warn": "#fbbf24",
 } as React.CSSProperties;
 
+/**
+ * One active copy per browser: a second tab shows a notice instead of the app, so two copies never edit at once.
+ * The app is not mounted at all while blocked, so it cannot save over the other copy's work.
+ */
 export default function App() {
+  const session = useSingleSession();
+  if (session.status === "checking") return null;
+  if (session.status === "blocked") return <SessionNotice reason={session.reason} />;
+  return <Shell />;
+}
+
+function Shell() {
   const route = useRoute();
   const dev = useDevMode();
   const { role } = useSession();
@@ -433,6 +445,7 @@ export default function App() {
           <WorkspaceTabs />
         </header>
         <div id="workspace-panel" role="tabpanel" aria-label="Page" className="mx-auto flex min-h-[calc(100%-5.625rem)] max-w-[1500px] flex-col px-4 pb-20 pt-5 sm:px-6">
+          <PatientBand />
           <TabPanels scroller={mainRef} render={() => <Page />} />
           <div className="h-10 shrink-0" aria-hidden="true" />
           <footer className="mt-auto border-t border-border pt-4 text-xs text-muted-foreground sm:pe-40">
@@ -441,6 +454,8 @@ export default function App() {
         </div>
       </main>
       <Palette />
+      <ChartLimitDialog />
+      <PatientCheckDialog />
       <AiAssistant />
       <ToastHost />
       <AutomationMonitor />

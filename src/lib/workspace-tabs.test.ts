@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  activeTab, closeAll, closeOthers, closeTab, cycle, duplicateTab, getTabs, initialState, jumpTo, loadTabs, moveTab, openRoute,
-  parseSaved, placeKey, renameTab, requestNewTab, storageKey, syncRoute, tabActions, TAB_LIMIT, togglePin, type TabsState,
+  activeTab, canDuplicate, cancelPendingChart, CHART_LIMIT, chartsOldestFirst, chartTabs, closeAll, closeOthers, closeTab, cycle, duplicateTab,
+  getTabs, initialState, jumpTo, loadTabs, moveTab, openRoute, parseSaved, placeKey, renameTab, requestNewTab, resolvePendingChart, storageKey,
+  syncRoute, tabActions, TAB_LIMIT, togglePin, type TabsState,
 } from "./workspace-tabs";
 
 const mem = new Map<string, string>();
@@ -113,11 +114,11 @@ describe("closing, moving, pinning", () => {
     let s = initialState("/opd", at());
     const first = s.activeId;
     s = togglePin(s, first);
-    for (let i = 1; i <= TAB_LIMIT + 3; i++) s = open(s, `/chart?visit=V${i}`);
+    for (let i = 1; i <= TAB_LIMIT + 3; i++) s = open(s, `/m/page-${i}`, true);
     expect(s.tabs).toHaveLength(TAB_LIMIT);
     expect(s.tabs[0].id).toBe(first); // pinned, kept although oldest
-    expect(routes(s)).not.toContain("/chart?visit=V1");
-    expect(activeTab(s).route).toBe(`/chart?visit=V${TAB_LIMIT + 3}`);
+    expect(routes(s)).not.toContain("/m/page-1");
+    expect(activeTab(s).route).toBe(`/m/page-${TAB_LIMIT + 3}`);
   });
 
   it("Ctrl+Tab cycles and Ctrl+1..9 jump, with 9 the last tab", () => {
@@ -129,6 +130,54 @@ describe("closing, moving, pinning", () => {
     expect(activeTab(jumpTo(s, 1, at())).route).toBe("/opd");
     expect(activeTab(jumpTo(s, 9, at())).route).toBe("/chart?visit=V2");
     expect(jumpTo(s, 5, at())).toBe(s);
+  });
+});
+
+describe("chart limit", () => {
+  const fourCharts = () => {
+    let s = initialState("/opd", at());
+    for (let i = 1; i <= CHART_LIMIT; i++) s = open(s, `/chart?visit=V${i}`);
+    return s;
+  };
+
+  it("opening one chart more than the limit opens nothing and closes nothing; it waits for the user", () => {
+    const s = fourCharts();
+    const next = open(s, "/chart?visit=V9");
+    expect(chartTabs(next)).toHaveLength(CHART_LIMIT);
+    expect(next.tabs.map((t) => t.id)).toEqual(s.tabs.map((t) => t.id));
+    expect(next.activeId).toBe(s.activeId);
+    expect(next.pendingChart).toBe("/chart?visit=V9");
+  });
+
+  it("an already open chart and other pages are not limited", () => {
+    const s = fourCharts();
+    expect(open(s, "/chart?visit=V2&s=vitals").pendingChart).toBeUndefined();
+    const withPages = open(open(s, "/billing", true), "/beds", true);
+    expect(withPages.tabs).toHaveLength(CHART_LIMIT + 3);
+    expect(withPages.pendingChart).toBeUndefined();
+  });
+
+  it("lists charts oldest first, and closing the chart the user picks opens the waiting one", () => {
+    const s = open(fourCharts(), "/chart?visit=V9");
+    const list = chartsOldestFirst(s);
+    expect(list.map((t) => t.route)).toEqual(["/chart?visit=V1", "/chart?visit=V2", "/chart?visit=V3", "/chart?visit=V4"]);
+    const done = resolvePendingChart(s, list[1].id, at());
+    expect(done.pendingChart).toBeUndefined();
+    expect(routes(done)).not.toContain("/chart?visit=V2");
+    expect(activeTab(done).route).toBe("/chart?visit=V9");
+    expect(chartTabs(done)).toHaveLength(CHART_LIMIT);
+    expect(cancelPendingChart(s).pendingChart).toBeUndefined();
+    expect(resolvePendingChart(s, s.tabs[0].id, at())).toBe(s); // a page is not a chart: nothing happens
+  });
+
+  it("the overall tab limit never closes a chart, and a chart cannot be duplicated past the limit", () => {
+    let s = fourCharts();
+    for (let i = 0; i < TAB_LIMIT + 2; i++) s = open(s, `/m/page-${i}`, true);
+    expect(s.tabs).toHaveLength(TAB_LIMIT);
+    expect(chartTabs(s)).toHaveLength(CHART_LIMIT);
+    const chart = chartTabs(s)[0].id;
+    expect(canDuplicate(s, chart)).toBe(false);
+    expect(duplicateTab(s, chart, at())).toBe(s);
   });
 });
 

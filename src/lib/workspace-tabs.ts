@@ -16,6 +16,11 @@ import { useSyncExternalStore } from "react";
  */
 
 export const TAB_LIMIT = 12;
+/**
+ * At most this many patient charts open at once (MOH guidance against many open patient sessions: wrong-patient
+ * errors). Worklists and other pages do not count. Opening one more asks which chart to close; none closes silently.
+ */
+export const CHART_LIMIT = 4;
 
 export interface WorkspaceTab {
   id: string;
@@ -35,6 +40,8 @@ export interface TabsState {
   activeId: string;
   /** "Open Pages In New Tabs": a plain click on a page opens a new tab instead of replacing the active one. */
   newTabOnClick: boolean;
+  /** A chart waiting to open because CHART_LIMIT charts are already open. The shell asks which one to close. */
+  pendingChart?: string;
 }
 
 /** Records open in their own tab, keyed by the parameter that names them. */
@@ -76,11 +83,19 @@ export function initialState(route: string, now: number = Date.now()): TabsState
 
 export const activeTab = (s: TabsState): WorkspaceTab => s.tabs.find((t) => t.id === s.activeId) ?? s.tabs[0];
 
-/** Closes the oldest unpinned tabs, never the active one, until there are at most `limit`. */
+export const chartTabs = (s: TabsState): WorkspaceTab[] => s.tabs.filter((t) => kindOf(t.route) === "chart");
+
+/** Open charts, the one opened longest ago first: the order the close-a-chart dialog lists them. */
+export const chartsOldestFirst = (s: TabsState): WorkspaceTab[] => [...chartTabs(s)].sort((a, b) => a.openedAt - b.openedAt);
+
+/**
+ * Closes the oldest unpinned tabs, never the active one, until there are at most `limit`. Charts are never closed here:
+ * they have their own limit and are only closed by the user.
+ */
 export function enforceLimit(s: TabsState, limit: number = TAB_LIMIT): TabsState {
   let tabs = s.tabs;
   while (tabs.length > limit) {
-    const victim = tabs.filter((t) => !t.pinned && t.id !== s.activeId).sort((a, b) => a.usedAt - b.usedAt)[0];
+    const victim = tabs.filter((t) => !t.pinned && t.id !== s.activeId && kindOf(t.route) !== "chart").sort((a, b) => a.usedAt - b.usedAt)[0];
     if (!victim) break;
     tabs = tabs.filter((t) => t.id !== victim.id);
   }
@@ -88,7 +103,7 @@ export function enforceLimit(s: TabsState, limit: number = TAB_LIMIT): TabsState
 }
 
 /** What happens when the address changes to `route`. See the rules at the top of the file. */
-export function openRoute(s: TabsState, route: string, opts: { newTab?: boolean; now?: number; limit?: number } = {}): TabsState {
+export function openRoute(s: TabsState, route: string, opts: { newTab?: boolean; now?: number; limit?: number; chartLimit?: number } = {}): TabsState {
   const now = opts.now ?? Date.now();
   const active = activeTab(s);
   if (active && active.route === route) return s;
@@ -97,6 +112,8 @@ export function openRoute(s: TabsState, route: string, opts: { newTab?: boolean;
   if (existing) {
     return { ...s, activeId: existing.id, tabs: s.tabs.map((t) => (t.id === existing.id ? { ...t, route, usedAt: now } : t)) };
   }
+  // One chart too many: nothing opens and nothing closes until the user picks a chart to close.
+  if (kindOf(route) === "chart" && chartTabs(s).length >= (opts.chartLimit ?? CHART_LIMIT)) return { ...s, pendingChart: route };
   const fresh = opts.newTab || isRecord(route) || !active || active.pinned || isRecord(active.route) || s.newTabOnClick;
   if (!fresh) {
     // The tab now holds another place, so a name typed for the old place no longer fits.
@@ -166,10 +183,26 @@ export function togglePin(s: TabsState, id: string): TabsState {
   return { ...s, tabs: [...tabs.filter((t) => t.pinned), ...tabs.filter((t) => !t.pinned)] };
 }
 
+/** The user picked an open chart to close so the waiting chart can open. */
+export function resolvePendingChart(s: TabsState, closeId: string, now: number = Date.now()): TabsState {
+  const route = s.pendingChart;
+  if (!route || kindOf(s.tabs.find((t) => t.id === closeId)?.route ?? "") !== "chart") return s;
+  const closed = closeTab({ ...s, pendingChart: undefined }, closeId, now);
+  return openRoute(closed, route, { newTab: true, now });
+}
+
+export const cancelPendingChart = (s: TabsState): TabsState => (s.pendingChart ? { ...s, pendingChart: undefined } : s);
+
+/** Whether a tab can be duplicated: a chart only while fewer than CHART_LIMIT charts are open. */
+export const canDuplicate = (s: TabsState, id: string, chartLimit: number = CHART_LIMIT): boolean => {
+  const t = s.tabs.find((x) => x.id === id);
+  return !!t && (kindOf(t.route) !== "chart" || chartTabs(s).length < chartLimit);
+};
+
 /** A copy of a tab next to it, same place and name, not pinned. It becomes active. */
 export function duplicateTab(s: TabsState, id: string, now: number = Date.now(), limit: number = TAB_LIMIT): TabsState {
   const at = s.tabs.findIndex((t) => t.id === id);
-  if (at < 0) return s;
+  if (at < 0 || !canDuplicate(s, id)) return s;
   const src = s.tabs[at];
   const t = makeTab(src.route, now, { title: src.title, scroll: src.scroll });
   const tabs = [...s.tabs.slice(0, at + 1), t, ...s.tabs.slice(at + 1)];
@@ -282,6 +315,9 @@ export const tabActions = {
   cycle: (step: number) => set(cycle(state, step)),
   jump: (digit: number) => set(jumpTo(state, digit)),
   setNewTabOnClick: (on: boolean) => set({ ...state, newTabOnClick: on }),
+  /** Close this chart and open the one that was waiting. */
+  resolveChart: (closeId: string) => set(resolvePendingChart(state, closeId)),
+  cancelChart: () => set(cancelPendingChart(state)),
 };
 
 function subscribe(cb: () => void) {
