@@ -33,9 +33,10 @@ export const DEMO_CARDS: Record<string, Card> = {
 };
 
 /** The claim state each seeded visit is brought to. Keyed by patient: each has one current visit. */
-export const EXISTING_TARGETS: Record<string, DemoTarget> = {
-  P002: "pa-approved", P003: "pa-pended", P004: "drafted", P006: "submitted", P008: "drafted",
-  P011: "reviewed", P012: "drafted", P014: "drafted",
+export const EXISTING_TARGETS: Record<string, { target: DemoTarget; reason: string }> = {
+  P002: { target: "pa-approved", reason: "High blood sugar" }, P003: { target: "pa-pended", reason: "Chest pain" }, P004: { target: "drafted", reason: "Chest X-ray" },
+  P006: { target: "submitted", reason: "Hip pain after fall" }, P008: { target: "drafted", reason: "Chest pain" }, P011: { target: "reviewed", reason: "Sore throat" },
+  P012: { target: "drafted", reason: "Abdominal pain" }, P014: { target: "drafted", reason: "Chest pain and sweating" },
 };
 
 const RAW: [id: string, given: string, family: string, dob: string, sex: "M" | "F", nationality: string, payer: string, copay: number, cls?: string][] = [
@@ -169,5 +170,12 @@ export function addDemoData<S extends { patients: Patient[]; encounters: Encount
 export function demoTargetOf(enc: Pick<Encounter, "patientId" | "cls" | "reason" | "status">): DemoTarget | undefined {
   const past = DEMO_VISITS.find((v) => v.pid === enc.patientId && v.cls === enc.cls && v.reason === enc.reason);
   if (past) return past.target;
-  return enc.status !== "cancelled" && enc.status !== "preadmit" ? EXISTING_TARGETS[enc.patientId] : undefined;
+  const seeded = EXISTING_TARGETS[enc.patientId];
+  // Only the seeded visit of that patient (matched by its reason), not visits added later.
+  return seeded && seeded.reason === enc.reason && enc.status !== "cancelled" && enc.status !== "preadmit" ? seeded.target : undefined;
+}
+
+/** Saved data from before the sample patients existed: adds them once. Data that already has them is returned as it is. */
+export function withDemoData<S extends { patients: Patient[]; encounters: Encounter[]; counters: { visit: number; patient: number } }>(state: S, now: Date = new Date()): S {
+  return state.patients.some((p) => p.id === DEMO_MARK) ? state : addDemoData(state, now);
 }

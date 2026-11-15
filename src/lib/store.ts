@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { audit } from "./audit";
-import { addDemoData } from "./rcm-demo";
+import { addDemoData, withDemoData } from "./rcm-demo";
 import { bedInfos, bedProblem } from "./beds";
 import { assemble, buildSegments, countChecks, messageToString, segmentStatuses, validate, type BuiltMessage } from "./hl7";
 import type { BedFlag, Encounter, HisState, LogEntry, LogSource, Patient, ScenarioForm } from "./model";
@@ -431,7 +431,8 @@ export function getState(): HisState {
 function load(): HisState {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as HisState;
+    // Data saved before the RCM sample patients existed gets them added (rcm-demo.ts), so the claim screens have claims.
+    if (raw) return withDemoData(JSON.parse(raw) as HisState);
   } catch {
     /* fall through to seed */
   }
