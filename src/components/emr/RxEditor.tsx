@@ -521,7 +521,7 @@ export function RxEditor({ enc, editing, onDone }: Props) {
             )}
 
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
-              {editing ? <Button onClick={() => { v.reset(); onDone(); }}>Cancel Edit</Button> : <Button onClick={() => { v.reset(); reset(); }}>Clear</Button>}
+              {editing ? <Button onClick={() => { v.reset(); reset(); onDone(); }}>Cancel Edit</Button> : <Button onClick={() => { v.reset(); reset(); }}>Clear</Button>}
               <span title={!canWrite ? "You do not have permission to prescribe" : undefined}>
                 <Button variant="primary" disabled={!canWrite} onClick={submit}>
                   {editing ? "Save Changes" : own ? "Record Patient's Own Medicine" : "Add To Prescription"}

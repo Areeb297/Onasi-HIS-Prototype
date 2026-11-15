@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Table, Td, Th, cn } from "@/components/ui/primitives";
 import {
-  AttentionLink, CheckRow, ChipMulti, ChipSingle, ChoiceSelect, DateTimeInput, ErrorSummary, FormActions, FormGrid, FormSection, SegmentedControl,
+  AttentionLink, CheckRow, ChipMulti, ChipSingle, ChoiceSelect, DateTimeInput, ErrorSummary, FormActions, FormGrid, FormSection, ReasonButton, SegmentedControl,
   clearDraft, countIn, draftTime, fitsSegmented, focusField, isBlank, isDirty, loadDraft, rules, saveDraft, summaryItems, useFormErrors, useUnsavedChangesGuard, type Errors,
 } from "@/components/forms";
 import { pushToast } from "@/lib/toast";
@@ -407,9 +407,9 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
         title={form.title}
         subtitle={dev && form.nphies ? `NPHIES: ${form.nphies}` : form.description}
         right={
-          <Button variant="primary" disabled={!!blocked} onClick={() => setEditing({ id: null, initial: prefillValues(form) })} title={blocked || undefined}>
+          <ReasonButton variant="primary" reason={blocked || undefined} onClick={() => setEditing({ id: null, initial: prefillValues(form) })}>
             {hasDraft ? <><FileClock className="size-4" />Continue Draft</> : <><Plus className="size-4" />Add New</>}
-          </Button>
+          </ReasonButton>
         }
       />
       {wrongSex && (
@@ -447,8 +447,8 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
               <Td className="whitespace-nowrap text-sm text-muted-foreground">{r.author}</Td>
               <Td className="text-right">
                 <span className="inline-flex gap-1.5">
-                  <Button size="sm" disabled={!canWrite} title={canWrite ? undefined : "Your role cannot change records."} onClick={() => setEditing({ id: r.id, initial: r.values })}><Pencil className="size-4" />Edit</Button>
-                  <Button size="sm" variant="danger" disabled={!canWrite} title={canWrite ? undefined : "Your role cannot delete records."} onClick={() => deleteFormRecord(enc.visitNumber, form.id, r.id, enc.patientId)}><Trash2 className="size-4" />Delete</Button>
+                  <ReasonButton size="sm" reason={canWrite ? undefined : "Your role cannot change records."} onClick={() => setEditing({ id: r.id, initial: r.values })}><Pencil className="size-4" />Edit</ReasonButton>
+                  <ReasonButton size="sm" variant="danger" reason={canWrite ? undefined : "Your role cannot delete records."} onClick={() => deleteFormRecord(enc.visitNumber, form.id, r.id, enc.patientId)}><Trash2 className="size-4" />Delete</ReasonButton>
                 </span>
               </Td>
             </tr>

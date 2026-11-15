@@ -96,3 +96,52 @@ export const EMR_MENU: EmrItem[] = [
 ];
 
 export const EMR_GROUPS: EmrGroup[] = ["General", "Rehab", "Gynecology & Antenatal (OPD)", "Obstetrics & Labor (IPD)", "OT", "Nursing"];
+
+/* ---------- module tabs ---------- */
+
+/**
+ * The chart's module tabs, the way Epic lays out a visit: a few tabs across the top, and under a tab its sections as
+ * sub-tabs, so every section is at most two clicks away. Section ids are the ones of EMR_MENU, and `?s=<id>` still
+ * opens a section. Laboratory and Radiology hold both orders and results, so they sit under Orders and under Results;
+ * `?t=orders` says which of the two tabs is meant, and without it Results wins.
+ * Everything not named here (the specialty and general forms, ADT Messages) is under More.
+ */
+export type TabId = "overview" | "notes" | "orders" | "results" | "medications" | "vitals" | "problems" | "documents" | "more";
+
+export interface EmrTabItem {
+  /** A section id of EMR_MENU. */
+  id: string;
+  label: string;
+}
+
+export interface EmrTab {
+  id: TabId;
+  label: string;
+  items: EmrTabItem[];
+}
+
+const pick = (id: string, label?: string): EmrTabItem => ({ id, label: label ?? EMR_MENU.find((i) => i.id === id)!.label });
+
+const NAMED: EmrTab[] = [
+  { id: "overview", label: "Overview", items: [pick("overview")] },
+  { id: "notes", label: "Notes", items: [pick("notes"), pick("soap"), pick("nurse-notes")] },
+  {
+    id: "orders", label: "Orders",
+    items: [pick("prescription"), pick("laboratory", "Laboratory Orders"), pick("radiology", "Radiology Orders"), pick("procedures"), pick("consults"), pick("follow-up"), pick("refer-patient")],
+  },
+  { id: "results", label: "Results", items: [pick("laboratory", "Laboratory Results"), pick("radiology", "Radiology Reports")] },
+  { id: "medications", label: "Medications", items: [pick("emar")] },
+  { id: "vitals", label: "Vitals", items: [pick("vitals")] },
+  { id: "problems", label: "Problems", items: [pick("complaints"), pick("diagnosis"), pick("allergies")] },
+  { id: "documents", label: "Documents", items: [pick("documents"), pick("attachments"), pick("sick-leave")] },
+];
+
+const named = new Set(NAMED.flatMap((t) => t.items.map((i) => i.id)));
+
+export const EMR_TABS: EmrTab[] = [...NAMED, { id: "more", label: "More", items: EMR_MENU.filter((i) => !named.has(i.id)).map((i) => pick(i.id)) }];
+
+/** The tab a section opens in. `wanted` (the `t` of the link) wins when that tab holds the section; else Results before Orders. */
+export function tabFor(section: string, wanted?: string | null): EmrTab {
+  const holds = (t: EmrTab) => t.items.some((i) => i.id === section);
+  return EMR_TABS.find((t) => t.id === wanted && holds(t)) ?? EMR_TABS.find((t) => t.id === "results" && holds(t)) ?? EMR_TABS.find(holds) ?? EMR_TABS[0];
+}

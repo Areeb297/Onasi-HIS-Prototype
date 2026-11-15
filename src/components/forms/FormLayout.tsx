@@ -277,7 +277,8 @@ export function FormActions({
     <div
       className={cn(
         "flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border bg-[color:var(--glass-solid)] px-4 py-3",
-        sticky && "sticky bottom-0 z-20 rounded-t-2xl border border-b-0 border-[color:var(--glass-border)] shadow-[0_-8px_24px_-16px_rgba(16,24,22,0.28)]",
+        // On a phone the floating assistant button sits at the bottom right: keep the buttons clear of it.
+        sticky && "sticky bottom-0 z-20 rounded-t-2xl border border-b-0 border-[color:var(--glass-border)] shadow-[0_-8px_24px_-16px_rgba(16,24,22,0.28)] max-sm:pe-16",
         reserveEnd && "sm:pe-44",
         className,
       )}

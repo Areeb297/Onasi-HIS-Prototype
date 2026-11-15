@@ -22,7 +22,7 @@ import { EVENT_BY_ID } from "@/lib/spec";
 import { bedLabel, nowLocal, patientName, updateEncounter, useHis } from "@/lib/store";
 import { visitMessages } from "@/lib/visitMessages";
 import { visitStatus } from "@/pages/WorklistPage";
-import { ChartMenu } from "@/components/ChartMenu";
+import { CHART_PANEL_ID, ChartTabs, chartTabDomId } from "@/components/emr/tabs/ChartTabs";
 import { VitalsSection } from "@/components/emr/VitalsSection";
 import { ChartOverview } from "@/components/emr/ChartOverview";
 import { AiBriefModal } from "@/components/ai/AiBriefModal";
@@ -43,7 +43,7 @@ import { ComplaintsSection } from "@/components/emr/ComplaintsSection";
 import { DiagnosisSection } from "@/components/emr/DiagnosisSection";
 import { audit } from "@/lib/audit";
 import { EMR_FORM_BY_ID } from "@/lib/emr-forms";
-import { EMR_MENU, type NativeId } from "@/lib/emr-menu";
+import { EMR_MENU, tabFor, type NativeId, type TabId } from "@/lib/emr-menu";
 import { breakGlass, can, hasGlass, useSession } from "@/lib/session";
 import { coverageView, normalizeDx } from "@/lib/chart-entries";
 import { caseOf, useFinancial } from "@/lib/nphies-financial";
@@ -126,9 +126,11 @@ export function ChartPage() {
   }
   if (gated) return <GlassGate patient={patient} />;
 
-  const go = (s: string) => navigate("/chart", { visit, s });
+  // The tab goes in the link only when the section sits in two tabs and the other one is meant (Laboratory under Orders).
+  const go = (s: string, t: TabId) => navigate("/chart", { visit, s, t: tabFor(s).id === t ? undefined : t });
   const onAct = (k: ActionKey) => (k === "CHART" ? undefined : act(k, enc.visitNumber));
   const item = EMR_MENU.find((i) => i.id === section) ?? EMR_MENU[0];
+  const tab = tabFor(item.id, route.params.get("t"));
   const Native = item.kind === "native" ? NATIVE[item.id as NativeId] : null;
   const formDef = item.kind === "form" ? EMR_FORM_BY_ID[item.id] : undefined;
 
@@ -153,13 +155,13 @@ export function ChartPage() {
         )}
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
-        <ChartMenu active={item.id} visit={enc.visitNumber} onPick={go} />
-        <div className="min-w-0">
-          {Native && <Native enc={enc} />}
-          {formDef && <EmrFormPage form={formDef} enc={enc} />}
-          {item.kind === "form" && !formDef && <Card><Empty>The form "{item.label}" is not defined yet.</Empty></Card>}
-        </div>
+      <ChartTabs enc={enc} patient={patient} tab={tab} section={item.id} onPick={go} />
+      <div id={CHART_PANEL_ID} role="tabpanel" aria-labelledby={chartTabDomId(tab.id)} className="mt-4 min-w-0">
+        {item.id === "laboratory"
+          ? <LabSection key={tab.id} enc={enc} view={tab.id === "orders" ? "Laboratory Orders" : "Results"} />
+          : Native && <Native enc={enc} />}
+        {formDef && <EmrFormPage form={formDef} enc={enc} />}
+        {item.kind === "form" && !formDef && <Card><Empty>The form "{item.label}" is not defined yet.</Empty></Card>}
       </div>
       {dialogs}
     </div>

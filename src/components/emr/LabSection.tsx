@@ -1,10 +1,12 @@
 import * as React from "react";
-import { ChevronDown, ShieldAlert } from "lucide-react";
+import { ChevronDown, FlaskConical, ShieldAlert } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { AssumptionNote, DocViewer, Gate, NphiesPill, PRIORITY_UI, LAB_STATUS_UI, StatusBadge } from "@/components/emr/fhir-ui";
+import { LabGridView } from "@/components/emr/lab-grid/LabGridView";
 import { LabOrderPad } from "@/components/emr/LabOrderPad";
 import { LabResultsTable } from "@/components/emr/LabResultsTable";
 import { OrderMetaLine } from "@/components/emr/OrderFields";
+import { GlassPillSwitch } from "@/components/ui/glass";
 import { visitInsured } from "@/lib/order-fields";
 import { Badge, Button, Card, CardHeader, Empty, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
@@ -35,14 +37,20 @@ function sendLabel(o: LabOrder): string | null {
   return null;
 }
 
-/** The Laboratory tab of the chart. Order in a few taps, see status and results, send to NPHIES. */
-export function LabSection({ enc }: { enc: Encounter }) {
+const VIEWS = ["Results", "Laboratory Orders"] as const;
+
+/**
+ * The Laboratory tab of the chart. It opens on the results grid (every visit of the patient, newest first).
+ * Ordering, order status and sending to NPHIES are one click away, under Laboratory Orders.
+ */
+export function LabSection({ enc, view: startView = "Results" }: { enc: Encounter; view?: (typeof VIEWS)[number] }) {
   const lab = useLab();
   const his = useHis();
   const dev = useDevMode();
   useSession();
   const patient = his.patients.find((p) => p.id === enc.patientId);
   const orders = lab.orders.filter((o) => o.visitNumber === enc.visitNumber);
+  const [view, setView] = React.useState<(typeof VIEWS)[number]>(startView);
   const [padKey, setPadKey] = React.useState(0);
   const [amending, setAmending] = React.useState<string | null>(null);
   const [cancelling, setCancelling] = React.useState<string | null>(null);
@@ -78,6 +86,18 @@ export function LabSection({ enc }: { enc: Encounter }) {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <GlassPillSwitch label="Laboratory view" value={view} options={VIEWS} onChange={setView} />
+        {view === "Results" && (
+          <Gate allowed={canOrder} reason={reason}>
+            <Button variant="primary" disabled={!canOrder} onClick={() => setView("Laboratory Orders")}><FlaskConical className="size-4" aria-hidden="true" /> Order Tests</Button>
+          </Gate>
+        )}
+      </div>
+
+      {view === "Results" && patient && <Card className="overflow-hidden"><LabGridView patient={patient} currentVisit={enc.visitNumber} /></Card>}
+
+      {view === "Laboratory Orders" && (<>
       <Card>
         <CardHeader
           title="Order Laboratory Tests"
@@ -203,6 +223,7 @@ export function LabSection({ enc }: { enc: Encounter }) {
         </div>
       </Card>
       <AssumptionNote items={LAB_ASSUMPTIONS} />
+      </>)}
 
       <Dialog open={!!amendingOrder} onClose={() => setAmending(null)} title="Amend Order" subtitle={amendingOrder ? `${amendingOrder.id}. Sending the change replaces the order in NPHIES.` : undefined} wide>
         {amendingOrder && (

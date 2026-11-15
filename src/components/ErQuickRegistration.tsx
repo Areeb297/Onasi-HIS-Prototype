@@ -261,7 +261,6 @@ export function ErQuickRegistration() {
 
         <FormActions
           sticky
-          reserveEnd
           status={shownCount ? <AttentionLink count={shownCount} onClick={() => summaryRef.current?.focus()} /> : <span>Next: {ctas ? `CTAS ${ctas} on the board` : "triage"}</span>}
           onCancel={() => navigate("/er")}
           extra={<Button onClick={() => submit(false)}>{ctas ? `Register As CTAS ${ctas}` : "Register Only"}</Button>}

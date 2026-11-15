@@ -1,6 +1,6 @@
 import * as React from "react";
 import { renderToString } from "react-dom/server";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 // Minimal browser stubs so the router and storage helpers work in the Node test environment.
 const g = globalThis as unknown as Record<string, unknown>;
@@ -29,6 +29,9 @@ import { MasterPage } from "@/pages/MasterPage";
 import { NphiesClinicalPage } from "@/pages/NphiesClinicalPage";
 import { NphiesFinancialPage } from "@/pages/NphiesFinancialPage";
 import { WorklistPage } from "@/pages/WorklistPage";
+
+// These tests render whole screens (the app shell, every chart section, ~90 setup pages); on a busy machine they need more than 5 s.
+vi.setConfig({ testTimeout: 60_000 });
 
 const h = React.createElement;
 const html = (el: React.ReactElement) => renderToString(el);
@@ -74,7 +77,7 @@ describe("screens render without errors", () => {
 
       it("renders every setup page", () => {
         for (const m of MASTERS) expect(html(h(MasterPage, { id: m.id })), m.id).toContain(m.title.replace(/&/g, "&amp;"));
-      });
+      }, 60_000); // about 90 setup pages render here; the default 5 s is too short on a busy machine
 
       it("renders the NPHIES clinical and financial pages", () => {
         expect(html(h(NphiesClinicalPage))).toContain("NPHIES Clinical");

@@ -1276,7 +1276,6 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
 
       {!inpatient ? (
         <div>
-          <SectionTitle>Outcome</SectionTitle>
           <div className="space-y-4">{outcomeFields}</div>
           <SectionTitle>Discharge</SectionTitle>
           {conditionFields}
@@ -1287,7 +1286,7 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
         </div>
       ) : (
         <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-4" aria-label="Discharge sections">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 group-data-[orientation=horizontal]/tabs:h-auto sm:grid-cols-4" aria-label="Discharge sections">
             {TAB_IDS.map((id, i) => (
               <TabsTrigger key={id} value={id} className="h-auto min-h-9 justify-start gap-1.5 whitespace-normal rounded-lg px-2.5 py-1.5 text-left text-xs leading-snug sm:text-[0.8125rem]">
                 <span className={cn(
@@ -1303,7 +1302,6 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
           </TabsList>
 
           <TabsContent value="disposition" className="pt-3">
-            <SectionTitle>Outcome</SectionTitle>
             <div className="space-y-4">{outcomeFields}</div>
             <SectionTitle>Discharge</SectionTitle>
             {conditionFields}
