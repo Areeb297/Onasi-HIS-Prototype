@@ -1,5 +1,5 @@
 import * as React from "react";
-import { IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
+import { IconCircleCheck, IconClipboardCheck, IconLock, IconPill, IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
 import { Badge } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import type { Prescription, RxState } from "@/lib/rx-types";
@@ -152,10 +152,10 @@ export function RxBoard({
     <div>
       <StatStrip
         stats={[
-          { label: "To Verify", value: stats.toVerify, tone: stats.toVerify ? "update" : "ok", note: stats.withPrescriber ? `Items to check. ${stats.withPrescriber} more with the prescriber` : "Items waiting for the pharmacist check" },
-          { label: "Waiting For Pharmacy", value: stats.waiting, tone: stats.waiting ? "move" : "ok", note: stats.offBoard ? `${stats.offBoard} on hold, stopped or cancelled, see Table view` : "Prescriptions not fully handed over" },
-          { label: "Controlled Waiting", value: stats.controlledWaiting, tone: stats.controlledWaiting ? "cancel" : "ok", note: "Need a witness and the secure code" },
-          { label: "Dispensed Today", value: stats.dispensedToday, note: `${stats.avgWaitMin === null ? "No hand over yet" : `Average wait ${fmtDuration(stats.avgWaitMin)}`}${stats.late ? `. ${stats.late} past target now` : ""}` },
+          { label: "To Verify", icon: <IconClipboardCheck stroke={1.75} />, value: stats.toVerify, tone: stats.toVerify ? "update" : "ok", note: stats.withPrescriber ? `Items to check. ${stats.withPrescriber} more with the prescriber` : "Items waiting for the pharmacist check" },
+          { label: "Waiting For Pharmacy", icon: <IconPill stroke={1.75} />, value: stats.waiting, tone: stats.waiting ? "move" : "ok", note: stats.offBoard ? `${stats.offBoard} on hold, stopped or cancelled, see Table view` : "Prescriptions not fully handed over" },
+          { label: "Controlled Waiting", icon: <IconLock stroke={1.75} />, value: stats.controlledWaiting, tone: stats.controlledWaiting ? "cancel" : "ok", note: "Need a witness and the secure code" },
+          { label: "Dispensed Today", icon: <IconCircleCheck stroke={1.75} />, value: stats.dispensedToday, note: `${stats.avgWaitMin === null ? "No hand over yet" : `Average wait ${fmtDuration(stats.avgWaitMin)}`}${stats.late ? `. ${stats.late} past target now` : ""}` },
         ]}
       />
       <SwimBoard<Prescription>

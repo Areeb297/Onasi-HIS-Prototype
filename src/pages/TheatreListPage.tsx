@@ -1,5 +1,7 @@
 import * as React from "react";
 import { RotateCcw } from "lucide-react";
+import { IconCalendarEvent, IconCalendarPause, IconCircleCheck, IconClipboardList, IconHeartbeat, IconScissors } from "@tabler/icons-react";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { SCHEDULE_TONE, STAGE_TONE } from "@/components/emr/TheatreSection";
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
@@ -25,6 +27,11 @@ const FILTERS: { id: FilterId; label: string; test: (c: SurgeryCase) => boolean 
   { id: "closed", label: "Closed", test: (c) => !!c.closed },
   { id: "all", label: "All", test: () => true },
 ];
+
+const FILTER_ICON: Record<FilterId, React.ReactNode> = {
+  action: <IconClipboardList stroke={1.75} />, postponed: <IconCalendarPause stroke={1.75} />, today: <IconCalendarEvent stroke={1.75} />,
+  theatre: <IconScissors stroke={1.75} />, recovery: <IconHeartbeat stroke={1.75} />, closed: <IconCircleCheck stroke={1.75} />, all: null,
+};
 
 /** When the case is due: the booked slot, or the planned date while it is not booked yet. */
 const sortKey = (c: SurgeryCase) => (c.schedule?.date ? `${c.schedule.date}T${c.schedule.start || "99:99"}` : `${c.request.plannedDate}T99:99`);
@@ -62,16 +69,20 @@ export function TheatreListPage() {
         ) : undefined}
       />
 
+      <KpiStrip label="Cases by step" className="mb-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+        {FILTERS.filter((f) => f.id !== "all").map((f) => (
+          <KpiTile key={f.id} icon={FILTER_ICON[f.id]} label={f.label} value={theatre.cases.filter(f.test).length}
+            note={filter === f.id ? "Shown below" : `Show ${f.label.toLowerCase()}`} tone={filter === f.id ? "ok" : undefined}
+            className={filter === f.id ? "ring-2 ring-[#03C1AC]/60" : undefined} onClick={() => setFilter(filter === f.id ? "all" : f.id)} />
+        ))}
+      </KpiStrip>
+
       <Card className="mb-4 px-4 py-3">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Case filter">
-            {FILTERS.map((f) => (
-              <button key={f.id} role="tab" aria-selected={filter === f.id} onClick={() => setFilter(f.id)}
-                className={cn("rounded-full border px-3 py-1 text-xs font-medium", filter === f.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted")}>
-                {f.label} <span className="opacity-70">{theatre.cases.filter(f.test).length}</span>
-              </button>
-            ))}
-          </div>
+          <p className="min-w-0 text-sm text-muted-foreground" aria-live="polite">
+            Showing <span className="font-medium text-foreground">{active.label === "All" ? "all cases" : active.label.toLowerCase()}</span>, {rows.length} {rows.length === 1 ? "case" : "cases"}.
+            {filter !== "all" && <Button size="sm" variant="ghost" className="ms-1" onClick={() => setFilter("all")}>Show All {theatre.cases.length}</Button>}
+          </p>
           <Field label="Search" className="ml-auto w-full sm:w-64">
             <Input placeholder="Patient, procedure, surgeon, room or status" value={q} onChange={(e) => setQ(e.target.value)} />
           </Field>

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { IconAlertTriangle, IconCalendarDue, IconClipboardCheck, IconPackage, IconPackageImport, IconPill, IconTruckDelivery } from "@tabler/icons-react";
 import { VerifyBadge, fmtWhen } from "@/components/emr/RxShared";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Badge, Button, Card, CardHeader, Empty, PageHeader, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { activeQueue, pharmacyOverview, useStock } from "@/lib/pharmacy-stock";
 import { navigate } from "@/lib/router";
@@ -9,36 +10,6 @@ import { useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 
 /** Pharmacy home: /pharmacy. What is waiting at the pharmacy now and the stock alerts. */
-
-type TileTone = "update" | "admit" | "ok" | "warn" | "danger";
-
-const TONE: Record<TileTone, string> = {
-  update: "bg-update/12 text-update",
-  admit: "bg-admit/14 text-admit",
-  ok: "bg-ok/14 text-ok",
-  warn: "bg-warn/16 text-warn",
-  danger: "bg-destructive/12 text-destructive",
-};
-
-function Tile({ label, value, hint, tone, icon, onClick }: { label: string; value: number; hint: string; tone: TileTone; icon: React.ReactNode; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex w-full items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-      )}
-    >
-      <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", TONE[tone])} aria-hidden="true">{icon}</span>
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-muted-foreground">{label}</span>
-        <span className="block text-2xl font-semibold tabular-nums">{value}</span>
-        <span className="block text-xs text-muted-foreground">{hint}</span>
-      </span>
-    </button>
-  );
-}
 
 const QUEUE_LIMIT = 12;
 
@@ -53,7 +24,6 @@ export function PharmacyHomePage() {
   const o = pharmacyOverview(rx, stock, today);
   const queue = activeQueue(rx);
   const shown = showAll ? queue : queue.slice(0, QUEUE_LIMIT);
-  const icon = "size-5";
 
   return (
     <div>
@@ -69,13 +39,13 @@ export function PharmacyHomePage() {
         }
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Tile label="Waiting For Check" value={o.waiting} hint="New, changed or answered items" tone="update" icon={<IconClipboardCheck className={icon} stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
-        <Tile label="Ready To Dispense" value={o.ready} hint="Verified by a pharmacist" tone="admit" icon={<IconPill className={icon} stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
-        <Tile label="Dispensed Today" value={o.dispensedToday} hint="Lines handed over today" tone="ok" icon={<IconPackageImport className={icon} stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
-        <Tile label="Low Stock" value={o.lowStock} hint="Items under the reorder level" tone="warn" icon={<IconAlertTriangle className={icon} stroke={1.75} />} onClick={() => navigate("/pharmacy/stock", { tab: "low" })} />
-        <Tile label="Expiring Soon" value={o.expiringSoon} hint="Batches within 90 days or expired" tone="danger" icon={<IconCalendarDue className={icon} stroke={1.75} />} onClick={() => navigate("/pharmacy/stock", { tab: "expiry" })} />
-      </div>
+      <KpiStrip label="Pharmacy now" className="mb-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
+        <KpiTile label="Waiting For Check" value={o.waiting} note="New, changed or answered items" icon={<IconClipboardCheck stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
+        <KpiTile label="Ready To Dispense" value={o.ready} note="Verified by a pharmacist" icon={<IconPill stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
+        <KpiTile label="Dispensed Today" value={o.dispensedToday} note="Lines handed over today" tone="ok" icon={<IconPackageImport stroke={1.75} />} onClick={() => navigate("/pharmacy/dispense")} />
+        <KpiTile label="Low Stock" value={o.lowStock} note="Items under the reorder level" tone={o.lowStock ? "warn" : undefined} accent={o.lowStock ? "warn" : "brand"} icon={<IconAlertTriangle stroke={1.75} />} onClick={() => navigate("/pharmacy/stock", { tab: "low" })} />
+        <KpiTile label="Expiring Soon" value={o.expiringSoon} note="Batches within 90 days or expired" tone={o.expiringSoon ? "danger" : undefined} accent={o.expiringSoon ? "danger" : "brand"} icon={<IconCalendarDue stroke={1.75} />} onClick={() => navigate("/pharmacy/stock", { tab: "expiry" })} className="col-span-2 sm:col-span-1" />
+      </KpiStrip>
 
       <Card>
         <CardHeader

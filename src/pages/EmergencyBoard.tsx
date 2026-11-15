@@ -1,6 +1,7 @@
 import { PatientFlagBadges } from "@/components/PatientBanner";
 import * as React from "react";
-import { IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
+import { IconClipboardList, IconClock, IconShieldCheck, IconShieldExclamation, IconStethoscope } from "@tabler/icons-react";
+import { GlassPillSwitch, KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Clock, FolderOpen, Plus, RefreshCw } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { useVisitActions } from "@/components/VisitActions";
@@ -201,36 +202,31 @@ export function EmergencyBoard() {
         title="Emergency Department"
         subtitle="Triage board by CTAS level. Patients wait against the CTAS time to see a doctor. Red clocks are over target."
         right={
-          <div className="flex gap-2">
-            <div role="group" aria-label="View" className="flex rounded-md border border-border bg-muted p-0.5">
-              {(["board", "list"] as const).map((v) => (
-                <button key={v} onClick={() => setView(v)} aria-pressed={view === v} className={cn("rounded px-3 py-1 text-xs font-medium", view === v ? "bg-card shadow-sm" : "text-muted-foreground")}>{v === "board" ? "Board" : "List"}</button>
-              ))}
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <GlassPillSwitch label="View" size="sm" options={["Board", "List"] as const} value={view === "board" ? "Board" : "List"} onChange={(v) => setView(v === "Board" ? "board" : "list")} />
             <Button variant="primary" disabled={!can("patient.register")} onClick={() => navigate("/registration", { cls: "E" })}><Plus className="size-4" />Register Emergency Patient</Button>
           </div>
         }
       />
 
       {/* Level strip */}
-      <div className="mb-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-8">
+      <KpiStrip label="Emergency numbers" className="mb-4 grid-cols-2 sm:grid-cols-4">
         {CTAS.map((c) => {
           const n = active.filter((e) => e.ed!.ctas === c.level).length;
           const fr = frac.find((f) => f.level === c.level);
           const late = active.filter((e) => e.ed!.ctas === c.level && clockOf(e.ed!, now).overdue && stageOf(e.ed!) === "waiting-doctor").length;
           return (
-            <div key={c.level} className={cn("rounded-xl border border-border border-t-4 bg-card px-3 py-2", c.ring)}>
-              <div className="flex items-center gap-2"><LevelDot level={c.level} /><span className="text-2xl font-semibold tabular-nums">{n}</span></div>
-              <div className="mt-0.5 text-xs font-medium">{c.label}</div>
-              <div className="text-xs text-muted-foreground">{c.targetMin === 0 ? "Immediate" : `Target ${c.targetMin} min`}{late > 0 && <span className="ms-1 font-semibold text-destructive">{late} late</span>}</div>
-              {fr && <div className={cn("text-xs", fr.pct !== undefined && fr.pct < fr.goal ? "font-medium text-destructive" : "text-muted-foreground")}>{fr.pct === undefined ? `Goal ${fr.goal}% in target` : `${fr.pct}% in target, goal ${fr.goal}%`}</div>}
-            </div>
+            <KpiTile key={c.level} icon={<LevelDot level={c.level} size="sm" />} label={c.label} value={n}
+              note={<>
+                <span className="block">{c.targetMin === 0 ? "Immediate" : `Target ${c.targetMin} min`}{late > 0 && <span className="ms-1 font-semibold text-destructive">{late} late</span>}</span>
+                {fr && <span className={cn("block", fr.pct !== undefined && fr.pct < fr.goal && "font-medium text-destructive")}>{fr.pct === undefined ? `Goal ${fr.goal}% in target` : `${fr.pct}% in target, goal ${fr.goal}%`}</span>}
+              </>} />
           );
         })}
-        <div className="rounded-xl border border-border border-t-4 border-t-ctas-5 bg-card px-3 py-2"><div className="text-2xl font-semibold tabular-nums">{byStage("waiting-triage").length}</div><div className="mt-0.5 text-xs font-medium">Not Triaged</div><div className="text-xs text-muted-foreground">Target 10 min</div></div>
-        <div className="rounded-xl border border-border border-t-4 border-t-update bg-card px-3 py-2"><div className="text-2xl font-semibold tabular-nums">{avgD2d ?? "None"}</div><div className="mt-0.5 text-xs font-medium">Door To Doctor</div><div className="text-xs text-muted-foreground">Average minutes today</div></div>
-        <div className="rounded-xl border border-border border-t-4 border-t-destructive bg-card px-3 py-2"><div className="text-2xl font-semibold tabular-nums">{overdue.length}</div><div className="mt-0.5 text-xs font-medium">Over Target</div><div className="text-xs text-muted-foreground">Longest wait {longest} min</div></div>
-      </div>
+        <KpiTile icon={<IconClipboardList stroke={1.75} />} label="Not Triaged" value={byStage("waiting-triage").length} note="Target 10 min" />
+        <KpiTile icon={<IconStethoscope stroke={1.75} />} label="Door To Doctor" value={avgD2d ?? "None"} note="Average minutes today" />
+        <KpiTile icon={<IconClock stroke={1.75} />} label="Over Target" value={overdue.length} note={`Longest wait ${longest} min`} accent={overdue.length ? "danger" : "brand"} tone={overdue.length ? "danger" : undefined} />
+      </KpiStrip>
 
       {view === "list" ? (
         <WorklistPage mode="er" embedded />

@@ -28,7 +28,7 @@ export function ChartMenu({ active, visit, onPick }: { active: string; visit: st
   const forAge = (id: string) => !dob || fitsAge(EMR_FORM_BY_ID[id], ageYears(dob)) || getFormRecords(visit, id).length > 0;
 
   return (
-    <nav aria-label="Chart sections" className="h-fit max-h-[calc(100vh-14rem)] overflow-y-auto rounded-xl border border-border bg-card p-2 lg:sticky lg:top-44">
+    <nav aria-label="Chart sections" className="h-fit max-h-[calc(100vh-14rem)] overflow-y-auto rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)] p-2 lg:sticky lg:top-44">
       <div className="relative mb-2">
         <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
         <Input className="h-9 pl-8" placeholder="Search pages" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search chart pages" />

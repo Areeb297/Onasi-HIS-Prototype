@@ -4,7 +4,9 @@ import { InvoiceStatusBadge, Sar, useNow, ZatcaTag } from "@/components/invoice/
 import { ReceiptDialog } from "@/components/invoice/ReceiptDialog";
 import { Button, Card, CardHeader, Empty, Field, Input, PageHeader, Switch, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
-import { setZatcaFailNext, sendToZatca, syncInvoices, useInvoices, worklist, type WorklistFilter } from "@/lib/invoice";
+import { setZatcaFailNext, sendToZatca, syncInvoices, useInvoices, worklist, zatcaClock, type WorklistFilter } from "@/lib/invoice";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
+import { IconCash, IconClockExclamation, IconFileInvoice, IconReceipt2 } from "@tabler/icons-react";
 import { useLab } from "@/lib/lab";
 import { useFinancial } from "@/lib/nphies-financial";
 import { useRad } from "@/lib/radiology";
@@ -39,6 +41,14 @@ export function InvoiceWorklistPage() {
   const visible = new Set(rows.map((r) => r.view.invoice.visit));
   const chosen = [...selected].filter((v) => visible.has(v));
   const allChosen = rows.length > 0 && chosen.length === rows.length;
+  const sums = rows.reduce((t, { view: v }) => {
+    const bal = v.totals.patientBalance;
+    const z = zatcaClock(v.invoice, now);
+    t.total += v.totals.total;
+    if (bal > 0.004) { t.due += bal; t.dueCount += 1; }
+    if (z.status !== "Reported") { t.unreported += 1; if (z.overdue) t.overdue += 1; }
+    return t;
+  }, { total: 0, due: 0, dueCount: 0, unreported: 0, overdue: 0 });
   const printRow = rows.find((r) => r.view.invoice.visit === printVisit);
 
   const set = (k: keyof WorklistFilter) => (e: React.ChangeEvent<HTMLInputElement>) => setFilter((f) => ({ ...f, [k]: e.target.value }));
@@ -77,6 +87,13 @@ export function InvoiceWorklistPage() {
           </div>
         }
       />
+
+      <KpiStrip label="Invoice totals" className="mb-4 grid-cols-2 lg:grid-cols-4">
+        <KpiTile icon={<IconFileInvoice stroke={1.75} />} label="Invoices" value={rows.length.toLocaleString("en-US")} note="Shown with these filters" />
+        <KpiTile icon={<IconReceipt2 stroke={1.75} />} label="Invoiced" value={<Sar value={sums.total} />} note="Total of the invoices shown" />
+        <KpiTile icon={<IconCash stroke={1.75} />} label="Patient Balance" value={<Sar value={sums.due} />} note={sums.dueCount ? `${sums.dueCount} still to pay` : "Nothing to collect"} tone={sums.dueCount ? "warn" : "ok"} accent={sums.dueCount ? "warn" : "brand"} />
+        <KpiTile icon={<IconClockExclamation stroke={1.75} />} label="Not Reported To ZATCA" value={sums.unreported.toLocaleString("en-US")} note={sums.overdue ? `${sums.overdue} past the 24 hours` : "Report within 24 hours"} tone={sums.overdue ? "danger" : undefined} accent={sums.overdue ? "danger" : "brand"} />
+      </KpiStrip>
 
       <Card className="mb-4">
         <CardHeader title="Filters" />

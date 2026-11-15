@@ -112,7 +112,7 @@ export function ScenarioPage({ eventId }: { eventId: EventId }) {
 
   return (
     <div>
-      <div className={`mb-5 rounded-xl border border-border bg-card p-4 border-l-4 ${HEADER_BORDER[GROUP_TONE[event.group]]}`}>
+      <div className={`mb-5 rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)] p-4 border-l-4 ${HEADER_BORDER[GROUP_TONE[event.group]]}`}>
         <div className="flex flex-wrap items-center gap-2">
           <EventBadge id={eventId} className="text-xs" />
           <h1 className="text-xl font-semibold tracking-tight">{event.name}</h1>

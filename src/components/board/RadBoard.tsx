@@ -1,3 +1,4 @@
+import { IconAlertTriangle, IconClock, IconFileText, IconScan } from "@tabler/icons-react";
 import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import type { RadOrder } from "@/lib/fhir/types";
@@ -150,10 +151,10 @@ export function RadBoard({
     <div>
       <StatStrip
         stats={[
-          { label: "Exams Today", value: stats.examsToday, note: stats.cancelled ? `${stats.cancelled} cancelled, see Table view` : "Not counting cancelled" },
-          { label: "STAT Waiting", value: stats.statWaiting, tone: stats.statWaiting ? "cancel" : "ok", note: "Not yet reported" },
-          { label: "Awaiting Report", value: stats.awaitingReport, tone: stats.awaitingReport ? "update" : "ok", note: stats.avgReportMin === null ? "No reports published yet" : `Average report time ${fmtDuration(stats.avgReportMin)}` },
-          { label: "Past Target", value: stats.late, tone: stats.late ? "merge" : "ok", note: "Cards with a red clock" },
+          { label: "Exams Today", icon: <IconScan stroke={1.75} />, value: stats.examsToday, note: stats.cancelled ? `${stats.cancelled} cancelled, see Table view` : "Not counting cancelled" },
+          { label: "STAT Waiting", icon: <IconAlertTriangle stroke={1.75} />, value: stats.statWaiting, tone: stats.statWaiting ? "cancel" : "ok", note: "Not yet reported" },
+          { label: "Awaiting Report", icon: <IconFileText stroke={1.75} />, value: stats.awaitingReport, tone: stats.awaitingReport ? "update" : "ok", note: stats.avgReportMin === null ? "No reports published yet" : `Average report time ${fmtDuration(stats.avgReportMin)}` },
+          { label: "Past Target", icon: <IconClock stroke={1.75} />, value: stats.late, tone: stats.late ? "merge" : "ok", note: "Cards with a red clock" },
         ]}
       />
       <SwimBoard<RadOrder>

@@ -13,10 +13,13 @@ export function RiyalSign({ className }: { className?: string }) {
   );
 }
 
-/** An amount in Saudi riyals: the symbol, then the number. */
+/**
+ * An amount in Saudi riyals: the symbol, then the number. "relative" keeps the screen-reader words inside a
+ * sideways-scrolling table, so they do not widen the page on a phone.
+ */
 export function Money({ value, className }: { value: number; className?: string }) {
   return (
-    <span className={cn("inline-flex items-baseline gap-[0.18em] whitespace-nowrap tabular-nums", className)}>
+    <span className={cn("relative inline-flex items-baseline gap-[0.18em] whitespace-nowrap tabular-nums", className)}>
       <RiyalSign />
       <span>{Math.round(value).toLocaleString("en-US")}</span>
       <span className="sr-only"> Saudi riyals</span>

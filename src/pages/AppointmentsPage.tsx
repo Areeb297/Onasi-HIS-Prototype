@@ -1,3 +1,4 @@
+import { IconCalendarEvent, IconCalendarX, IconStethoscope, IconUserCheck } from "@tabler/icons-react";
 import * as React from "react";
 import { Plus, RefreshCcw, RotateCcw, Search } from "lucide-react";
 import { AppointmentBoard } from "@/components/appointments/AppointmentBoard";
@@ -108,10 +109,10 @@ export function AppointmentsPage() {
 
       <StatStrip
         stats={[
-          { label: "Appointments", value: list.length - count(["cancelled"]), note: from === to ? (from === today ? "Today, not counting cancelled" : "On this day, not counting cancelled") : "In the date range, not counting cancelled" },
-          { label: "At The Desk", value: atDesk, tone: atDesk ? "admit" : "muted", note: "Arrived or in the waiting area" },
-          { label: "With The Doctor", value: withDoctor, tone: withDoctor ? "update" : "muted", note: "Checked in, visit open" },
-          { label: "Cancelled Or No Show", value: count(["cancelled"]), tone: count(["cancelled"]) ? "cancel" : "muted", note: "Including rescheduled" },
+          { label: "Appointments", icon: <IconCalendarEvent stroke={1.75} />, value: list.length - count(["cancelled"]), note: from === to ? (from === today ? "Today, not counting cancelled" : "On this day, not counting cancelled") : "In the date range, not counting cancelled" },
+          { label: "At The Desk", icon: <IconUserCheck stroke={1.75} />, value: atDesk, tone: atDesk ? "admit" : "muted", note: "Arrived or in the waiting area" },
+          { label: "With The Doctor", icon: <IconStethoscope stroke={1.75} />, value: withDoctor, tone: withDoctor ? "update" : "muted", note: "Checked in, visit open" },
+          { label: "Cancelled Or No Show", icon: <IconCalendarX stroke={1.75} />, value: count(["cancelled"]), tone: count(["cancelled"]) ? "cancel" : "muted", note: "Including rescheduled" },
         ]}
       />
 

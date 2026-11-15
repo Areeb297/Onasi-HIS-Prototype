@@ -1,25 +1,25 @@
 import * as React from "react";
-import { IconArrowUp, IconCheck, IconChevronDown, IconCopy, IconDatabase, IconMessagePlus, IconRefresh, IconThumbDown, IconThumbUp, IconUserSearch } from "@tabler/icons-react";
-import { Check, ChevronRight } from "lucide-react";
+import { useReducedMotion } from "framer-motion";
+import { IconChevronDown, IconHelpCircle } from "@tabler/icons-react";
+import { Check, ChevronRight, X } from "lucide-react";
 import { AgentIcon } from "@/components/ai/AgentIcon";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
-import { Badge, Button, cn } from "@/components/ui/primitives";
+import {
+  AssistantMessage, BRAND_BTN, BrandBadge, ChatThread, Composer, GLASS_BTN, ICON_BTN, ReplyActions, RevealText, SuggestionChips, TypingDots, UserMessage,
+} from "@/components/ai/chat-parts";
+import { cn } from "@/components/ui/primitives";
 import { approveTask, checkNow, dismissTask, isShortcut, runAction, useAgentWork } from "@/lib/ai/agent-work";
 import { AGENT_BY_ID, type Proposal } from "@/lib/ai/agents";
-import { SUGGESTED, answer, patientChoices } from "@/lib/ai/assistant";
-import { ABOUT_QUESTIONS, type ChatTurn } from "@/lib/ai/chat-history";
-import { ASSISTANT_NAME } from "@/lib/ai/brand";
+import { SUGGESTED, answer } from "@/lib/ai/assistant";
+import { ABOUT_QUESTIONS, fixedAnswer, type ChatTurn } from "@/lib/ai/chat-history";
+import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { audit } from "@/lib/audit";
 
 /**
- * Ask Onasi AI: a chat about the whole hospital. Each answer shows what the assistant read first, then what it found.
+ * Ask Onasi AI: a chat about the whole hospital. Each reply shows what the assistant read, then what it found.
  * A finding that changes a record carries an Approve button. Nothing is changed by asking.
  */
 
 type Turn = ChatTurn;
-
-const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
 /** The answer as plain text, for the Copy button. */
 function plain(t: Turn): string {
@@ -27,33 +27,10 @@ function plain(t: Turn): string {
   return [`Question: ${t.question}`, a.text, ...a.items.map((p) => `- ${p.patient}${p.visit ? ` (${p.visit})` : ""}: ${p.text} Why: ${p.why}`)].join("\n");
 }
 
-/** The quiet bar under a reply: copy, check again, and whether the answer helped. */
-function ReplyActions({ turn, onAgain }: { turn: Turn; onAgain: () => void }) {
-  const [copied, setCopied] = React.useState(false);
-  const [vote, setVote] = React.useState<"up" | "down" | null>(null);
-  const btn = "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring";
-  function rate(v: "up" | "down") {
-    if (vote === v) return;
-    setVote(v);
-    audit(v === "up" ? "ai-accept" : "ai-reject", `Assistant answer rated ${v === "up" ? "helpful" : "not helpful"}`, { detail: `${turn.question} ${turn.answer.text}` });
-  }
-  return (
-    <div className="flex flex-wrap items-center gap-0.5">
-      <button type="button" className={btn} title="Copy the answer" aria-label="Copy the answer" onClick={() => { void navigator.clipboard?.writeText(plain(turn)).catch(() => undefined); setCopied(true); window.setTimeout(() => setCopied(false), 1600); }}>
-        {copied ? <IconCheck className="size-4 text-ok" aria-hidden="true" /> : <IconCopy className="size-4" aria-hidden="true" />}
-      </button>
-      <button type="button" className={btn} title="Check again" aria-label="Check again" onClick={onAgain}><IconRefresh className="size-4" aria-hidden="true" /></button>
-      <button type="button" className={cn(btn, vote === "up" && "bg-ok/10 text-ok")} title="Helpful" aria-label="Helpful" aria-pressed={vote === "up"} onClick={() => rate("up")}><IconThumbUp className="size-4" aria-hidden="true" /></button>
-      <button type="button" className={cn(btn, vote === "down" && "bg-destructive/10 text-destructive")} title="Not helpful" aria-label="Not helpful" aria-pressed={vote === "down"} onClick={() => rate("down")}><IconThumbDown className="size-4" aria-hidden="true" /></button>
-      <span className="ms-2 text-xs text-muted-foreground">{vote ? "Thank you. Your rating is recorded." : `Answered ${clock(turn.at)} from the live record`}</span>
-    </div>
-  );
-}
-
-const STEP_MS = 380;
-
-/** Questions staff ask before they trust an assistant, answered plainly. Shared with the full screen view. */
-const FAQ = ABOUT_QUESTIONS;
+const STEP_MS = 360;
+/** The Help link asks the first of the questions about the assistant. The rest live in the full screen view. */
+const HELP = ABOUT_QUESTIONS[0];
+const THINK_MS = 450;
 
 function Finding({ p }: { p: Proposal }) {
   const work = useAgentWork();
@@ -63,29 +40,31 @@ function Finding({ p }: { p: Proposal }) {
   const closed = status && status !== "waiting";
   return (
     <li className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3">
-      <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", p.level === "high" ? "bg-destructive" : p.level === "medium" ? "bg-warn" : "bg-ok")} aria-hidden="true" />
-      <div className="min-w-0 flex-1 basis-60">
+      <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", p.level === "high" ? "bg-destructive" : p.level === "medium" ? "bg-[#032C26]/60 dark:bg-white/60" : "bg-[#03C1AC]")} aria-hidden="true" />
+      <div className="min-w-0 flex-1 basis-56">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-sm font-semibold">{p.patient}</span>
-          {p.level === "high" && <Badge tone="danger">Urgent</Badge>}
-          {p.level === "medium" && <Badge tone="warn">Soon</Badge>}
+          <span className="text-sm font-semibold text-[#032C26] dark:text-foreground">{p.patient}</span>
+          {p.level === "high" && <BrandBadge tone="urgent">Urgent</BrandBadge>}
+          {p.level === "medium" && <BrandBadge tone="ink">Soon</BrandBadge>}
         </div>
-        <p className="mt-0.5 text-sm">{p.text}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">Why: {p.why}</p>
+        <p className="mt-0.5 text-sm" title={`Why: ${p.why}`}>{p.text}</p>
+        <span className="sr-only">Why: {p.why}</span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        {status === "done-user" && <Badge tone="ok">Approved</Badge>}
-        {status === "done-agent" && <Badge tone="ok">Done By The Agent</Badge>}
-        {status === "resolved" && <Badge tone="ok">Fixed</Badge>}
-        {status === "dismissed" && <Badge tone="neutral">Dismissed</Badge>}
-        {status === "failed" && <Badge tone="danger">Did Not Go Through</Badge>}
+        {status === "done-user" && <BrandBadge>Approved</BrandBadge>}
+        {status === "done-agent" && <BrandBadge>Done By The Agent</BrandBadge>}
+        {status === "resolved" && <BrandBadge>Fixed</BrandBadge>}
+        {status === "dismissed" && <BrandBadge tone="ink">Dismissed</BrandBadge>}
+        {status === "failed" && <BrandBadge tone="urgent">Did Not Go Through</BrandBadge>}
         {!closed && p.action && (
           <>
-            <Button size="sm" variant={opens ? "secondary" : "primary"} onClick={() => (task ? approveTask(p.id) : runAction(p.action!))}>
+            <button type="button" className={cn(opens ? GLASS_BTN : BRAND_BTN, "h-8 px-2.5 text-[0.8125rem]")} onClick={() => (task ? approveTask(p.id) : runAction(p.action!))}>
               {opens ? <ChevronRight className="size-3.5" aria-hidden="true" /> : <Check className="size-3.5" aria-hidden="true" />}
               {opens ? p.action.label : `Approve: ${p.action.label}`}
-            </Button>
-            {!opens && task && <Button size="sm" variant="ghost" onClick={() => dismissTask(p.id)}>Dismiss</Button>}
+            </button>
+            {!opens && task && (
+              <button type="button" className={ICON_BTN} onClick={() => dismissTask(p.id)} aria-label={`Dismiss the task for ${p.patient}`} title="Dismiss"><X className="size-4" aria-hidden="true" /></button>
+            )}
           </>
         )}
       </div>
@@ -93,204 +72,187 @@ function Finding({ p }: { p: Proposal }) {
   );
 }
 
-/** One reply: what the agent read, then what it found. `live` plays the reading steps one by one. */
-export function Reply({ turn, live, onAsk, onSettled }: { turn: Turn; live: boolean; onAsk: (q: string) => void; onSettled: () => void }) {
+/**
+ * One reply. Live, it plays: thinking dots, then what the agent read step by step, then the answer word by word,
+ * then the findings, sources and actions. A reply from the past, or under reduced motion, shows whole at once.
+ */
+export function Reply({ turn, live, onAsk, followUps = true }: { turn: Turn; live: boolean; onAsk: (q: string) => void; followUps?: boolean }) {
+  const reduce = useReducedMotion();
+  const play = live && !reduce;
   const a = turn.answer;
   const steps = a.run?.steps ?? [];
-  const [shown, setShown] = React.useState(live ? 0 : steps.length);
-  const [open, setOpen] = React.useState(live);
+  const [thinking, setThinking] = React.useState(play);
+  const [shown, setShown] = React.useState(play ? 0 : steps.length);
+  const [open, setOpen] = React.useState(play);
   const [all, setAll] = React.useState(false);
-  const done = shown >= steps.length;
+  const stepsDone = shown >= steps.length;
+  const [textDone, setTextDone] = React.useState(!play);
 
   React.useEffect(() => {
-    if (done) { if (live) { setOpen(false); onSettled(); } return; }
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) { setShown(steps.length); return; }
+    if (!thinking) return;
+    const t = window.setTimeout(() => setThinking(false), THINK_MS);
+    return () => window.clearTimeout(t);
+  }, [thinking]);
+
+  React.useEffect(() => {
+    if (thinking || stepsDone) return;
     const t = window.setTimeout(() => setShown((n) => n + 1), STEP_MS);
     return () => window.clearTimeout(t);
-    // onSettled is stable enough for this: it only scrolls.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, done, live, steps.length]);
+  }, [thinking, stepsDone, shown]);
+
+  // Once the steps are read, fold them away so the answer leads.
+  React.useEffect(() => { if (play && stepsDone && !thinking && steps.length) { const t = window.setTimeout(() => setOpen(false), 300); return () => window.clearTimeout(t); } }, [play, stepsDone, thinking, steps.length]);
+
+  if (thinking) return <AssistantMessage thinking><TypingDots /></AssistantMessage>;
 
   const items = all ? a.items : a.items.slice(0, 6);
   return (
-    <div className="flex gap-3">
-      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand-deep)] text-[var(--brand-mint)]">
-        <OnasiAiMark size={19} thinking={!done} />
-      </span>
-      <div className="min-w-0 flex-1 space-y-3">
+    <AssistantMessage thinking={!textDone}>
+      <div className="glass-card overflow-hidden rounded-2xl rounded-ss-md">
         {a.agent && steps.length > 0 && (
-          <div className="overflow-hidden rounded-xl border border-border bg-card">
-            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-muted/50">
+          <div className="border-b border-[rgba(20,32,28,0.07)] dark:border-white/5">
+            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-white/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring dark:hover:bg-white/5">
               <AgentIcon agent={a.agent} size="sm" />
               <span className="min-w-0 flex-1 truncate text-[0.8125rem]">
-                <span className="font-semibold">{AGENT_BY_ID[a.agent].name}</span>
-                <span className="text-muted-foreground"> {done ? `checked ${steps.length} things` : "is checking"}</span>
+                <span className="font-semibold text-[#032C26] dark:text-foreground">{AGENT_BY_ID[a.agent].name}</span>
+                <span className="text-muted-foreground"> {stepsDone ? `checked ${steps.length} things` : "is checking"}</span>
               </span>
-              <IconChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden="true" />
+              <IconChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
             </button>
             {open && (
-              <ol className="space-y-1.5 border-t border-border bg-muted/30 px-3.5 py-3">
+              <ol className="space-y-1.5 px-4 pb-3 pt-0.5">
                 {steps.slice(0, shown).map((s, i) => (
                   <li key={i} className="flex items-start gap-2.5 text-[0.8125rem]">
-                    <Check className="mt-0.5 size-3.5 shrink-0 text-ok" aria-hidden="true" />
+                    <Check className="mt-0.5 size-3.5 shrink-0 text-[#03C1AC]" aria-hidden="true" />
                     <span>{s.did} <span className="text-muted-foreground">{s.found}</span></span>
                   </li>
                 ))}
-                {!done && <li className="flex items-center gap-2.5 text-[0.8125rem] text-muted-foreground"><span className="size-3.5 shrink-0 animate-pulse rounded-full bg-muted-foreground/40" aria-hidden="true" />Reading the record</li>}
+                {!stepsDone && <li className="flex items-center gap-2.5 text-[0.8125rem] text-muted-foreground"><span className="size-3.5 shrink-0 animate-pulse rounded-full bg-[#39EDD5]/50 motion-reduce:animate-none" aria-hidden="true" />Reading the record</li>}
               </ol>
             )}
           </div>
         )}
-
-        {done && (
-          <>
-            <p className="text-[0.9375rem] leading-relaxed">{a.text}</p>
-            {a.items.length > 0 && (
-              <div className="overflow-hidden rounded-xl border border-border bg-card">
-                <ul className="divide-y divide-border">{items.map((p) => <Finding key={p.id} p={p} />)}</ul>
-                {a.items.length > 6 && (
-                  <button type="button" onClick={() => setAll((v) => !v)} className="w-full border-t border-border px-4 py-2 text-left text-[0.8125rem] font-medium text-move hover:bg-muted/50">
-                    {all ? "Show Fewer" : `Show All ${a.items.length}`}
-                  </button>
-                )}
-              </div>
+        {stepsDone && (
+          <div className="px-4 py-3">
+            <RevealOnce text={a.text} live={play} onDone={() => setTextDone(true)} />
+          </div>
+        )}
+        {textDone && a.items.length > 0 && (
+          <div className="border-t border-[rgba(20,32,28,0.07)] dark:border-white/5">
+            <ul className="divide-y divide-[rgba(20,32,28,0.07)] dark:divide-white/5">{items.map((p) => <Finding key={p.id} p={p} />)}</ul>
+            {a.items.length > 6 && (
+              <button type="button" onClick={() => setAll((v) => !v)} className={cn("w-full border-t border-[rgba(20,32,28,0.07)] px-4 py-2 text-left text-[0.8125rem] font-medium hover:bg-white/50 dark:border-white/5 dark:hover:bg-white/5", "text-[#035D53] dark:text-[#52FCE3]")}>
+                {all ? "Show Fewer" : `Show All ${a.items.length}`}
+              </button>
             )}
-            {a.sources.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                <IconDatabase className="size-3.5" aria-hidden="true" /><span className="font-medium">Read from</span>
-                {a.sources.map((s) => <span key={s} className="rounded-md border border-border bg-card px-1.5 py-0.5">{s}</span>)}
-              </div>
-            )}
-            <ReplyActions turn={turn} onAgain={() => onAsk(turn.question)} />
-            {a.followUps.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {a.followUps.map((q) => (
-                  <button key={q} type="button" onClick={() => onAsk(q)} className="rounded-full border border-border bg-card px-3 py-1.5 text-[0.8125rem] hover:bg-muted">{q}</button>
-                ))}
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
-    </div>
+      {textDone && (
+        <>
+          <ReplyActions
+            copyText={plain(turn)}
+            at={turn.at}
+            sources={a.sources}
+            pinned={live}
+            onAgain={a.agent ? () => onAsk(turn.question) : undefined}
+            onRate={(v) => audit(v === "up" ? "ai-accept" : "ai-reject", `Assistant answer rated ${v === "up" ? "helpful" : "not helpful"}`, { detail: `${turn.question} ${a.text}` })}
+          />
+          {followUps && <SuggestionChips label="Ask next" items={a.followUps} onPick={onAsk} />}
+        </>
+      )}
+    </AssistantMessage>
   );
 }
 
-export function AssistantChat({ firstQuestion, compact }: { firstQuestion?: string; compact?: boolean }) {
+/** The answer text, revealed once, telling the reply when it is complete. */
+function RevealOnce({ text, live, onDone }: { text: string; live: boolean; onDone: () => void }) {
+  const [done, setDone] = React.useState(!live);
+  React.useEffect(() => {
+    if (!live) { setDone(true); return; }
+    // Mirror useReveal's pace: about 45 frames of 30ms at most.
+    const words = (text.match(/\S+\s*/g) ?? []).length;
+    const frames = Math.min(45, words);
+    const t = window.setTimeout(() => setDone(true), frames * 30 + 60);
+    return () => window.clearTimeout(t);
+  }, [live, text]);
+  React.useEffect(() => { if (done) onDone(); }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <RevealText text={text} live={live && !done} className="text-[0.9375rem] leading-relaxed text-foreground" />;
+}
+
+/** Asks a question: a fixed answer from the topics list, or the live record. */
+export function askAssistant(question: string, about?: { name: string; visits: string[] }, fixed?: string): Turn {
+  let a;
+  if (fixed) {
+    a = fixedAnswer(fixed);
+    audit("ai-suggest", `Assistant question: ${question}`, { detail: "Answered from the questions and answers list" });
+  } else {
+    checkNow(); // so every finding in the answer is a tracked task with its real state
+    a = answer(question, new Date(), about);
+    audit("ai-suggest", `Assistant question: ${question}`, { detail: a.agent ? `${AGENT_BY_ID[a.agent].name}. ${a.text}` : "Not understood" });
+  }
+  return { id: Date.now(), at: new Date().toISOString(), question, answer: a };
+}
+
+/** The hospital chat in the side panel: thread above, composer docked at the bottom. */
+export function AssistantChat({ firstQuestion, resetKey, onCount }: { firstQuestion?: string; resetKey?: number; onCount?: (n: number) => void }) {
   const [turns, setTurns] = React.useState<Turn[]>([]);
   const [text, setText] = React.useState("");
-  const endRef = React.useRef<HTMLDivElement>(null);
-  const boxRef = React.useRef<HTMLTextAreaElement>(null);
   const asked = React.useRef("");
-  const [about, setAbout] = React.useState("");
-  const choices = React.useMemo(() => patientChoices(), []);
+  const boxRef = React.useRef<HTMLTextAreaElement>(null);
 
-  const scroll = React.useCallback(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), []);
-
-  const ask = React.useCallback((q: string) => {
+  // The side panel keeps it simple: a patient is named in the question. The About list lives in the full screen view.
+  const ask = React.useCallback((q: string, fixed?: string) => {
     const question = q.trim();
     if (!question) return;
-    checkNow(); // so every finding in the answer is a tracked task with its real state
-    const who = choices.find((c) => c.id === about);
-    const a = answer(question, new Date(), who ? { name: who.name, visits: who.visits } : undefined);
-    audit("ai-suggest", `Assistant question: ${question}`, { detail: a.agent ? `${AGENT_BY_ID[a.agent].name}. ${a.text}` : "Not understood" });
-    setTurns((t) => [...t, { id: Date.now(), at: new Date().toISOString(), question, answer: a }]);
+    const turn = askAssistant(question, undefined, fixed);
+    setTurns((t) => [...t, turn]);
     setText("");
-    window.setTimeout(scroll, 60);
-  }, [scroll, about, choices]);
+  }, []);
 
-  // A question passed in from an agent card is asked once.
+  // A question passed in from another page is asked once.
   React.useEffect(() => {
     if (firstQuestion && asked.current !== firstQuestion) { asked.current = firstQuestion; ask(firstQuestion); }
   }, [firstQuestion, ask]);
 
-  const empty = turns.length === 0;
-  const composer = (
-      <form
-        onSubmit={(e) => { e.preventDefault(); ask(text); }}
-        className={cn("rounded-2xl text-left", empty ? "mt-6" : "sticky bottom-4", " border border-border bg-card p-2 shadow-lg transition-shadow focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-primary/10")}
-      >
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={boxRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(text); } }}
-            rows={1}
-            aria-label={`Ask ${ASSISTANT_NAME}`}
-            placeholder="Ask a question, for example: is Almutairi ready to go home?"
-            className="field-sizing-content max-h-40 min-h-10 flex-1 resize-none bg-transparent px-3 py-2 text-[0.9375rem] outline-none placeholder:text-muted-foreground"
-          />
-          <button type="submit" disabled={!text.trim()} aria-label="Send the question" className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-35">
-            <IconArrowUp className="size-5" stroke={2.25} aria-hidden="true" />
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 px-2 pt-1.5">
-          <label className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-[0.8125rem]">
-            <IconUserSearch className="size-4 text-muted-foreground" aria-hidden="true" />
-            <span className="text-muted-foreground">About</span>
-            <select value={about} onChange={(e) => setAbout(e.target.value)} aria-label="Ask about one patient or all patients" className="max-w-44 truncate bg-transparent font-medium outline-none">
-              <option value="">All patients</option>
-              {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </label>
-        </div>
-        <p className="px-3 pb-1 pt-1.5 text-xs text-muted-foreground">Asking changes nothing. A step that changes a record waits for your approval and goes to the audit trail.</p>
-      </form>
-  );
+  // New Chat from the panel header.
+  React.useEffect(() => { if (resetKey) { setTurns([]); setText(""); asked.current = ""; boxRef.current?.focus(); } }, [resetKey]);
+  React.useEffect(() => { onCount?.(turns.length); }, [turns.length, onCount]);
+
+  const last = turns[turns.length - 1];
   return (
-    <div className="mx-auto flex max-w-3xl flex-col">
-      {empty ? (
-        <div className={cn("pb-6 text-center", compact ? "pt-3" : "pt-8 sm:pt-14")}>
-          {!compact && <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-[var(--brand-deep)] text-[var(--brand-mint)]"><OnasiAiMark size={34} /></span>}
-          <h2 className={cn("font-semibold tracking-tight", compact ? "text-xl" : "mt-4 text-2xl")}>Ask about the hospital</h2>
-          <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">{ASSISTANT_NAME} reads the live record and answers with what it found and where. You can name a patient.</p>
-          {composer}
-          <ul className={cn("mt-4 grid gap-2 text-left", !compact && "sm:grid-cols-3")}>
-            {SUGGESTED.map((s) => (
-              <li key={s.agent}>
-                <button type="button" onClick={() => ask(s.text)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/50">
-                  <AgentIcon agent={s.agent} />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{s.text}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{AGENT_BY_ID[s.agent].name}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          <section aria-labelledby="ai-faq" className="mt-8 text-left">
-            <h3 id="ai-faq" className="text-sm font-semibold">Questions and answers</h3>
-            <Accordion type="single" collapsible className="mt-2 rounded-xl border border-border bg-card px-4">
-              {FAQ.map((f) => (
-                <AccordionItem key={f.q} value={f.q}>
-                  <AccordionTrigger className="text-left text-sm font-medium">{f.q}</AccordionTrigger>
-                  <AccordionContent className="text-sm leading-relaxed text-muted-foreground">{f.a}</AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-          </section>
-        </div>
-      ) : (
-        <div className="space-y-6 pb-6 pt-2" aria-live="polite">
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => { setTurns([]); asked.current = ""; }}><IconMessagePlus className="size-4" aria-hidden="true" />New Chat</Button>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ChatThread label="Conversation" stick={last?.id} innerClassName="space-y-5 px-4 py-4">
+        {turns.length === 0 ? (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <span className="flex size-14 items-center justify-center rounded-2xl bg-[#032C26] shadow-[0_14px_34px_-18px_rgba(3,44,38,0.9)]"><OnasiAiMark size={32} /></span>
           </div>
-          {turns.map((t, i) => (
+        ) : (
+          turns.map((t, i) => (
             <div key={t.id} className="space-y-4">
-              <div className="flex justify-end">
-                <p className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[0.9375rem] text-primary-foreground">{t.question}</p>
-              </div>
-              <Reply turn={t} live={i === turns.length - 1} onAsk={ask} onSettled={scroll} />
+              <UserMessage text={t.question} at={t.at} />
+              <Reply turn={t} live={i === turns.length - 1} onAsk={(q) => ask(q)} />
             </div>
-          ))}
-        </div>
-      )}
-
-      {!empty && composer}
-      <div ref={endRef} className="h-4" />
+          ))
+        )}
+      </ChatThread>
+      <div className="shrink-0 space-y-2.5 px-3 pb-3 pt-2">
+        {turns.length === 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <SuggestionChips label="Suggested questions" items={SUGGESTED.map((s) => s.text)} onPick={(q) => ask(q)} />
+            <button type="button" onClick={() => ask(HELP.q, HELP.a)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[0.8125rem] font-medium text-[#035D53] hover:underline focus-visible:outline-2 focus-visible:outline-ring dark:text-[#52FCE3]">
+              <IconHelpCircle className="size-4" aria-hidden="true" />Help
+            </button>
+          </div>
+        )}
+        <Composer
+          inputRef={boxRef}
+          value={text}
+          onChange={setText}
+          onSend={(v) => ask(v)}
+          placeholder="Ask about patients, results or beds"
+        />
+      </div>
     </div>
   );
 }

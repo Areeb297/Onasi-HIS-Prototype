@@ -1,5 +1,6 @@
 import * as React from "react";
-import { IconDeviceFloppy, IconSend, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCalendarDue, IconDeviceFloppy, IconPackage, IconPill, IconSend, IconTrash } from "@tabler/icons-react";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Sar } from "@/components/invoice/InvoiceParts";
 import { Problems, StockLinesEditor, blankLine, toInputs, type LineDraft } from "@/components/pharmacy/StockLinesEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -74,6 +75,7 @@ function StockTab({ rows }: { rows: StockRow[] }) {
   const [hideEmpty, setHideEmpty] = React.useState(true);
   const low = lowStock(rows);
   const watch = expiryWatch(rows);
+  const jump = (id: "low" | "expiry") => document.getElementById(`panel-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const text = q.trim().toLowerCase();
   const shown = rows.filter((r) => {
     if (location && r.location !== location) return false;
@@ -83,6 +85,12 @@ function StockTab({ rows }: { rows: StockRow[] }) {
 
   return (
     <div className="space-y-4">
+      <KpiStrip label="Stock numbers" className="grid-cols-2 lg:grid-cols-4">
+        <KpiTile icon={<IconPill stroke={1.75} />} label="Items In Stock" value={new Set(rows.filter((r) => r.available > 0).map((r) => r.drug.code)).size} note={`${LOCATIONS.length} locations`} />
+        <KpiTile icon={<IconPackage stroke={1.75} />} label="Batches" value={rows.filter((r) => r.available > 0).length} note={`${rows.length - rows.filter((r) => r.available > 0).length} empty`} />
+        <KpiTile icon={<IconAlertTriangle stroke={1.75} />} label="Low Stock" value={low.length} note="Under the reorder level" tone={low.length ? "warn" : "ok"} accent={low.length ? "warn" : "brand"} onClick={() => jump("low")} />
+        <KpiTile icon={<IconCalendarDue stroke={1.75} />} label="Expiry Watch" value={watch.length} note={`Within ${EXPIRY_WATCH_DAYS} days or expired`} tone={watch.length ? "danger" : "ok"} accent={watch.length ? "danger" : "brand"} onClick={() => jump("expiry")} />
+      </KpiStrip>
       <Card>
         <CardHeader title="Stock Inquiry" subtitle={`${shown.length} of ${rows.length} batches shown.`} />
         <div className="grid gap-3 p-4 sm:grid-cols-[1fr_220px_auto] sm:items-end">

@@ -2,8 +2,9 @@ import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import { Check, Copy, Pencil, X } from "lucide-react";
 import { UseCaseIcon } from "@/components/ai/UseCaseIcon";
+import { BrandBadge } from "@/components/ai/chat-parts";
 import { copyText } from "@/components/ui/code-block";
-import { Badge, Button, cn } from "@/components/ui/primitives";
+import { Button, cn } from "@/components/ui/primitives";
 import { Textarea } from "@/components/ui/textarea";
 import { AI_LABEL } from "@/lib/ai/context";
 import type { AiOutput } from "@/lib/ai/engine";
@@ -74,37 +75,47 @@ export function OutputCard({ out, enc, patient }: { out: AiOutput; enc: Encounte
     setEditing(false);
   }
 
-  const ruled = {
-    lineHeight: "24px",
-    backgroundImage: "linear-gradient(transparent 23px, color-mix(in srgb, var(--foreground) 7%, transparent) 24px)",
-    backgroundSize: "100% 24px",
-  } as React.CSSProperties;
-  const segment = "flex items-center justify-center gap-1.5 py-1.5 text-sm font-medium transition-colors";
+  const segment = "flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
+  const edge = verdict === "rejected" ? "before:bg-muted-foreground/40" : verdict === "accepted" ? "before:bg-[#032C26] dark:before:bg-[#39EDD5]" : "before:bg-[#03C1AC]";
 
   return (
     <article
-      className={cn("rounded-lg border border-border border-l-[3px] bg-card p-3 text-sm", verdict === "rejected" ? "border-l-destructive opacity-60" : verdict === "accepted" ? "border-l-ok" : "border-l-admit")}
+      className={cn("glass-card relative overflow-hidden rounded-2xl rounded-ss-md p-4 text-sm before:absolute before:inset-y-0 before:left-0 before:w-[3px]", edge, verdict === "rejected" && "opacity-60")}
       aria-label={out.title}
     >
       <header className="flex items-start gap-2.5">
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
-          <UseCaseIcon id={out.useCase} className="size-5" />
+        <span className="glass-icon mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg">
+          <UseCaseIcon id={out.useCase} className="size-[1.1rem]" />
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-tight">{out.title}</h3>
+          <h3 className="text-sm font-semibold leading-tight text-[#032C26] dark:text-foreground">{out.title}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="rounded-sm border border-dashed border-warn px-1.5 py-0.5 text-xs font-semiboldst text-warn">{AI_LABEL}</span>
+            <span className="text-xs font-medium text-muted-foreground">{AI_LABEL}</span>
             {dev && out.simulated && <span className="font-mono text-xs text-muted-foreground">simulated</span>}
-            {verdict === "accepted" && <Badge tone="ok">Accepted{edited ? " (edited)" : ""}</Badge>}
-            {verdict === "rejected" && <Badge tone="danger">Rejected</Badge>}
+            {verdict === "accepted" && <BrandBadge>Accepted{edited ? " (edited)" : ""}</BrandBadge>}
+            {verdict === "rejected" && <BrandBadge tone="ink">Rejected</BrandBadge>}
           </div>
         </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={copied ? "Copied" : "Copy the draft"}
+          title="Copy"
+          onClick={async () => {
+            if (await copyText(shown)) {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            }
+          }}
+        >
+          {copied ? <Check className="size-3.5 text-[#03C1AC]" /> : <Copy className="size-3.5" />}
+        </Button>
       </header>
 
       {out.alt && (
-        <div className="mt-2 inline-flex rounded-md border border-border bg-muted p-0.5 text-xs" role="group" aria-label="Language">
+        <div className="glass-pill mt-3 inline-flex p-0.5 text-xs" role="group" aria-label="Language">
           {[false, true].map((a) => (
-            <button key={String(a)} onClick={() => setAlt(a)} aria-pressed={alt === a} className={cn("rounded px-2 py-0.5", alt === a ? "bg-card font-medium shadow-sm" : "text-muted-foreground")}>
+            <button key={String(a)} type="button" onClick={() => setAlt(a)} aria-pressed={alt === a} className={cn("rounded-full px-2.5 py-1", alt === a ? "bg-[#032C26] font-medium text-white dark:bg-[#39EDD5] dark:text-[#032C26]" : "text-muted-foreground hover:text-foreground")}>
               {a ? out.alt!.label : out.alt!.label === "English" ? "Arabic" : "English"}
             </button>
           ))}
@@ -112,20 +123,19 @@ export function OutputCard({ out, enc, patient }: { out: AiOutput; enc: Encounte
       )}
 
       {out.useCase === "codes" && out.codes && out.codes.length > 0 && verdict === "open" && (
-        <ul className="mt-2 space-y-1">
+        <ul className="mt-3 space-y-1.5">
           {out.codes.map((c) => (
             <li key={c.icd}>
-              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border px-2 py-1.5 hover:bg-muted/50">
+              <label className="glass-row flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 hover:border-[#03C1AC]/50">
                 <input
                   type="checkbox"
-                  className="mt-0.5 accent-[var(--admit)]"
+                  className="mt-0.5 accent-[#03C1AC]"
                   checked={picked.has(c.icd)}
                   onChange={(e) => setPicked((p) => { const n = new Set(p); e.target.checked ? n.add(c.icd) : n.delete(c.icd); return n; })}
                 />
-                <span>
+                <span className="min-w-0">
                   <span className="font-medium">{c.text}</span>
-                  <span className="block font-mono text-xs text-muted-foreground">ICD-10-AM {c.icd} · SNOMED CT {c.snomed} · matched "{c.matched}" in {c.from}</span>
-                  <span className="font-mono text-xsr text-muted-foreground">suggestion</span>
+                  <span className="block text-xs text-muted-foreground">ICD-10-AM <span className="font-mono">{c.icd}</span>, SNOMED CT <span className="font-mono">{c.snomed}</span></span>
                 </span>
               </label>
             </li>
@@ -134,55 +144,41 @@ export function OutputCard({ out, enc, patient }: { out: AiOutput; enc: Encounte
       )}
 
       {editing && !alt ? (
-        <Textarea value={text} onChange={(e) => setText(e.target.value)} className="mt-2 min-h-40 font-mono text-xs" aria-label="Edit the draft" />
+        <Textarea value={text} onChange={(e) => setText(e.target.value)} className="mt-3 min-h-40 text-sm" aria-label="Edit the draft" />
       ) : (
-        <pre dir={isRtl ? "rtl" : "ltr"} style={ruled} className={cn("mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-background px-3 py-1 font-sans text-sm", isRtl && "text-right")}>
+        <div dir={isRtl ? "rtl" : "ltr"} className={cn("mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl bg-white/60 px-3.5 py-3 text-sm leading-relaxed dark:bg-white/[0.03]", isRtl && "text-right")}>
           {shown}
-        </pre>
+        </div>
       )}
-
-      <details className="mt-2 text-xs text-muted-foreground">
-        <summary className="cursor-pointer font-medium">Sources used ({out.sources.length})</summary>
-        {out.sources.length ? (
-          <ol className="mt-1.5 flex flex-wrap gap-1">
-            {out.sources.map((s) => <li key={s} className="rounded border border-border px-1.5 py-0.5 font-mono text-xs">{s}</li>)}
-          </ol>
-        ) : (
-          <p className="mt-1">No chart fields.</p>
-        )}
-        <p className="mt-1.5">{dev ? `Made by ${out.engine}.` : "Written from fixed rules."} It uses only the open chart. Nothing leaves the browser.</p>
-      </details>
 
       {verdict === "open" && out.useCase !== "help" && (
         <>
-          <div className="mt-3 grid grid-cols-3 divide-x divide-border overflow-hidden rounded-lg border border-border" role="group" aria-label="Your decision">
-            <button onClick={accept} className={cn(segment, "bg-admit/10 text-admit hover:bg-admit/20")}>
+          <div className="mt-3 grid grid-cols-3 divide-x divide-[rgba(20,32,28,0.08)] overflow-hidden rounded-xl border border-[rgba(20,32,28,0.1)] bg-white/50 dark:divide-white/10 dark:border-white/10 dark:bg-white/[0.03]" role="group" aria-label="Your decision">
+            <button type="button" onClick={accept} className={cn(segment, "bg-[#032C26] text-white hover:bg-[#0a4036] dark:bg-[#39EDD5] dark:text-[#032C26] dark:hover:bg-[#52FCE3]")}>
               <Check className="size-3.5" /> Accept
             </button>
-            <button onClick={() => { setAlt(false); setEditing((v) => !v); }} className={cn(segment, "hover:bg-muted")}>
+            <button type="button" onClick={() => { setAlt(false); setEditing((v) => !v); }} className={cn(segment, "text-foreground hover:bg-white/80 dark:hover:bg-white/5")}>
               <Pencil className="size-3.5" /> {editing ? "Done" : "Edit"}
             </button>
-            <button onClick={reject} className={cn(segment, "text-destructive hover:bg-destructive/10")}>
+            <button type="button" onClick={reject} className={cn(segment, "text-destructive hover:bg-destructive/10")}>
               <X className="size-3.5" /> Reject
             </button>
           </div>
-          <div className="mt-1.5 flex items-center justify-between gap-2">
-            {ACCEPT_HINT[out.useCase] ? <p className="text-xs text-muted-foreground">{ACCEPT_HINT[out.useCase]}</p> : <span />}
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                if (await copyText(shown)) {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1200);
-                }
-              }}
-            >
-              <Copy className="size-3.5" /> {copied ? "Copied" : "Copy"}
-            </Button>
-          </div>
+          {ACCEPT_HINT[out.useCase] && <p className="mt-1.5 text-xs text-muted-foreground">{ACCEPT_HINT[out.useCase]}</p>}
         </>
       )}
+
+      <details className="mt-2 text-xs text-muted-foreground">
+        <summary className="cursor-pointer select-none font-medium hover:text-foreground">Sources ({out.sources.length})</summary>
+        {out.sources.length ? (
+          <ul className="mt-1.5 flex flex-wrap gap-1">
+            {out.sources.map((s, i) => <li key={`${s}-${i}`} className="rounded-full border border-[rgba(20,32,28,0.1)] bg-white/70 px-2 py-0.5 dark:border-white/10 dark:bg-white/5">{s}</li>)}
+          </ul>
+        ) : (
+          <p className="mt-1">No chart fields.</p>
+        )}
+        {dev && <p className="mt-1.5">Made by {out.engine}. It uses only the open chart. Nothing leaves the browser.</p>}
+      </details>
     </article>
   );
 }

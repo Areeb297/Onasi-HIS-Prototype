@@ -1,5 +1,5 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Badge, Button, Card, PageHeader, Table, Td, Th } from "@/components/ui/primitives";
+import { Badge, Button, Card, PageHeader, Table, Td, Th, cardSurface, cn } from "@/components/ui/primitives";
 import { FRAMEWORKS, summarize, type Status } from "@/lib/compliance-data";
 import { navigate } from "@/lib/router";
 
@@ -36,7 +36,7 @@ export function CompliancePage() {
 
       <Accordion type="multiple" defaultValue={["nphies"]} className="space-y-3">
         {FRAMEWORKS.map((f) => (
-          <AccordionItem key={f.id} value={f.id} className="rounded-xl border border-border bg-card px-4">
+          <AccordionItem key={f.id} value={f.id} className={cn(cardSurface, "px-4")}>
             <AccordionTrigger className="text-left text-sm font-semibold hover:no-underline">{f.name}</AccordionTrigger>
             <AccordionContent>
               <p className="text-sm text-muted-foreground">{f.scope}</p>

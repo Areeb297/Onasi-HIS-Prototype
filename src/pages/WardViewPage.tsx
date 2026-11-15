@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Activity, AirVent, BedDouble, ShieldAlert, Table2, Wind } from "lucide-react";
 import { Badge, Button, Card, CardHeader, Field, PageHeader, Select, cn } from "@/components/ui/primitives";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { GENDER_LABEL, useBedSetup } from "@/lib/bed-setup";
 import { BED_STATES, bedInfos, type BedInfo } from "@/lib/beds";
 import type { BedGender } from "@/lib/model";
@@ -140,7 +141,7 @@ export function WardViewPage() {
                   onClick={() => setTab(t.id)}
                   className={cn(
                     "rounded-lg border px-3 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-ring",
-                    tab === t.id ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-muted",
+                    tab === t.id ? "border-[#03C1AC] bg-[#39EDD5]/14" : "border-[color:var(--glass-border)] bg-card hover:bg-muted",
                   )}
                 >
                   <span className="block text-sm font-semibold">{t.label}</span>
@@ -156,18 +157,18 @@ export function WardViewPage() {
             </Select>
           </Field>
         </div>
-        <ul className="mt-3 flex flex-wrap gap-2" aria-label="Bed states">
-          {BED_STATES.map((s) => (
-            <li key={s.id} className="flex items-center gap-1.5 text-xs">
-              <StateBadge state={s.id} />
-              <span className="tabular-nums text-muted-foreground">{shown.filter((i) => i.state === s.id).length}</span>
-            </li>
-          ))}
-          <li className="flex items-center gap-3 text-xs text-muted-foreground">
-            {EQUIP.map((e) => <span key={e.key} className="flex items-center gap-1"><e.icon className="size-3.5" aria-hidden="true" />{e.label}</span>)}
-          </li>
+        <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground" aria-label="Equipment icons">
+          {EQUIP.map((e) => <li key={e.key} className="flex items-center gap-1"><e.icon className="size-3.5" aria-hidden="true" />{e.label}</li>)}
         </ul>
       </Card>
+
+      <KpiStrip label="Bed states" className="mb-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+        {BED_STATES.map((s) => {
+          const Icon = STATE_STYLE[s.id].icon;
+          const n = shown.filter((i) => i.state === s.id).length;
+          return <KpiTile key={s.id} dense icon={<Icon strokeWidth={1.75} />} label={s.label} value={n} accent={s.id === "out" && n ? "danger" : s.id === "discharging" && n ? "warn" : "brand"} />;
+        })}
+      </KpiStrip>
 
       {shown.length === 0 && <Card className="p-10 text-center text-sm text-muted-foreground">No beds for this gender restriction.</Card>}
 

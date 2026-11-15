@@ -2,6 +2,8 @@ import * as React from "react";
 import { FileText, RotateCcw, Send, ShieldCheck } from "lucide-react";
 import { ClaimStatusBadge, ReviewCounts, useClaimSend } from "@/components/claims/ClaimParts";
 import { Sar } from "@/components/invoice/InvoiceParts";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
+import { IconCalendarEvent, IconFileText, IconReceipt2 } from "@tabler/icons-react";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Table, Td, Th } from "@/components/ui/primitives";
 import { CLAIM_TYPE_LABEL, claimFor, claimStatusOf, insuredVisits, reviewModel, sendOptions, SUBTYPE_LABEL, useClaims, type ClaimType } from "@/lib/claims";
 import { syncInvoices, useInvoices } from "@/lib/invoice";
@@ -69,15 +71,11 @@ export function BillingWorklistPage() {
         right={<Button onClick={() => navigate("/nphies-financial")}>NPHIES Financial</Button>}
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Card className="px-4 py-3"><div className="text-xs text-muted-foreground">Records</div><div className="mt-1 text-xl font-semibold tabular-nums">{rows.length}</div></Card>
-        <Card className="px-4 py-3"><div className="text-xs text-muted-foreground">Net Amount</div><div className="mt-1 text-xl font-semibold"><Sar value={net} /></div></Card>
-        <Card className="px-4 py-3">
-          <div className="text-xs text-muted-foreground">Oldest Visit</div>
-          <div className="mt-1 text-xl font-semibold">{oldest ? day(oldest) : "None"}</div>
-          {oldest && <div className="text-xs text-muted-foreground">{oldestDays} day{oldestDays === 1 ? "" : "s"} ago</div>}
-        </Card>
-      </div>
+      <KpiStrip label="Billing totals" className="mb-4 grid-cols-2 lg:grid-cols-3">
+        <KpiTile icon={<IconFileText stroke={1.75} />} label="Records" value={rows.length.toLocaleString("en-US")} note="Insured visits shown" />
+        <KpiTile icon={<IconReceipt2 stroke={1.75} />} label="Net Amount" value={<Sar value={net} />} note="Claimed from the payers" />
+        <KpiTile icon={<IconCalendarEvent stroke={1.75} />} label="Oldest Visit" value={oldest ? day(oldest) : "None"} note={oldest ? `${oldestDays} day${oldestDays === 1 ? "" : "s"} ago` : undefined} className="col-span-2 lg:col-span-1" />
+      </KpiStrip>
 
       <Card className="mb-4">
         <CardHeader title="Filters" />

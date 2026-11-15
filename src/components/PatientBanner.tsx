@@ -43,7 +43,7 @@ export function PatientBanner({ patient, encounter, allergies }: { patient: Pati
   const initials = `${patient.given[0] ?? ""}${patient.family[0] ?? ""}`;
   const flags = flagViews(patient.extra?.flags).length > 0;
   return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-border bg-card" role="region" aria-label="Patient banner">
+    <div className="mb-4 overflow-hidden rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)]" role="region" aria-label="Patient banner">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-l-4 border-l-admit px-4 py-3">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-full bg-admit/15 text-sm font-semibold text-admit">{initials}</span>

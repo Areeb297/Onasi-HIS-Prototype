@@ -3,7 +3,9 @@ import { Ban, CheckCircle2, Plus, RotateCcw, XCircle } from "lucide-react";
 import { AdmissionRequestForm } from "@/components/admission/AdmissionRequestForm";
 import { ApproveDialog } from "@/components/admission/ApproveDialog";
 import { DecisionDialog } from "@/components/admission/DecisionDialog";
-import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th } from "@/components/ui/primitives";
+import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
+import { IconBan, IconCalendarPlus, IconCircleCheck, IconCircleX, IconHourglass } from "@tabler/icons-react";
 import {
   ADMITTING_DEPARTMENTS, STATUSES, STATUS_LABEL, STATUS_TONE, admissionTypeLabel, canDecideAdmission, canRequestAdmission,
   departmentLabel, doctorLabel, useAdmissionRequests, type AdmissionRequest, type RequestStatus,
@@ -64,6 +66,10 @@ export function AdmissionRequestsPage() {
     })
     .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
 
+  const STATUS_ICON: Record<RequestStatus, React.ReactNode> = {
+    pending: <IconHourglass stroke={1.75} />, approved: <IconCircleCheck stroke={1.75} />, preadmitted: <IconCalendarPlus stroke={1.75} />,
+    rejected: <IconCircleX stroke={1.75} />, cancelled: <IconBan stroke={1.75} />,
+  };
   const pendingCount = requests.filter((r) => r.status === "pending").length;
   const mayDecide = canDecideAdmission();
   const current = dlg && dlg.kind !== "new" ? requests.find((r) => r.id === dlg.id) : undefined;
@@ -87,6 +93,19 @@ export function AdmissionRequestsPage() {
           </Button>
         }
       />
+
+      <KpiStrip label="Requests by status" className="mb-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        {STATUSES.map((s, i) => {
+          const n = requests.filter((r) => r.status === s).length;
+          return (
+            <KpiTile key={s} icon={STATUS_ICON[s]} label={STATUS_LABEL[s]} value={n.toLocaleString("en-US")}
+              note={status === s ? "Shown below" : `Show ${STATUS_LABEL[s].toLowerCase()}`} tone={status === s ? "ok" : undefined}
+              accent={s === "pending" && n > 0 ? "warn" : "brand"}
+              className={cn(status === s && "ring-2 ring-[#03C1AC]/60", i === STATUSES.length - 1 && "col-span-2 sm:col-span-1")}
+              onClick={() => setStatus(status === s ? "" : s)} />
+          );
+        })}
+      </KpiStrip>
 
       <Card className="mb-4 px-4 py-3">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]">

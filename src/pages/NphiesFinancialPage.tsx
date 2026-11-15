@@ -1,6 +1,8 @@
 import * as React from "react";
 import { Money } from "@/components/Money";
 import { Eye, EyeOff } from "lucide-react";
+import { IconCash, IconReceipt2, IconSend, IconUsers } from "@tabler/icons-react";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Gate } from "@/components/emr/fhir-ui";
 import { CodeBlock } from "@/components/ui/code-block";
 import { NphiesLogo } from "@/components/NphiesLogo";
@@ -15,6 +17,7 @@ import { can, useSession } from "@/lib/session";
 import { useHis, patientName } from "@/lib/store";
 
 const sar = (n: number) => <Money value={n} />;
+const sarText = (n: number) => Math.round(n).toLocaleString("en-US");
 const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export function NphiesFinancialPage() {
@@ -36,6 +39,14 @@ export function NphiesFinancialPage() {
   const open = visits.find((v) => v.enc.visitNumber === openVisit) ?? null;
   const batches = getMasterRows("payment-reconciliations");
   void his;
+  const sums = visits.reduce((t, v) => {
+    const c = caseOf(v.enc.visitNumber, fin);
+    t.charge += v.charge.total;
+    if (!v.cash) t.insured += 1;
+    if (c.claim) { t.claims += 1; if (c.claim.status === "rejected" || c.claim.status === "cancelled") t.refused += 1; }
+    if (c.payment) { t.paid += c.payment.amount; t.paidCount += 1; }
+    return t;
+  }, { charge: 0, insured: 0, claims: 0, refused: 0, paid: 0, paidCount: 0 });
 
   return (
     <div>
@@ -55,6 +66,13 @@ export function NphiesFinancialPage() {
           ) : undefined
         }
       />
+
+      <KpiStrip label="Financial numbers" className="mb-4 grid-cols-2 lg:grid-cols-4">
+        <KpiTile icon={<IconUsers stroke={1.75} />} label="Visits" value={visits.length.toLocaleString("en-US")} note={`${sums.insured} with a payer`} />
+        <KpiTile icon={<IconReceipt2 stroke={1.75} />} label="Estimated Charges" value={<Money value={sums.charge} />} note="From the orders on these visits" />
+        <KpiTile icon={<IconSend stroke={1.75} />} label="Claims Sent" value={sums.claims.toLocaleString("en-US")} note={sums.refused ? `${sums.refused} refused or cancelled` : "None refused"} tone={sums.refused ? "danger" : undefined} accent={sums.refused ? "danger" : "brand"} />
+        <KpiTile icon={<IconCash stroke={1.75} />} label="Paid By Payers" value={<Money value={sums.paid} />} note={`${sums.paidCount} ${sums.paidCount === 1 ? "payment" : "payments"} confirmed`} tone={sums.paidCount ? "ok" : undefined} />
+      </KpiStrip>
 
       <Card className="mb-4">
         <CardHeader
@@ -161,7 +179,7 @@ function VisitSteps({ v, allowed, dev }: { v: FinVisit; allowed: boolean; dev: b
     <Card>
       <CardHeader
         title={`${patientName(v.patient)}: Steps`}
-        subtitle={`${v.payer}. Estimated charge ${sar(v.charge.total)}${v.authNeeded ? `. Approval is needed before the claim (inpatient, or ${sar(AUTH_FROM)} and above).` : ". No approval is needed before the claim."}`}
+        subtitle={`${v.payer}. Estimated charge SAR ${sarText(v.charge.total)}${v.authNeeded ? `. Approval is needed before the claim (inpatient, or SAR ${sarText(AUTH_FROM)} and above).` : ". No approval is needed before the claim."}`}
         right={
           dev ? (
             <Button size="sm" variant="ghost" onClick={() => setShowMsgs((x) => !x)} aria-expanded={showMsgs}>

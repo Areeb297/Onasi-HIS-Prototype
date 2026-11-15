@@ -1,5 +1,6 @@
 import * as React from "react";
-import { IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
+import { IconBed, IconCalendarPlus, IconCircleX, IconDoorExit, IconShieldCheck, IconShieldExclamation, IconStethoscope, IconUserCheck } from "@tabler/icons-react";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { BedDouble, ChevronDown, ClipboardList, Plus, Receipt, RotateCcw, Route } from "lucide-react";
 import { ActionLegend, RowActions, type ActionKey } from "@/components/RowActions";
 import { PatientFlagBadges } from "@/components/PatientBanner";
@@ -103,20 +104,26 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
     ? [...new Set([...(SUB_DEPARTMENTS[dept] ?? []), ...ofMode.filter((e) => e.service === dept).map(subOf)])].sort()
     : [];
 
-  const rows = ofMode
+  const scoped = ofMode
     .filter((e) => {
       const d = dateOf(e).slice(0, 10);
       return !d || (d >= start && d <= end);
     })
     .filter((e) => !dept || e.service === dept)
     .filter((e) => !sub || subOf(e) === sub)
-    .filter((e) => !status || visitStatus(e).label === status)
     .filter((e) => !elig || eligOf(e).label === elig)
     .filter((e) => {
       const p = state.patients.find((x) => x.id === e.patientId);
       return !q || `${patientName(p)} ${p?.mrn} ${e.visitNumber}`.toLowerCase().includes(q.toLowerCase());
     })
     .sort((a, b) => dateOf(b).localeCompare(dateOf(a)));
+  /** The counts in the strip follow every filter except Status, so each tile still shows its number while one status is chosen. */
+  const byStatus = (label: string) => scoped.filter((e) => visitStatus(e).label === label).length;
+  const rows = scoped.filter((e) => !status || visitStatus(e).label === status);
+  const STATUS_ICON: Record<string, React.ReactNode> = {
+    Arrived: <IconUserCheck stroke={1.75} />, "Checked In": <IconStethoscope stroke={1.75} />, Admitted: <IconBed stroke={1.75} />,
+    "Pre-Admit": <IconCalendarPlus stroke={1.75} />, Discharged: <IconDoorExit stroke={1.75} />, Cancelled: <IconCircleX stroke={1.75} />,
+  };
 
   function onAct(e: Encounter, key: ActionKey) {
     if (key === "CHART") return navigate("/chart", { visit: e.visitNumber });
@@ -175,6 +182,16 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
           </div>
         }
       />
+      )}
+
+      {!embedded && (
+        <KpiStrip label="Visits by status" className="mb-4 grid-cols-2 lg:grid-cols-4">
+          {statuses.map((s) => (
+            <KpiTile key={s} icon={STATUS_ICON[s]} label={s} value={byStatus(s).toLocaleString("en-US")}
+              note={status === s ? "Shown below" : `Show ${s.toLowerCase()}`} tone={status === s ? "ok" : undefined}
+              className={status === s ? "ring-2 ring-[#03C1AC]/60" : undefined} onClick={() => setStatus(status === s ? "" : s)} />
+          ))}
+        </KpiStrip>
       )}
 
       <Card className="mb-4 px-4 py-3">

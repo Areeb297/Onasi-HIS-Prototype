@@ -303,7 +303,7 @@ function FormSheet({
               );
             }
             return (
-              <section key={i} ref={(el) => { sectionRefs.current[i] = el; }} className="rounded-xl border border-border bg-card">
+              <section key={i} ref={(el) => { sectionRefs.current[i] = el; }} className="rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)]">
                 <h3>
                   <button
                     type="button"

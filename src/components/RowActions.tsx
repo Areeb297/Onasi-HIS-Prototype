@@ -134,7 +134,7 @@ export function ActionLegend() {
     ["Move Visit", ic(IconUserShare, "text-merge"), "A45"],
   ];
   return (
-    <div className="mt-3 rounded-xl border border-border bg-card px-4 py-3">
+    <div className="mt-3 rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)] px-4 py-3">
       <div className="mb-2 text-xs font-medium text-muted-foreground">Which button sends which message</div>
       <ul className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
         {items.map(([label, icon, code]) => (

@@ -189,8 +189,17 @@ export function Badge({ tone = "neutral", className, children }: { tone?: Tone; 
 
 /* ---------- Card ---------- */
 
+/**
+ * The app's card: the light glass panel of the dashboards (white, a little translucent, soft neutral border, white top
+ * highlight, soft neutral shadow, no tint). Written as utilities rather than the .glass-panel class so a page can still
+ * override the background or border with its own classes. No backdrop blur: the page behind is flat, and a blur would
+ * make the card the containing block for the fixed dialogs rendered inside it.
+ */
+export const cardSurface =
+  "rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)]";
+
 export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <section className={cn("rounded-xl border border-border bg-card text-card-foreground", className)}>{children}</section>;
+  return <section className={cn(cardSurface, className)}>{children}</section>;
 }
 
 export function CardHeader({ title, subtitle, right, tag }: { title: string; subtitle?: string; right?: React.ReactNode; tag?: string }) {

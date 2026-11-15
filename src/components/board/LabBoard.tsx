@@ -1,3 +1,4 @@
+import { IconAlertTriangle, IconClock, IconFlask, IconHourglass } from "@tabler/icons-react";
 import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import type { LabOrder } from "@/lib/fhir/types";
@@ -167,10 +168,10 @@ export function LabBoard({
     <div>
       <StatStrip
         stats={[
-          { label: "Orders Today", value: stats.ordersToday, note: stats.cancelled ? `${stats.cancelled} cancelled, see Table view` : "Not counting cancelled" },
-          { label: "STAT Waiting", value: stats.statWaiting, tone: stats.statWaiting ? "cancel" : "ok", note: "Not yet resulted" },
-          { label: "Average Turnaround", value: stats.avgTurnaroundMin === null ? "None yet" : fmtDuration(stats.avgTurnaroundMin), note: "Order to published result" },
-          { label: "Past Target", value: stats.late, tone: stats.late ? "merge" : "ok", note: "Cards with a red clock" },
+          { label: "Orders Today", icon: <IconFlask stroke={1.75} />, value: stats.ordersToday, note: stats.cancelled ? `${stats.cancelled} cancelled, see Table view` : "Not counting cancelled" },
+          { label: "STAT Waiting", icon: <IconAlertTriangle stroke={1.75} />, value: stats.statWaiting, tone: stats.statWaiting ? "cancel" : "ok", note: "Not yet resulted" },
+          { label: "Average Turnaround", icon: <IconHourglass stroke={1.75} />, value: stats.avgTurnaroundMin === null ? "None yet" : fmtDuration(stats.avgTurnaroundMin), note: "Order to published result" },
+          { label: "Past Target", icon: <IconClock stroke={1.75} />, value: stats.late, tone: stats.late ? "merge" : "ok", note: "Cards with a red clock" },
         ]}
       />
       <SwimBoard<LabOrder>

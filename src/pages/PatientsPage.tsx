@@ -2,6 +2,8 @@ import * as React from "react";
 import { BadgeCheck, ChevronDown, GitMerge, IdCard, Printer, Search, ShieldCheck } from "lucide-react";
 import { ClassBadge, StatusBadge } from "@/components/badges";
 import { Dialog } from "@/components/Dialog";
+import { IconBed, IconCalendarPlus, IconCircleX, IconDoorExit, IconStethoscope } from "@tabler/icons-react";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Badge, Card, Empty, Input, PageHeader, Table, Td, Th, Button } from "@/components/ui/primitives";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { bedLabel, nowLocal, useHis } from "@/lib/store";
@@ -84,18 +86,78 @@ export function PatientsPage() {
 
   const count = (f: (e: (typeof state.encounters)[number]) => boolean) => state.encounters.filter(f).length;
   const tiles = [
-    { label: "Inpatients", value: count((e) => e.status === "active" && e.cls === "I"), color: "admit" },
-    { label: "Outpatients", value: count((e) => e.status === "active" && e.cls !== "I"), color: "move" },
-    { label: "Pre-Admits", value: count((e) => e.status === "preadmit"), color: "merge" },
-    { label: "Discharged", value: count((e) => e.status === "discharged"), color: "update" },
-    { label: "Cancelled", value: count((e) => e.status === "cancelled"), color: "cancel" },
-  ] as const;
-  const tileClass = {
-    admit: "border-t-admit text-admit",
-    move: "border-t-move text-move",
-    merge: "border-t-merge text-merge",
-    update: "border-t-update text-update",
-    cancel: "border-t-cancel text-cancel",
+    { label: "Inpatients", value: count((e) => e.status === "active" && e.cls === "I"), icon: <IconBed stroke={1.75} />, note: "admitted now" },
+    { label: "Outpatients", value: count((e) => e.status === "active" && e.cls !== "I"), icon: <IconStethoscope stroke={1.75} />, note: "open visits" },
+    { label: "Pre-Admits", value: count((e) => e.status === "preadmit"), icon: <IconCalendarPlus stroke={1.75} />, note: "booked to come in" },
+    { label: "Discharged", value: count((e) => e.status === "discharged"), icon: <IconDoorExit stroke={1.75} />, note: "visits closed" },
+    { label: "Cancelled", value: count((e) => e.status === "cancelled"), icon: <IconCircleX stroke={1.75} />, note: "visits cancelled" },
+  ];
+
+  type Row = (typeof rows)[number];
+  const patientCell = (r: Row, hidden: boolean) => (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-1.5 font-medium">
+        {listName(r.p, r.opened)}
+        {r.p.confidential && <Badge tone="warn">Confidential</Badge>}
+        {r.p.extra?.newborn && <Badge tone="info">Newborn</Badge>}
+      </div>
+      {!hidden && <PatientNameAr patient={r.p} className="text-start" />}
+      <div className="text-xs text-muted-foreground">MRN <span className="font-mono">{r.p.mrn}</span></div>
+      <div className="text-xs text-muted-foreground">Health ID <span className="font-mono">{r.p.healthId}</span></div>
+      <PatientFlagBadges patient={r.p} className="mt-1" />
+    </div>
+  );
+  const ageCell = (p: Patient, hidden: boolean) => (
+    <>
+      <div className="whitespace-nowrap">{ageLabel(p.dob) || "Not known"}, {p.sex === "M" ? "Male" : "Female"}</div>
+      <div className="font-mono text-xs whitespace-nowrap text-muted-foreground">{hidden ? "Phone hidden" : p.extra?.mobile || "No phone"}</div>
+    </>
+  );
+  const coverageCell = (r: Row) => r.primary ? (
+    <span className="block min-w-28">
+      <span className="block text-sm">{coverageLabel(r.primary)}</span>
+      <span className="block font-mono text-xs text-muted-foreground">{r.primary.memberId}</span>
+    </span>
+  ) : (
+    <span className="text-muted-foreground">Cash</span>
+  );
+  const visitCell = (r: Row) => r.latest ? (
+    <span className="block">
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span className="font-mono text-xs">{r.latest.visitNumber}</span>
+        <ClassBadge cls={r.latest.cls} />
+        <StatusBadge status={r.latest.status} />
+      </span>
+      {r.latest.status === "active" && r.latest.bedId && <span className="mt-1 block text-xs text-muted-foreground">{bedLabel(r.latest.bedId)}</span>}
+    </span>
+  ) : (
+    <Badge>No Visit</Badge>
+  );
+  const rowButtons = (r: Row, align: "start" | "end") => {
+    const { p, latest } = r;
+    return (
+      <span className={`inline-flex flex-wrap gap-1.5 ${align === "end" ? "justify-end" : "justify-start"}`}>
+        {latest && (
+          <Button size="sm" onClick={() => navigate("/encounters", { visit: latest.visitNumber })}>
+            View Timeline
+          </Button>
+        )}
+        <Button size="sm" variant="primary" onClick={() => navigate("/event/A31", { patient: p.id, enc: latest?.visitNumber })}>
+          Update Identity
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" aria-label={`More actions for ${p.mrn}`}>More <ChevronDown className="size-4" /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align={align} className="w-56">
+            <DropdownMenuItem onClick={() => setBand(p.id)} className="gap-3 py-2 text-sm"><Printer className="size-4 text-muted-foreground" />Print Wristband</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setCoverageFor(p.id)} className="gap-3 py-2 text-sm"><ShieldCheck className="size-4 text-move" />Patient Coverage</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setEligibilityFor(p.id)} className="gap-3 py-2 text-sm"><BadgeCheck className="size-4 text-ok" />Eligibility Request</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setHealthIdFor(p.id)} className="gap-3 py-2 text-sm"><IdCard className="size-4 text-update" />National Health ID</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </span>
+    );
   };
 
   return (
@@ -115,22 +177,40 @@ export function PatientsPage() {
           </div>
         }
       />
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-        {tiles.map((t) => (
-          <div key={t.label} className={`rounded-xl border border-t-4 border-border bg-card px-4 py-3 ${tileClass[t.color]}`}>
-            <div className="text-2xl font-semibold tabular-nums">{t.value}</div>
-            <div className="text-xs font-medium text-muted-foreground">{t.label}</div>
-          </div>
+      <KpiStrip label="Visits by state" className="mb-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        {tiles.map((t, i) => (
+          <KpiTile key={t.label} icon={t.icon} label={t.label} value={t.value.toLocaleString("en-US")} note={t.note} className={i === tiles.length - 1 ? "col-span-2 sm:col-span-1" : undefined} />
         ))}
-      </div>
+      </KpiStrip>
       {only && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm">
           <span>Showing one patient.</span>
           <Button size="sm" onClick={() => navigate("/patients")}>Show All Patients</Button>
         </div>
       )}
-      <Card>
-        <Table>
+      <Card className="overflow-hidden">
+        {/* Phones get one card per patient; from md up the full table. */}
+        <ul className="divide-y divide-border/70 md:hidden" aria-label="Patients">
+          {rows.length === 0 && <li><Empty>No patients match your search.</Empty></li>}
+          {rows.map((r) => {
+            const hidden = !!r.p.confidential && !r.opened;
+            return (
+              <li key={r.p.id} className="px-4 py-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  {patientCell(r, hidden)}
+                  <EligibilityBadge answer={r.eligibility} />
+                </div>
+                <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div className="min-w-0"><dt className="text-xs text-muted-foreground">Age, Sex And Phone</dt><dd>{ageCell(r.p, hidden)}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-muted-foreground">Coverage</dt><dd>{coverageCell(r)}</dd></div>
+                  <div className="col-span-2 min-w-0"><dt className="text-xs text-muted-foreground">Current Visit</dt><dd className="mt-0.5">{visitCell(r)}</dd></div>
+                </dl>
+                <div className="mt-3">{rowButtons(r, "start")}</div>
+              </li>
+            );
+          })}
+        </ul>
+        <Table className="hidden md:block">
           <thead>
             <tr>
               <Th>Patient</Th>
@@ -149,73 +229,16 @@ export function PatientsPage() {
                 </Td>
               </tr>
             )}
-            {rows.map(({ p, latest, primary, eligibility, opened }) => {
-              const hidden = !!p.confidential && !opened;
+            {rows.map((r) => {
+              const hidden = !!r.p.confidential && !r.opened;
               return (
-                <tr key={p.id} className="hover:bg-muted/40">
-                  <Td>
-                    <div className="flex flex-wrap items-center gap-1.5 font-medium">
-                      {listName(p, opened)}
-                      {p.confidential && <Badge tone="warn">Confidential</Badge>}
-                      {p.extra?.newborn && <Badge tone="info">Newborn</Badge>}
-                    </div>
-                    {!hidden && <PatientNameAr patient={p} className="text-start" />}
-                    <div className="text-xs text-muted-foreground">MRN <span className="font-mono">{p.mrn}</span></div>
-                    <div className="text-xs text-muted-foreground">Health ID <span className="font-mono">{p.healthId}</span></div>
-                    <PatientFlagBadges patient={p} className="mt-1" />
-                  </Td>
-                  <Td>
-                    <div className="whitespace-nowrap">{ageLabel(p.dob) || "Not known"}, {p.sex === "M" ? "Male" : "Female"}</div>
-                    <div className="font-mono text-xs whitespace-nowrap text-muted-foreground">{hidden ? "Phone hidden" : p.extra?.mobile || "No phone"}</div>
-                  </Td>
-                  <Td>
-                    {primary ? (
-                      <span className="block min-w-28">
-                        <span className="block text-sm">{coverageLabel(primary)}</span>
-                        <span className="block font-mono text-xs text-muted-foreground">{primary.memberId}</span>
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">Cash</span>
-                    )}
-                  </Td>
-                  <Td><EligibilityBadge answer={eligibility} /></Td>
-                  <Td>
-                    {latest ? (
-                      <span className="block">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-mono text-xs">{latest.visitNumber}</span>
-                          <ClassBadge cls={latest.cls} />
-                          <StatusBadge status={latest.status} />
-                        </span>
-                        {latest.status === "active" && latest.bedId && <span className="mt-1 block text-xs text-muted-foreground">{bedLabel(latest.bedId)}</span>}
-                      </span>
-                    ) : (
-                      <Badge>No Visit</Badge>
-                    )}
-                  </Td>
-                  <Td className="text-right">
-                    <span className="inline-flex flex-wrap justify-end gap-1.5">
-                      {latest && (
-                        <Button size="sm" onClick={() => navigate("/encounters", { visit: latest.visitNumber })}>
-                          View Timeline
-                        </Button>
-                      )}
-                      <Button size="sm" variant="primary" onClick={() => navigate("/event/A31", { patient: p.id, enc: latest?.visitNumber })}>
-                        Update Identity
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" aria-label={`More actions for ${p.mrn}`}>More <ChevronDown className="size-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                          <DropdownMenuItem onClick={() => setBand(p.id)} className="gap-3 py-2 text-sm"><Printer className="size-4 text-muted-foreground" />Print Wristband</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setCoverageFor(p.id)} className="gap-3 py-2 text-sm"><ShieldCheck className="size-4 text-move" />Patient Coverage</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setEligibilityFor(p.id)} className="gap-3 py-2 text-sm"><BadgeCheck className="size-4 text-ok" />Eligibility Request</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setHealthIdFor(p.id)} className="gap-3 py-2 text-sm"><IdCard className="size-4 text-update" />National Health ID</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </span>
-                  </Td>
+                <tr key={r.p.id} className="hover:bg-muted/40">
+                  <Td>{patientCell(r, hidden)}</Td>
+                  <Td>{ageCell(r.p, hidden)}</Td>
+                  <Td>{coverageCell(r)}</Td>
+                  <Td><EligibilityBadge answer={r.eligibility} /></Td>
+                  <Td>{visitCell(r)}</Td>
+                  <Td className="text-right">{rowButtons(r, "end")}</Td>
                 </tr>
               );
             })}

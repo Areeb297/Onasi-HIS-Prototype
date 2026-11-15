@@ -1,6 +1,8 @@
 import * as React from "react";
 import { Eye, EyeOff, Send } from "lucide-react";
 import { Gate } from "@/components/emr/fhir-ui";
+import { IconCircleCheck, IconCircleX, IconPencil, IconSend } from "@tabler/icons-react";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { CodeBlock } from "@/components/ui/code-block";
 import { NphiesLogo } from "@/components/NphiesLogo";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
@@ -66,12 +68,12 @@ export function NphiesClinicalPage() {
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Ready To Send" value={readyNow} tone="neutral" />
-        <Stat label="Changes Not Sent" value={tally("changes")} tone="warn" />
-        <Stat label="Rejected" value={tally("rejected")} tone="danger" />
-        <Stat label="Sent" value={tally("sent")} tone="ok" />
-      </div>
+      <KpiStrip label="Send list numbers" className="mb-4 grid-cols-2 lg:grid-cols-4">
+        <KpiTile icon={<IconSend stroke={1.75} />} label="Ready To Send" value={readyNow} note="Waiting to go to NPHIES" />
+        <KpiTile icon={<IconPencil stroke={1.75} />} label="Changes Not Sent" value={tally("changes")} note="Edited after the last send" tone={tally("changes") ? "warn" : undefined} accent={tally("changes") ? "warn" : "brand"} />
+        <KpiTile icon={<IconCircleX stroke={1.75} />} label="Rejected" value={tally("rejected")} note="Fix them and send again" tone={tally("rejected") ? "danger" : undefined} accent={tally("rejected") ? "danger" : "brand"} />
+        <KpiTile icon={<IconCircleCheck stroke={1.75} />} label="Sent" value={tally("sent")} note="Already with NPHIES" tone="ok" />
+      </KpiStrip>
 
       <Card>
         <CardHeader
@@ -172,14 +174,5 @@ export function NphiesClinicalPage() {
         </Table>
       </Card>
     </div>
-  );
-}
-
-function Stat({ label, value, tone }: { label: string; value: number; tone: "neutral" | "ok" | "warn" | "danger" }) {
-  return (
-    <Card className="px-4 py-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 text-2xl font-semibold tabular-nums", tone === "ok" && "text-ok", tone === "warn" && "text-warn", tone === "danger" && "text-destructive")}>{value}</div>
-    </Card>
   );
 }

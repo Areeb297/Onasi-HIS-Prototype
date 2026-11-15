@@ -2,14 +2,14 @@ import { IconAmbulance, IconClipboardText, IconDoorExit, IconSend, IconShieldChe
 import { cn } from "@/components/ui/primitives";
 import type { AgentId } from "@/lib/ai/agents";
 
-/** One icon and one colour per agent, so a task or a log line shows at a glance which agent it came from. */
+/** One icon per agent, in Onasi brand tints only (red is kept for the critical results agent). */
 const LOOK: Record<AgentId, { icon: Icon; tint: string }> = {
   critical: { icon: IconUrgent, tint: "bg-destructive/10 text-destructive" },
-  discharge: { icon: IconDoorExit, tint: "bg-admit/10 text-admit" },
-  "ed-flow": { icon: IconAmbulance, tint: "bg-warn/10 text-warn" },
-  clearance: { icon: IconSend, tint: "bg-move/10 text-move" },
-  "claim-guard": { icon: IconShieldCheck, tint: "bg-update/10 text-update" },
-  handoff: { icon: IconClipboardText, tint: "bg-muted text-foreground" },
+  discharge: { icon: IconDoorExit, tint: "bg-[#39EDD5]/15 text-[#035D53] dark:text-[#52FCE3]" },
+  "ed-flow": { icon: IconAmbulance, tint: "bg-[#032C26]/[0.07] text-[#032C26] dark:bg-white/10 dark:text-foreground" },
+  clearance: { icon: IconSend, tint: "glass-icon" },
+  "claim-guard": { icon: IconShieldCheck, tint: "bg-[#39EDD5]/15 text-[#035D53] dark:text-[#52FCE3]" },
+  handoff: { icon: IconClipboardText, tint: "bg-[#032C26]/[0.07] text-[#032C26] dark:bg-white/10 dark:text-foreground" },
 };
 
 export function AgentIcon({ agent, size = "md", className }: { agent: AgentId; size?: "sm" | "md" | "lg"; className?: string }) {

@@ -1,6 +1,8 @@
 import * as React from "react";
 import { Badge, Card, CardHeader, Empty, PageHeader, Select, Table, Td, Th } from "@/components/ui/primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
+import { IconCircleCheck, IconCircleX, IconPencil, IconPercentage, IconSparkles } from "@tabler/icons-react";
 import { AI_LABEL } from "@/lib/ai/context";
 import { aiUseCase, countStatus, FRAMEWORKS, isAi, REGISTER, usageOf, type Risk, type Status } from "@/lib/ai/governance";
 import { useAudit } from "@/lib/audit";
@@ -14,16 +16,6 @@ const STATUS_TONE: Record<Status, "ok" | "warn" | "danger"> = { Applied: "ok", P
 const ACTION_TONE = { "ai-suggest": "info", "ai-accept": "ok", "ai-reject": "danger" } as const;
 const ACTION_LABEL = { "ai-suggest": "Suggested", "ai-accept": "Accepted", "ai-reject": "Rejected" } as const;
 const pct = (v: number | null) => (v === null ? "No decisions yet" : `${Math.round(v * 100)}%`);
-
-function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-0.5 text-2xl font-semibold tabular-nums">{value}</div>
-      {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
-    </div>
-  );
-}
 
 export function AiGovernancePage() {
   useSession();
@@ -71,13 +63,13 @@ export function AiGovernancePage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 pt-3">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <Stat label="Suggestions made" value={all.suggested} />
-            <Stat label="Accepted" value={all.accepted} />
-            <Stat label="Rejected" value={all.rejected} />
-            <Stat label="Acceptance rate" value={pct(all.acceptance)} hint="Accepted out of accepted plus rejected" />
-            <Stat label="Edited before accepting" value={all.accepted ? `${Math.round((all.edited / all.accepted) * 100)}%` : "None yet"} hint="A high rate means the drafts need work" />
-          </div>
+          <KpiStrip label="Assistant use" className="grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <KpiTile icon={<IconSparkles stroke={1.75} />} label="Suggestions Made" value={all.suggested} />
+            <KpiTile icon={<IconCircleCheck stroke={1.75} />} label="Accepted" value={all.accepted} />
+            <KpiTile icon={<IconCircleX stroke={1.75} />} label="Rejected" value={all.rejected} />
+            <KpiTile icon={<IconPercentage stroke={1.75} />} label="Acceptance Rate" value={pct(all.acceptance)} note="Accepted out of accepted plus rejected" />
+            <KpiTile icon={<IconPencil stroke={1.75} />} label="Edited Before Accepting" value={all.accepted ? `${Math.round((all.edited / all.accepted) * 100)}%` : "None yet"} note="A high rate means the drafts need work" className="col-span-2 lg:col-span-1" />
+          </KpiStrip>
           <Card>
             <CardHeader title="AI Use Case Register" subtitle="Risk is the Onasi team's own rating, not a regulator's class." />
             <Table>

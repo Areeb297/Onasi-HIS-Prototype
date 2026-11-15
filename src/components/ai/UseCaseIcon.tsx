@@ -1,10 +1,10 @@
 import type { UseCaseId } from "@/lib/ai/engine";
 
 /**
- * One custom icon per use case, drawn on the same 24 point grid with one teal accent each.
+ * One custom icon per use case, drawn on the same 24 point grid with one cyan accent each.
  * They describe the job (a forked decision, a tag, a page leaving) instead of using a generic AI symbol.
  */
-const A = "var(--admit)";
+const A = "#03C1AC"; // Onasi deep cyan
 
 export function UseCaseIcon({ id, className = "size-5" }: { id: UseCaseId; className?: string }) {
   return (

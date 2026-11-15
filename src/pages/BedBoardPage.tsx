@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Ban, BedDouble, CalendarClock, CircleCheck, DoorOpen, LayoutGrid, Pencil, Plus, RotateCcw, Sparkles, Table2, UserRound } from "lucide-react";
 import { BedSetupDialog, canSetUpBeds } from "@/components/beds/BedSetupDialog";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { PatientFlagBadges } from "@/components/PatientBanner";
 import { useVisitActions } from "@/components/VisitActions";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
@@ -106,20 +107,17 @@ export function BedBoardPage() {
         }
       />
 
-      <Card className="mb-4 px-4 py-3">
-        <h2 className="text-sm font-semibold">Bed States</h2>
-        <ul className="mt-2 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3" aria-label="Bed states and counts">
-          {BED_STATES.map((s) => (
-            <li key={s.id} className="flex items-start gap-2">
-              <span className="w-8 shrink-0 text-right text-lg font-semibold tabular-nums leading-6">{count(s.id)}</span>
-              <span className="min-w-0">
-                <StateBadge state={s.id} />
-                <span className="mt-0.5 block text-xs text-muted-foreground">{s.hint}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <KpiStrip label="Bed states and counts" className="mb-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+        {BED_STATES.map((s) => {
+          const Icon = STATE_STYLE[s.id].icon;
+          const on = flt.state === s.id;
+          return (
+            <KpiTile key={s.id} icon={<Icon strokeWidth={1.75} />} label={s.label} value={count(s.id)} note={on ? "Shown below" : s.hint.replace(/\.$/, "")}
+              tone={on ? "ok" : undefined} accent={s.id === "out" && count(s.id) ? "danger" : s.id === "discharging" && count(s.id) ? "warn" : "brand"}
+              className={on ? "ring-2 ring-[#03C1AC]/60" : undefined} onClick={() => setF("state", on ? "" : s.id)} />
+          );
+        })}
+      </KpiStrip>
 
       <Card className="mb-4 px-4 py-3">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

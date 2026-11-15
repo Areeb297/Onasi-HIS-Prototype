@@ -345,7 +345,7 @@ export default function App() {
       </div>
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
-          <div className="mx-auto flex max-w-[1500px] items-center gap-2 px-4 py-2.5 text-[0.8125rem] sm:px-6">
+          <div className="mx-auto flex max-w-[1500px] items-center gap-1.5 px-4 py-2.5 text-[0.8125rem] sm:gap-2 sm:px-6">
             <Button size="sm" className="lg:hidden" onClick={() => setNavOpen(true)} aria-label="Open the menu" aria-expanded={navOpen}><Menu className="size-4" /><span className="hidden sm:inline">Menu</span></Button>
             <button type="button" onClick={() => navigate("/dashboard")} aria-label="Onasi, go to the dashboard" className="lg:hidden"><img src="/brand/onasi-icon.png" alt="" className="h-6 w-auto dark:brightness-0 dark:invert" /></button>
             <p className="hidden min-w-0 flex-1 truncate text-muted-foreground md:block">
@@ -362,7 +362,7 @@ export default function App() {
                   key={label}
                   onClick={() => setDevMode(v)}
                   aria-pressed={dev === v}
-                  className={`rounded-md px-2.5 py-1 text-[0.8125rem] font-medium whitespace-nowrap transition-colors ${dev === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`rounded-md px-2 py-1 text-[0.8125rem] font-medium whitespace-nowrap transition-colors sm:px-2.5 ${dev === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   {label}<span className="hidden sm:inline">{rest}</span>
                 </button>

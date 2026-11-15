@@ -265,7 +265,7 @@ export function SwimBoard<C>(props: SwimBoardProps<C>) {
       onDragEnd={onDragEnd}
       onDragCancel={onDragCancel}
     >
-      <div className={cn("overflow-x-auto rounded-xl border border-border bg-card", activeId && "select-none")} role="table" aria-label={ariaLabel ?? "Swim lane board"}>
+      <div className={cn("overflow-x-auto rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] text-card-foreground shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)]", activeId && "select-none")} role="table" aria-label={ariaLabel ?? "Swim lane board"}>
         <div style={{ minWidth: boardMinWidth(stages.length) }}>
           <RailHeader stages={stages} counts={counts} late={late} drop={drop} laneLabel={laneHeading} />
           {lanes.map((lane) => {

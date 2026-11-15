@@ -3,6 +3,8 @@ import { ArrowLeft, ClipboardCheck, Plus, Send, ShieldCheck, Trash2, UserCheck }
 import { ClaimStatusBadge, ReviewCounts, ReviewDialog, useClaimSend } from "@/components/claims/ClaimParts";
 import { CommitInput, ServiceLinesCard } from "@/components/claims/ServiceLinesCard";
 import { Sar } from "@/components/invoice/InvoiceParts";
+import { KpiStrip, KpiTile } from "@/components/ui/glass";
+import { IconCash, IconClockDollar, IconReceipt2, IconShieldCheck } from "@tabler/icons-react";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import {
   addSupport, CARE_ROLE_LABEL, checkEligibility, CLAIM_TYPE_LABEL, claimFor, claimStatusOf, DX_TYPE_LABEL, ON_ADMISSION_LABEL, PRIORITY_LABEL, removeSupport,
@@ -87,6 +89,13 @@ export function ClaimPage() {
       )}
       {!allowed && <Card className="mb-4 border-warn/40 bg-warn/5 px-4 py-3 text-sm">You can read this claim. Changing and sending it needs the billing permission.</Card>}
 
+      <KpiStrip label="Claim amounts" className="mb-4 grid-cols-2 lg:grid-cols-4">
+        <KpiTile icon={<IconReceipt2 stroke={1.75} />} label="Net Amount" value={<Sar value={m.net} />} note={inv ? `From invoice #${inv.number}` : "From the visit charges"} />
+        <KpiTile icon={<IconShieldCheck stroke={1.75} />} label="Insurance Share" value={<Sar value={m.totals.insuranceAmount} />} note="The patient pays the rest" />
+        <KpiTile icon={<IconCash stroke={1.75} />} label={m.fin.claim?.approved !== undefined ? "Approved By Payer" : "Paid By Payer"} value={<Sar value={m.fin.claim?.approved ?? m.totals.insurancePaid} />} note={m.fin.claim ? <span className="font-mono">{m.fin.claim.claimNumber}</span> : "Claim not sent yet"} />
+        <KpiTile icon={<IconClockDollar stroke={1.75} />} label="Insurance Balance" value={<Sar value={m.totals.insuranceBalance} />} note={m.totals.insuranceBalance > 0.004 ? "Still to come from the payer" : "Settled"} tone={m.totals.insuranceBalance > 0.004 ? undefined : "ok"} />
+      </KpiStrip>
+
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <div className="flex min-w-0 flex-col gap-4">
           <HeaderCard m={m} readOnly={readOnly} />
@@ -105,7 +114,7 @@ export function ClaimPage() {
         </div>
       </div>
 
-      <div className="sticky bottom-0 z-30 mt-4 rounded-xl border border-border bg-card/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/85">
+      <div className="glass-panel sticky bottom-0 z-30 mt-4 rounded-2xl">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
           <p className="me-auto hidden min-w-0 text-xs text-muted-foreground md:block">
             {options.claim.enabled ? options.claim.why : options.priorAuth.enabled ? options.priorAuth.why : options.eligibility.enabled ? options.eligibility.why : options.claim.why}
