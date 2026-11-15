@@ -10,7 +10,7 @@ import type { Encounter, Patient } from "./model";
 import { DOCTORS, FACILITY_NAME, ORG_ID } from "./reference-data";
 import { addSendRecord, dispenseNumber, getDrug, getRx, linesFor, newId, refreshStatuses, setRx } from "./rx";
 import {
-  classifyDispense, dispenseSteps, fillState, isControlled, isRaqeebScope, prescriptionSteps, refillsRemainingAfter, validateDispenseQty,
+  classifyDispense, dispenseSteps, fillState, isControlled, isPatientOwn, isRaqeebScope, prescriptionSteps, refillsRemainingAfter, validateDispenseQty,
   type PrescriptionAction,
 } from "./rx-logic";
 import type { Dispense, DispenseLine, ItemStatus, Prescription, RxCheck, RxItem, RxState, SendRecord } from "./rx-types";
@@ -158,8 +158,11 @@ export function planPrescription(s: RxState, rx: Prescription, change?: { itemId
   };
   const bundle = buildPrescriptionBundle(input, { uuid: stable ? seededUuid(`${rx.id}:${rx.items.map((i) => i.version + i.status).join()}:${change?.status ?? ""}`) : uuid });
   const checks = [...validatePrescriptionInput(input, { previouslySent: !!rx.sentAt }), ...validatePrescriptionBundle(bundle)];
+  if (isPatientOwn(rx)) checks.unshift({ level: "error", text: PATIENT_OWN_TEXT, code: "not-supported", spec: "Hospital rule" });
   return { input, bundle, checks };
 }
+
+export const PATIENT_OWN_TEXT = "This prescription only records medicine the patient brought. It is not sent to nphies and not dispensed by the pharmacy.";
 
 function record(p: Omit<SendRecord, "id" | "at">): SendRecord {
   return { id: newId("snd"), at: new Date().toISOString(), ...p };
@@ -172,7 +175,8 @@ function record(p: Omit<SendRecord, "id" | "at">): SendRecord {
 export function sendPrescription(rxId: string, action: PrescriptionAction, change?: { itemId: string; status: ItemStatus; reason?: string }): SendOutcome | null {
   const s = getRx();
   const rx = s.prescriptions.find((p) => p.id === rxId);
-  if (!rx) return null;
+  // The patient's own medicine never leaves the hospital record.
+  if (!rx || isPatientOwn(rx)) return null;
   const plan = planPrescription(s, rx, change, false);
   if (!plan) return null;
   const raqeeb = isRaqeebScope(rx.controlled, rx.usage);
@@ -271,6 +275,7 @@ export function planDispense(s: RxState, req: DispenseRequest, stable = true): D
     const item = rx.items.find((i) => i.id === l.itemId);
     if (!item) return;
     const drug = getDrug(item.drugId);
+    if (item.patientProvided) problems.push(`${drug.generic} was provided by the patient. It is not dispensed by the pharmacy.`);
     if (item.status !== "active") problems.push(`${drug.generic} is ${item.status}. It cannot be dispensed.`);
     const st = fillState(item, prior);
     const err = validateDispenseQty(st, l.quantity);

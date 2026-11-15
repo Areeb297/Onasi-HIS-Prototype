@@ -22,7 +22,9 @@ import { LogPage } from "@/pages/LogPage";
 import { MasterPage } from "@/pages/MasterPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { DamanDashboardPage } from "@/pages/DamanDashboardPage";
+import { AdmissionRequestsPage } from "@/pages/AdmissionRequestsPage";
 import { AgentsPage } from "@/pages/AgentsPage";
+import { AppointmentsPage } from "@/pages/AppointmentsPage";
 import { NphiesClinicalPage } from "@/pages/NphiesClinicalPage";
 import { NphiesFinancialPage } from "@/pages/NphiesFinancialPage";
 import { PatientsPage } from "@/pages/PatientsPage";
@@ -58,13 +60,13 @@ function CountBadge({ children }: { children: React.ReactNode }) {
 function Brand() {
   const { collapsed } = useSidebar();
   if (collapsed) {
-    return <img src="/brand/onasi-icon.png" alt="Onasi" className="onasi-mark onasi-mark-white h-7 w-auto shrink-0" />;
+    return <img src="/brand/onasi-icon-mint.png" alt="Onasi" className="onasi-mark h-7 w-auto shrink-0" />;
   }
   // ps-7 matches the width of the collapse button on the right, so the logo sits in the true centre.
   return (
     <div className="flex min-w-0 flex-1 justify-center ps-7">
       <button type="button" onClick={() => navigate("/dashboard")} aria-label="Onasi, go to the dashboard" title="Go to the dashboard" className="rounded-md focus-visible:outline-2 focus-visible:outline-ring">
-        <img src="/brand/onasi-logo.png" alt="" className="onasi-wordmark h-9 w-auto" />
+        <img src="/brand/onasi-wordmark-mint.png" alt="" className="onasi-wordmark h-9 w-auto" />
       </button>
     </div>
   );
@@ -265,6 +267,8 @@ function Page() {
     case "/confidential": return <ConfidentialPage />;
     case "/registration": return <RegistrationPage />;
     case "/beds": return <BedBoardPage />;
+    case "/appointments": return <AppointmentsPage />;
+    case "/admission-requests": return <AdmissionRequestsPage />;
     case "/lab": return <LabWorklistPage />;
     case "/theatre": return <TheatreListPage />;
     case "/radiology": return <RadiologyWorklistPage />;

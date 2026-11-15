@@ -11,7 +11,7 @@ import { useDevMode } from "@/lib/devmode";
 import { dosageNarrative } from "@/lib/fhir/medication";
 import type { Encounter } from "@/lib/model";
 import { fillOf, getDrug, removeDraftItem, rxForVisit, setHeight, useRx } from "@/lib/rx";
-import { isRaqeebScope, type PrescriptionAction } from "@/lib/rx-logic";
+import { isPatientOwn, isRaqeebScope, itemDates, regimenOf, type PrescriptionAction } from "@/lib/rx-logic";
 import { measuresFor, planPrescription, sendPrescription } from "@/lib/rx-send";
 import type { ItemStatus, Prescription, RxItem } from "@/lib/rx-types";
 import { can } from "@/lib/session";
@@ -153,12 +153,15 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
   const plan = React.useMemo(() => (dev && showFhir ? planPrescription(s, rx) : null), [dev, showFhir, s, rx]);
   const sends = s.sends.filter((x) => x.kind === "prescription" && x.targetId === rx.id);
   const last = sends[sends.length - 1];
-  const raqeeb = isRaqeebScope(rx.controlled, rx.usage);
+  const own = isPatientOwn(rx);
+  const raqeeb = isRaqeebScope(rx.controlled, rx.usage) && !own;
   const m = enc ? measuresFor(s, enc) : {};
 
-  const state = !rx.sentAt
-    ? rx.lastSend && !rx.lastSend.ok ? { label: "Rejected", tone: "danger" as const } : { label: "Draft, Not Sent", tone: "neutral" as const }
-    : rx.dirty ? { label: "Changes Not Sent", tone: "warn" as const } : { label: "Sent", tone: "ok" as const };
+  const state = own
+    ? { label: "Recorded, Not Sent", tone: "neutral" as const }
+    : !rx.sentAt
+      ? rx.lastSend && !rx.lastSend.ok ? { label: "Rejected", tone: "danger" as const } : { label: "Draft, Not Sent", tone: "neutral" as const }
+      : rx.dirty ? { label: "Changes Not Sent", tone: "warn" as const } : { label: "Sent", tone: "ok" as const };
 
   function send() {
     const out = sendPrescription(rx.id, rx.sentAt ? "update" : "create");
@@ -189,6 +192,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
         tag={dev ? `groupIdentifier ${rx.groupId}` : undefined}
         right={
           <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {own && <Badge tone="move">Provided By Patient</Badge>}
             {rx.controlled && <Badge tone="danger">Narcotic, Controlled Or Restricted</Badge>}
             {rx.raqeebRef && <Badge tone="merge">Raqeeb Reference {rx.raqeebRef}</Badge>}
             {!rx.raqeebRef && rx.nationalRef && <Badge tone="neutral">NPHIES Reference {rx.nationalRef}</Badge>}
@@ -196,7 +200,12 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
           </div>
         }
       />
-      {rx.controlled && !rx.raqeebRef && (
+      {own && (
+        <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">
+          Medicine the patient brought. It is part of the chart and the safety checks, but it is not sent to nphies and the pharmacy does not dispense it.
+        </p>
+      )}
+      {rx.controlled && !rx.raqeebRef && !own && (
         <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">
           {raqeeb ? "A Raqeeb reference id is given when nphies accepts this prescription. You need it to cancel or change it." : "Inpatient use is outside the Raqeeb scope. It gets a normal NPHIES reference id, not a Raqeeb one."}
         </p>
@@ -208,7 +217,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
       )}
       <Table>
         <thead className="bg-muted/40">
-          <tr><Th>Drug</Th><Th>Dose And Duration</Th><Th>Quantity</Th><Th>Dispensed</Th><Th>Status And Pharmacy Check</Th><Th>Actions</Th></tr>
+          <tr><Th>Drug</Th><Th>Dose And Duration</Th><Th>Source And Coverage</Th><Th>Quantity</Th><Th>Dispensed</Th><Th>Status And Pharmacy Check</Th><Th>Actions</Th></tr>
         </thead>
         <tbody>
           {rx.items.map((item) => {
@@ -229,12 +238,20 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
                   </div>
                 </Td>
                 <Td className="max-w-[280px] text-xs">
-                  {dosageNarrative(drug, item)}
+                  {regimenOf(item) !== "normal" && <Badge tone="update" className="mb-1">{regimenOf(item) === "split" ? "Split Regimen" : "Taper Regimen"}</Badge>}
+                  <div>{dosageNarrative(drug, item)}</div>
+                  <div className="text-muted-foreground">{dateRange(item, rx.authoredAt)}</div>
                   {item.patientInstruction && <div className="text-muted-foreground">{item.patientInstruction}</div>}
                   <div className="text-muted-foreground">Reason: {item.reason.text}</div>
                 </Td>
+                <Td className="text-xs">
+                  <div className="flex flex-wrap gap-1">
+                    <Badge tone={item.patientProvided ? "move" : "neutral"}>{item.patientProvided ? "Provided By Patient" : "Pharmacy"}</Badge>
+                    {item.coverage ? <Badge tone={item.coverage === "Insured" ? "ok" : "warn"}>{item.coverage}</Badge> : <span className="text-muted-foreground">Coverage not recorded</span>}
+                  </div>
+                </Td>
                 <Td className="whitespace-nowrap tabular-nums">{item.quantity} {drug.unit}{item.refills > 0 && <span className="text-xs text-muted-foreground"> · {item.refills} repeats</span>}</Td>
-                <Td className="whitespace-nowrap tabular-nums text-xs">{sent ? `${round(fill.dispensedTotal)} of ${item.quantity}` : "Not yet"}</Td>
+                <Td className="whitespace-nowrap tabular-nums text-xs">{item.patientProvided ? "Not dispensed" : sent ? `${round(fill.dispensedTotal)} of ${item.quantity}` : "Not yet"}</Td>
                 <Td className="max-w-[260px]">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <ItemStatusBadge status={item.status} />
@@ -295,20 +312,26 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
       </Table>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
         <div className="text-xs text-muted-foreground">
-          {last ? (last.ok ? `Last send accepted at ${new Date(last.at).toLocaleTimeString("en-GB")}.` : `Last send was rejected: ${firstError(last.checks)}`) : "Not sent to nphies yet."}
-          {!m.heightCm || !m.weightKg ? " Height and weight are missing." : ""}
+          {own
+            ? "Recorded on the chart only. Nothing is sent to nphies or to the pharmacy."
+            : <>
+                {last ? (last.ok ? `Last send accepted at ${new Date(last.at).toLocaleTimeString("en-GB")}.` : `Last send was rejected: ${firstError(last.checks)}`) : "Not sent to nphies yet."}
+                {!m.heightCm || !m.weightKg ? " Height and weight are missing." : ""}
+              </>}
         </div>
-        <div className="flex items-center gap-2">
-          {dev && <Button size="sm" onClick={() => setShowFhir(!showFhir)}>{showFhir ? "Hide" : "Show"} FHIR Details</Button>}
-          <span title={!canWrite ? "You do not have permission to prescribe" : rx.sentAt && !rx.dirty ? "Nothing new to send" : undefined}>
-            <Button variant="primary" disabled={!canWrite || (!!rx.sentAt && !rx.dirty)} onClick={send}>
-              <IconSend className="size-4" />
-              {rx.sentAt ? "Send Update To NPHIES" : "Send To NPHIES"}
-            </Button>
-          </span>
-        </div>
+        {!own && (
+          <div className="flex items-center gap-2">
+            {dev && <Button size="sm" onClick={() => setShowFhir(!showFhir)}>{showFhir ? "Hide" : "Show"} FHIR Details</Button>}
+            <span title={!canWrite ? "You do not have permission to prescribe" : rx.sentAt && !rx.dirty ? "Nothing new to send" : undefined}>
+              <Button variant="primary" disabled={!canWrite || (!!rx.sentAt && !rx.dirty)} onClick={send}>
+                <IconSend className="size-4" />
+                {rx.sentAt ? "Send Update To NPHIES" : "Send To NPHIES"}
+              </Button>
+            </span>
+          </div>
+        )}
       </div>
-      {dev && showFhir && plan && (
+      {dev && showFhir && plan && !own && (
         <div className="border-t border-border p-4">
           <MessageViewer title={rx.number} bundle={plan.bundle} checks={plan.checks} record={last} history={sends} />
         </div>
@@ -373,6 +396,12 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+const fmtDay = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+/** "From 3 Nov 2026 to 7 Nov 2026". Older items without a start date start on the day the prescription was written. */
+function dateRange(item: RxItem, authoredAt: string): string {
+  const d = itemDates(item, authoredAt);
+  return `From ${fmtDay(d.start)} to ${fmtDay(d.end)}`;
+}
 export function firstError(checks: { level: string; text: string }[]): string {
   return checks.find((c) => c.level === "error")?.text ?? "Rejected.";
 }

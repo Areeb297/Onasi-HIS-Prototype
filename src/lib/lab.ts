@@ -20,9 +20,11 @@ import { labAmendmentMinimums, labResultMinimums, validateLabOrderBundle, valida
 import { LAB_DIRECTOR, doctorIdForUser, personFromDoctor, personFromUser, providerIdForUser } from "./fhir/people";
 import { createStore } from "./fhir/store-util";
 import {
-  lastAccepted, nextVersion, type CriticalCall, type DocStatus, type LabOrder, type LabResult, type LabSpecimen, type Priority, type SendRecord,
+  lastAccepted, nextVersion, type CriticalCall, type DocStatus, type LabOrder, type LabResult, type LabSpecimen, type OrderCoverage, type OrderDiagnosis,
+  type Priority, type SendRecord,
 } from "./fhir/types";
 import type { Encounter, Patient } from "./model";
+import { coverageLabel } from "./order-fields";
 import { can, currentUser, type DemoUser } from "./session";
 import { getState, patientName } from "./store";
 import { pushToast } from "./toast";
@@ -235,10 +237,18 @@ function allowed(perm: "order.lab" | "lab.result", target: string, patient?: str
 
 /* ---------- order lifecycle (chart side) ---------- */
 
-export function placeLabOrder(
-  enc: Encounter,
-  input: { codes: string[]; priority: Priority; fasting: boolean | null; note: string },
-): LabOrder | null {
+/** What the chart sends to place or amend a lab order. Diagnosis and coverage are optional so older callers still work. */
+export interface LabOrderFields {
+  codes: string[];
+  priority: Priority;
+  fasting: boolean | null;
+  note: string;
+  /** Visit diagnosis the order is for. null = none picked. */
+  diagnosis?: OrderDiagnosis | null;
+  coverage?: OrderCoverage;
+}
+
+export function placeLabOrder(enc: Encounter, input: LabOrderFields): LabOrder | null {
   const patient = getState().patients.find((p) => p.id === enc.patientId);
   if (!allowed("order.lab", "Lab order", patient && patientName(patient))) return null;
   const codes = normalizeCodes(input.codes).filter((c) => testByCode(c));
@@ -262,14 +272,19 @@ export function placeLabOrder(
     orderDirty: false,
     resultDirty: false,
     sends: [],
+    ...(input.diagnosis?.code ? { diagnosis: { code: input.diagnosis.code, text: input.diagnosis.text } } : {}),
+    ...(input.coverage ? { coverage: input.coverage } : {}),
   };
   store.set({ ...s, counter, orders: [order, ...s.orders] });
-  audit("create", `Lab order ${order.id}`, { patient: patientName(patient), detail: `Visit ${order.visitNumber}: ${codes.map((c) => testByCode(c)?.short).join(", ")}` });
+  audit("create", `Lab order ${order.id}`, {
+    patient: patientName(patient),
+    detail: `Visit ${order.visitNumber}: ${codes.map((c) => testByCode(c)?.short).join(", ")}${order.diagnosis ? `. Diagnosis ${order.diagnosis.code}` : ""}${order.coverage ? `. ${coverageLabel(order.coverage)}` : ""}`,
+  });
   return order;
 }
 
 /** Change an order before the specimen is collected (tests) or before it is resulted (priority, notes). */
-export function amendLabOrder(id: string, input: { codes: string[]; priority: Priority; fasting: boolean | null; note: string }): boolean {
+export function amendLabOrder(id: string, input: LabOrderFields): boolean {
   const o = getOrder(id);
   if (!o || !allowed("order.lab", `Lab order ${id}`)) return false;
   if (o.status === "cancelled" || o.status === "resulted" || o.status === "amended") return false;
@@ -282,6 +297,12 @@ export function amendLabOrder(id: string, input: { codes: string[]; priority: Pr
     x.priority = input.priority;
     x.fasting = input.fasting;
     x.note = input.note.trim();
+    // Left out of the input = leave as it is. null = the diagnosis was cleared.
+    if (input.diagnosis !== undefined) {
+      if (input.diagnosis?.code) x.diagnosis = { code: input.diagnosis.code, text: input.diagnosis.text };
+      else delete x.diagnosis;
+    }
+    if (input.coverage) x.coverage = input.coverage;
     if (wasSent) x.orderDirty = true;
   });
   audit("update", `Lab order ${id}`, { patient: nameOf(o), detail: "Order changed" });

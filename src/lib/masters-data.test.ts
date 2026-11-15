@@ -23,7 +23,8 @@ describe("masters data", () => {
       expect(m.title, m.id).toBeTruthy();
       expect(m.module, m.id).toBeTruthy();
       expect(m.columns.length, m.id).toBeGreaterThanOrEqual(3);
-      expect(m.columns.length, m.id).toBeLessThanOrEqual(8);
+      // The list shows at most 8 columns. Fields marked formOnly appear in the add and edit form only.
+      expect(m.columns.filter((c) => !c.formOnly).length, m.id).toBeLessThanOrEqual(8);
       const keys = m.columns.map((c) => c.key);
       expect(new Set(keys).size, m.id).toBe(keys.length);
     }

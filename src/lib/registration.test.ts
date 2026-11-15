@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Patient } from "./model";
 import {
-  ageLabel, arabicName, buildFlags, coverageOutcome, findDuplicates, flagViews, phoneKey, validateRegistration, type RegistrationInput,
+  ageLabel, arabicName, buildFlags, coverageOutcome, defaultTitle, fetchHealthId, findDuplicates, flagViews, listName, phoneKey, validateRegistration,
+  type RegistrationInput,
 } from "./registration";
 import { REGISTRY, lookupById, registryNameAr, retrieveInsurance } from "./registry";
 import { seedState } from "./store";
@@ -137,6 +138,7 @@ describe("registration form checks", () => {
   const ok: RegistrationInput = {
     idNumber: "1000000011", healthId: "1090000001", first: "Saad", family: "Almutairi", dob: "1968-03-14", mobile: "0500000011", email: "",
     shortCode: "RHAD3100", consent: true, visit: "O", bedId: "", dnr: false, dnrDoctor: "", dnrDate: "", interpreter: false, language: "", today: "2026-11-14",
+    addressLine1: "King Fahd Road, Building 12",
   };
   const fields = (i: Partial<RegistrationInput>) => validateRegistration({ ...ok, ...i }).map((p) => p.field);
 
@@ -146,8 +148,8 @@ describe("registration form checks", () => {
   });
 
   it("names each missing required field", () => {
-    expect(fields({ idNumber: "", healthId: "", first: " ", family: "", dob: "", mobile: "", consent: false }))
-      .toEqual(["idNumber", "first", "family", "dob", "mobile", "healthId", "consent"]);
+    expect(fields({ idNumber: "", healthId: "", first: " ", family: "", dob: "", mobile: "", consent: false, addressLine1: " " }))
+      .toEqual(["idNumber", "first", "family", "dob", "addressLine1", "mobile", "healthId", "consent"]);
   });
 
   it("checks the date of birth, short address, mobile and email", () => {
@@ -159,10 +161,33 @@ describe("registration form checks", () => {
     expect(fields({ email: "a@b.sa" })).toEqual([]);
   });
 
-  it("needs a bed only for an inpatient visit", () => {
-    expect(fields({ visit: "I" })).toEqual(["bedId"]);
-    expect(fields({ visit: "I", bedId: "301-A" })).toEqual([]);
+  it("needs a bed, an admission type and a patient condition only for an inpatient visit", () => {
+    expect(fields({ visit: "I" })).toEqual(["bedId", "admissionType", "patientCondition"]);
+    expect(fields({ visit: "I", bedId: "301-A", admissionType: "Elective", patientCondition: "Stable" })).toEqual([]);
+    expect(fields({ visit: "I", bedId: "301-A", admissionType: "Elective", patientCondition: "Stable", expectedStay: "3.5" })).toEqual(["expectedStay"]);
+    expect(fields({ visit: "I", bedId: "301-A", admissionType: "Elective", patientCondition: "Stable", expectedStay: "4" })).toEqual([]);
     expect(fields({ visit: "E" })).toEqual([]);
+  });
+
+  it("needs a nick name for a confidential patient", () => {
+    expect(fields({ confidential: true })).toEqual(["nickName"]);
+    expect(fields({ confidential: true, nickName: "  " })).toEqual(["nickName"]);
+    expect(fields({ confidential: true, nickName: "Patient Falcon" })).toEqual([]);
+  });
+
+  it("needs the parent for a newborn, and not the ID number", () => {
+    expect(fields({ newborn: true })).toEqual(["parentId"]);
+    expect(fields({ newborn: true, parentId: "P002", idNumber: "" })).toEqual([]);
+    expect(fields({ idNumber: "" })).toEqual(["idNumber"]);
+  });
+
+  it("needs only the title for an unknown or unconscious patient", () => {
+    const blank = { idNumber: "", healthId: "", first: "", family: "", dob: "", mobile: "", consent: false, addressLine1: "", visit: "E" as const };
+    expect(fields({ ...blank, unknown: true })).toEqual(["title"]);
+    expect(fields({ ...blank, unknown: true, title: "Mr" })).toEqual([]);
+    // An unknown newborn does not need the parent either, and what is typed is still checked.
+    expect(fields({ ...blank, unknown: true, title: "Baby", newborn: true })).toEqual([]);
+    expect(fields({ ...blank, unknown: true, title: "Mr", email: "x" })).toEqual(["email"]);
   });
 
   it("needs the doctor and date for Do Not Resuscitate, and the language for an interpreter", () => {
@@ -173,8 +198,34 @@ describe("registration form checks", () => {
   });
 
   it("has an Arabic line for every problem", () => {
-    for (const p of validateRegistration({ ...ok, idNumber: "", first: "", family: "", dob: "", mobile: "", email: "x", shortCode: "x", healthId: "", consent: false, visit: "I", dnr: true, interpreter: true })) {
+    for (const p of validateRegistration({ ...ok, idNumber: "", first: "", family: "", dob: "", mobile: "", email: "x", shortCode: "x", healthId: "", consent: false, visit: "I", dnr: true, interpreter: true, confidential: true, newborn: true, addressLine1: "", expectedStay: "x" })) {
       expect(p.messageAr.length, p.field).toBeGreaterThan(3);
     }
+  });
+});
+
+describe("title, Health ID and list name", () => {
+  it("fills the usual title from the sex and marital status", () => {
+    expect(defaultTitle("M", "S")).toBe("Mr");
+    expect(defaultTitle("F", "M")).toBe("Mrs");
+    expect(defaultTitle("F", "S")).toBe("Miss");
+    expect(defaultTitle("F", "U")).toBe("Ms");
+    expect(defaultTitle("F", "S", true)).toBe("Baby");
+  });
+
+  it("fetches the Health ID from the registry with the ID number and the date of birth", () => {
+    expect(fetchHealthId("1000000011", "1968-03-14", "2026-11-14")).toEqual({ ok: true, healthId: "1090000001" });
+    expect(fetchHealthId("1000000011", "1968-03-15", "2026-11-14").ok).toBe(false);
+    expect(fetchHealthId("123", "1968-03-14", "2026-11-14").ok).toBe(false);
+    expect(fetchHealthId("1000000011", "", "2026-11-14").ok).toBe(false);
+    expect(fetchHealthId("1999999999", "1968-03-14", "2026-11-14").ok).toBe(false);
+  });
+
+  it("shows the nick name of a confidential patient until the record is opened", () => {
+    const p = { given: "Mona", family: "Alsalem", confidential: true, extra: { nickName: "Patient Falcon" } };
+    expect(listName(p)).toBe("Patient Falcon");
+    expect(listName(p, true)).toBe("Mona Alsalem");
+    expect(listName({ ...p, extra: {} })).toBe("Confidential Patient");
+    expect(listName({ ...p, confidential: false })).toBe("Mona Alsalem");
   });
 });

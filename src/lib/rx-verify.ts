@@ -1,7 +1,7 @@
 import { audit } from "./audit";
 import { fillOf, getDrug, getRx, setRx } from "./rx";
 import { FREQ_BY_ID, ROUTE_LABEL } from "./rx-catalogue";
-import { dailyAmount, isControlled, isRaqeebScope } from "./rx-logic";
+import { DOSE_TIMES, isControlled, isRaqeebScope, regimenDailyAmount, regimenOf, stepsOf } from "./rx-logic";
 import { checkSafety, type SafetyFinding, type SafetyInput } from "./rx-safety";
 import { sendDispense, type DispenseRequest, type SendOutcome } from "./rx-send";
 import { batchesFor, stockProblem } from "./rx-stock";
@@ -56,10 +56,10 @@ export const needsPharmacist = (st: VerifyStatus): boolean => st === "to-verify"
 /** The prescriber has to act. */
 export const needsPrescriber = (st: VerifyStatus): boolean => st === "queried" || st === "rejected";
 
-/** Sent, active and not fully dispensed items, with where each one stands. */
+/** Sent, active and not fully dispensed items, with where each one stands. The patient's own medicine never reaches the pharmacy. */
 export function pharmacyItems(s: RxState, rx: Prescription): { item: RxItem; status: VerifyStatus }[] {
   if (!rx.sentAt) return [];
-  return rx.items.filter((i) => i.status === "active" && !fillOf(s, rx, i).done).map((item) => ({ item, status: verifyStatusIn(s, rx, item) }));
+  return rx.items.filter((i) => i.status === "active" && !i.patientProvided && !fillOf(s, rx, i).done).map((item) => ({ item, status: verifyStatusIn(s, rx, item) }));
 }
 
 /** Only these can be dispensed. */
@@ -119,8 +119,9 @@ export function buildCheckSheet(i: SheetInput): SheetSection[] {
   const dup = of("duplicate");
   const inter = of("interaction");
   const dose = of("dose", "route", "controlled", "age");
-  const day = i.dose > 0 ? dailyAmount(d, i.dose, i.frequencyId) : 0;
-  const doseFact = `Daily dose ${r2(day)} ${unitOf(d)}. Usual maximum ${d.maxDailyDose} ${unitOf(d)}.`;
+  const reg = regimenOf(i);
+  const day = i.dose > 0 ? regimenDailyAmount(d, reg, stepsOf({ ...i, regimen: reg, schedule: i.schedule })) : 0;
+  const doseFact = `${reg === "normal" ? "Daily dose" : `Highest daily dose (${reg === "split" ? "split" : "taper"} regimen)`} ${r2(day)} ${unitOf(d)}. Usual maximum ${d.maxDailyDose} ${unitOf(d)}.`;
 
   const weightLines: string[] = [];
   let weightLevel: SheetLevel = "info";
@@ -179,15 +180,32 @@ export function kidneyNotes(
 }
 
 /** One line a pharmacist reads first: dose in units and in strength, route, frequency and duration. */
-export function orderLine(drug: Drug, item: Pick<RxItem, "dose" | "route" | "frequencyId" | "durationDays" | "asNeeded">): { dose: string; route: string; frequency: string; duration: string } {
-  const amount = r2(item.dose * drug.perUnit);
+export function orderLine(
+  drug: Drug,
+  item: Pick<RxItem, "dose" | "route" | "frequencyId" | "durationDays" | "asNeeded"> & Partial<Pick<RxItem, "regimen" | "schedule">>,
+): { dose: string; route: string; frequency: string; duration: string } {
+  const doseText = (n: number) => `${n} ${drug.unit}${n === 1 || drug.unit === "mL" ? "" : "s"} (${r2(n * drug.perUnit)} ${unitOf(drug)})`;
+  const reg = regimenOf(item);
+  const days = `${item.durationDays} day${item.durationDays === 1 ? "" : "s"}`;
+  if (reg !== "normal") {
+    // One line per row so the pharmacist reads every dose of a split or taper regimen.
+    const rows = stepsOf(item);
+    return {
+      dose: rows.map((r, i) => `${reg === "taper" ? `Phase ${i + 1}` : DOSE_TIME_LABEL[r.time ?? ""] ?? `Dose ${i + 1}`}: ${doseText(r.dose)}`).join("; "),
+      route: ROUTE_LABEL[item.route] ?? item.route,
+      frequency: `${reg === "split" ? "Split" : "Taper"}: ${rows.map((r) => `${FREQ_BY_ID[r.frequencyId]?.label ?? r.frequencyId} for ${r.days} day${r.days === 1 ? "" : "s"}`).join(reg === "taper" ? ", then " : ", ")}${item.asNeeded ? ", as needed" : ""}`,
+      duration: `${days} in all`,
+    };
+  }
   return {
-    dose: `${item.dose} ${drug.unit}${item.dose === 1 || drug.unit === "mL" ? "" : "s"} (${amount} ${unitOf(drug)})`,
+    dose: doseText(item.dose),
     route: ROUTE_LABEL[item.route] ?? item.route,
     frequency: `${FREQ_BY_ID[item.frequencyId]?.label ?? item.frequencyId}${item.asNeeded ? ", as needed" : ""}`,
-    duration: `${item.durationDays} day${item.durationDays === 1 ? "" : "s"}`,
+    duration: days,
   };
 }
+
+const DOSE_TIME_LABEL: Record<string, string> = Object.fromEntries(DOSE_TIMES.map((t) => [t.id, t.label]));
 
 /* ---------- pharmacist and prescriber actions ---------- */
 
@@ -201,6 +219,7 @@ function patchVerify(rxId: string, itemId: string, make: (item: RxItem, rx: Pres
   const rx = s.prescriptions.find((p) => p.id === rxId);
   const item = rx?.items.find((i) => i.id === itemId);
   if (!rx || !item) return { ok: false, problem: "Prescription item not found." };
+  if (item.patientProvided) return { ok: false, problem: "This medicine was provided by the patient. It is not checked or dispensed by the pharmacy." };
   if (!rx.sentAt) return { ok: false, problem: "This prescription was not sent to the pharmacy yet." };
   if (item.status !== "active") return { ok: false, problem: `This item is ${item.status}. It cannot be checked.` };
   const next = make(item, rx);
@@ -307,6 +326,10 @@ export function dispenseGate(s: RxState, req: DispenseRequest, dispenser: { id: 
     const item = rx.items.find((i) => i.id === l.itemId);
     if (!item) continue;
     const drug = getDrug(item.drugId);
+    if (item.patientProvided) {
+      out.push(`${drug.generic} was provided by the patient. It is not dispensed by the pharmacy.`);
+      continue;
+    }
     if (isControlled(drug.controlClass)) controlled = true;
     const fill = fillOf(s, rx, item);
     const st = verifyStatusOf(item, fill.dispensedTotal);

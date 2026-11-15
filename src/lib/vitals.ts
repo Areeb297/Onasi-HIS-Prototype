@@ -9,7 +9,7 @@ import type { SegId } from "./spec";
 import { getState, nowLocal, updateEncounter } from "./store";
 import {
   CLAIM_ITEMS, EXTRA_CODES, LOINC_SYSTEM, NTE_COMMENT_TYPE, NTE_MAX, OBR_PANEL_CODE, OBR_SECTION_ID, VITALS, VITAL_BY_KEY, bmiOf, flagFor, refRangeFor,
-  type Consciousness, type PanelContext, type VitalKey,
+  LOCAL_VITALS, type Consciousness, type LocalReadings, type PanelContext, type VitalKey,
 } from "./vitals-spec";
 
 /**
@@ -62,6 +62,8 @@ export interface VitalPanel {
   position?: string;
   consciousness: Consciousness;
   note?: string;
+  /** Blood sugar, urine dipstick and EtCO2. Kept in the HIS only: the ORU value set has no code for them. Missing on older panels. */
+  local?: LocalReadings;
   sends: SendRecord[];
 }
 
@@ -147,7 +149,33 @@ export interface PanelInput {
   position?: string;
   consciousness?: Consciousness;
   note?: string;
+  /** HIS-only readings. Not sent. */
+  local?: LocalReadings;
 }
+
+/**
+ * Keep only known local readings with a usable value: a number in range for blood sugar and EtCO2, a dipstick grade for urine.
+ * Undefined when nothing is left, so panels without these readings look the same as before.
+ */
+export function cleanLocal(input: LocalReadings | undefined): LocalReadings | undefined {
+  if (!input) return undefined;
+  const out: LocalReadings = {};
+  for (const d of LOCAL_VITALS) {
+    const v = input[d.key];
+    if (v === undefined || v === "") continue;
+    if (d.kind === "number") {
+      const n = typeof v === "number" ? v : Number(v);
+      if (!Number.isNaN(n)) out[d.key] = n;
+    } else if (typeof v === "string") out[d.key] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** The local readings of a panel. Older panels have none and read as empty. */
+export const localOf = (p: VitalPanel): LocalReadings => p.local ?? {};
+
+const sameLocal = (a: LocalReadings | undefined, b: LocalReadings | undefined) =>
+  LOCAL_VITALS.every((d) => (a?.[d.key] ?? "") === (b?.[d.key] ?? ""));
 
 function toObs(input: Pick<PanelInput, "values" | "absences">): VitalObs[] {
   const out: VitalObs[] = [];
@@ -194,6 +222,8 @@ export function savePanel(input: PanelInput): VitalPanel | null {
     status: "F", version: 1, obs: toObs(input), onOxygen: !!input.onOxygen, o2flow: input.o2flow, position: input.position,
     consciousness: input.consciousness ?? "Alert", note: input.note, sends: [],
   };
+  const local = cleanLocal(input.local);
+  if (local) panel.local = local;
   commit({ ...s, seq: n, panels: [...s.panels, panel] });
   syncChart(input.visit);
   audit("create", `Vital signs ${panel.businessId}`, { patient: `${c.patient.given} ${c.patient.family}`, detail: `Visit ${input.visit}, ${input.context}` });
@@ -201,10 +231,13 @@ export function savePanel(input: PanelInput): VitalPanel | null {
 }
 
 /** Correct a panel that may already be sent. Changed readings become C and the panel becomes C. */
-export function amendPanel(id: string, input: Pick<PanelInput, "values" | "absences" | "note">): VitalPanel | null {
+export function amendPanel(id: string, input: Pick<PanelInput, "values" | "absences" | "note" | "local">): VitalPanel | null {
   const s = get();
   const p = s.panels.find((x) => x.id === id);
   if (!p || p.status === "X") return null;
+  // HIS-only readings are never sent, so changing them alone is not a correction: no new version, nothing to resend.
+  const local = "local" in input ? cleanLocal(input.local) : p.local;
+  const withLocal = (x: VitalPanel): VitalPanel => { const y = { ...x }; if (local) y.local = local; else delete y.local; return y; };
   const next = toObs(input);
   const obs: VitalObs[] = [];
   for (const d of VITALS) {
@@ -218,7 +251,15 @@ export function amendPanel(id: string, input: Pick<PanelInput, "values" | "absen
     }
   }
   const sent = p.sends.length > 0;
-  const updated: VitalPanel = { ...p, obs, note: input.note ?? p.note, status: sent ? "C" : "F", version: p.version + 1 };
+  const obsSame = obs.length === p.obs.length && obs.every((o, i) => o === p.obs[i]);
+  if (obsSame && (input.note ?? p.note) === p.note) {
+    if (sameLocal(local, p.local)) return p;
+    const onlyLocal = withLocal(p);
+    commit({ ...s, panels: s.panels.map((x) => (x.id === id ? onlyLocal : x)) });
+    audit("update", `Vital signs ${p.businessId} local readings`, { detail: "Blood sugar, urine or EtCO2 changed. Not sent to NPHIES." });
+    return onlyLocal;
+  }
+  const updated: VitalPanel = withLocal({ ...p, obs, note: input.note ?? p.note, status: sent ? "C" : "F", version: p.version + 1 });
   commit({ ...s, panels: s.panels.map((x) => (x.id === id ? updated : x)) });
   syncChart(p.visit);
   audit("update", `Vital signs ${p.businessId} v${updated.version}`, { detail: sent ? "Correction after send" : "Edit before send" });
@@ -446,8 +487,13 @@ export const sentOk = (p: VitalPanel) => p.sends.some((x) => x.accepted);
 /** True when the newest version of the panel has not been accepted by NPHIES yet. */
 export const needsSend = (p: VitalPanel): boolean => {
   const last = p.sends[p.sends.length - 1];
+  // A panel that holds only HIS-only readings (blood sugar, urine, EtCO2) has nothing for the ORU.
+  if (!last && !hasOruReadings(p)) return false;
   return !last || !last.accepted || last.version < p.version;
 };
+
+/** True when the panel has at least one reading that goes in the ORU (a value of one of the eight vitals). */
+export const hasOruReadings = (p: VitalPanel): boolean => p.obs.some((o) => o.value !== undefined);
 
 /* ---------- claim readiness (CHI) ---------- */
 
@@ -574,7 +620,7 @@ function seedVitals(): State {
   mk("P001", 90, "routine", { sbp: 120, dbp: 78, pulse: 84, rr: 18, temp: 37.4, spo2: 96 });
   mk("P003", 560, "admission", { sbp: 142, dbp: 90, pulse: 104, rr: 20, temp: 37.0, spo2: 96, weight: 91, height: 172 });
   mk("P003", 300, "routine", { sbp: 150, dbp: 92, pulse: 112, rr: 22, temp: 37.1, spo2: 93 });
-  mk("P003", 60, "routine", { sbp: 138, dbp: 86, pulse: 98, rr: 19, temp: 36.9, spo2: 95 });
+  mk("P003", 60, "routine", { sbp: 138, dbp: 86, pulse: 98, rr: 19, temp: 36.9, spo2: 95 }, { local: { sugarRandom: 186, urineGlucose: "1+", urineKetones: "Negative" } });
   mk("P014", 8, "triage", { sbp: 84, dbp: 50, pulse: 128, rr: 28, temp: 36.9, spo2: 89, weight: 88 }, { consciousness: "Alert" });
   mk("P004", 100, "other", { sbp: 118, dbp: 76, pulse: 74, rr: 16, temp: 36.7, spo2: 98, weight: 66, height: 160 });
   return { panels, seq, rejectNext: false, batches: [] };

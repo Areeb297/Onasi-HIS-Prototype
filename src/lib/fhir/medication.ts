@@ -1,7 +1,7 @@
 import { OID, ORG_OID } from "../reference-data";
 import { FREQ_BY_ID, OVERRIDE_LABEL, ROUTE_BY_CODE, ROUTE_LABEL } from "../rx-catalogue";
-import { addDays } from "../rx-logic";
-import type { ControlClass, Drug, DispenseLine, Frequency, ItemStatus, RxItem, UsageSetting } from "../rx-types";
+import { addDays, regimenOf, stepDates, stepsOf } from "../rx-logic";
+import type { ControlClass, DoseStep, DoseTime, Drug, DispenseLine, Frequency, ItemStatus, RxItem, UsageSetting } from "../rx-types";
 
 /**
  * FHIR R4 builders for the nphies Medication Prescription and Dispense (Raqeeb) messages.
@@ -256,14 +256,30 @@ export function freqOf(id: string): Frequency {
   return FREQ_BY_ID[id] ?? FREQ_BY_ID.OD;
 }
 
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const TIME_TEXT: Record<DoseTime, string> = { MORN: "in the morning", NOON: "at noon", EVE: "in the evening", NIGHT: "at night" };
+
+/** One row of a split or taper regimen in words, for example "2 tablet twice daily in the morning for 5 days". */
+export function stepNarrative(drug: Drug, s: DoseStep): string {
+  return [`${s.dose} ${drug.unit}`, freqOf(s.frequencyId).label.toLowerCase(), s.time ? TIME_TEXT[s.time] : "", `for ${plural(s.days, "day")}`].filter(Boolean).join(" ");
+}
+
 export function dosageNarrative(drug: Drug, item: RxItem, days: number = item.durationDays): string {
+  const reg = regimenOf(item);
+  const route = ROUTE_LABEL[item.route] ? `by ${ROUTE_LABEL[item.route].toLowerCase()} route` : "";
+  if (reg !== "normal") {
+    // Narrative of every structured row (Dosage General 5.1): split rows run together, taper phases one after the other.
+    const rows = stepsOf(item).map((s) => stepNarrative(drug, s));
+    const head = reg === "split" ? `Split dosing: ${rows.join("; and ")}` : `Taper: ${rows.join("; then ")}`;
+    return [head, route, item.asNeeded ? "as needed" : "", `${plural(days, "day")} in all`].filter(Boolean).join(", ");
+  }
   const f = freqOf(item.frequencyId);
   const parts = [
     `${item.dose} ${drug.unit}`,
     f.label.toLowerCase(),
-    ROUTE_LABEL[item.route] ? `by ${ROUTE_LABEL[item.route].toLowerCase()} route` : "",
+    route,
     item.asNeeded ? "as needed" : "",
-    `for ${days} day${days === 1 ? "" : "s"}`,
+    `for ${plural(days, "day")}`,
   ].filter(Boolean);
   return parts.join(", ");
 }
@@ -425,7 +441,7 @@ export function buildMedicationDispensed(drug: Drug, line: DispenseLine): Json {
  * Other items carry frequency, period and periodUnit, and timing.code is not allowed.
  * `days` is the duration to state. On a dispense it is the days supplied, so it equals daysSupply.
  */
-export function buildDosage(drug: Drug, item: RxItem, raqeeb: boolean, days: number = item.durationDays): Json[] {
+export function buildDosage(drug: Drug, item: RxItem, raqeeb: boolean, days: number = item.durationDays, start?: string): Json[] {
   const f = freqOf(item.frequencyId);
   const general: Json = {
     text: dosageNarrative(drug, item, days),
@@ -434,6 +450,33 @@ export function buildDosage(drug: Drug, item: RxItem, raqeeb: boolean, days: num
     route: routeConcept(item.route),
     asNeededBoolean: item.asNeeded,
   };
+  const reg = regimenOf(item);
+  if (reg !== "normal") {
+    // Split dosing (variant 2) and tapered dosing (variant 3): one structured instruction per row, each in the Normal Dosing form.
+    // Split rows share sequence 1 and carry the time of day; taper phases get sequence 1, 2, 3 and their own dates.
+    // Raqeeb allows only Normal Dosing. The safety check stops such an item before sending, and if one gets through
+    // the bundle check rejects it, because a Raqeeb item must have exactly one structured instruction.
+    const steps = stepsOf(item);
+    const dates = stepDates(reg, steps, start ?? item.startDate ?? new Date().toISOString().slice(0, 10));
+    const rows = steps.map((s, i): Json => {
+      const sf = freqOf(s.frequencyId);
+      return {
+        sequence: reg === "taper" ? i + 1 : 1,
+        text: stepNarrative(drug, s),
+        timing: {
+          repeat: {
+            boundsPeriod: { start: dates[i].start, end: dates[i].end },
+            frequency: sf.frequency,
+            period: sf.period,
+            periodUnit: sf.periodUnit,
+            ...(reg === "split" && s.time ? { when: [s.time] } : {}),
+          },
+        },
+        doseAndRate: [{ doseQuantity: { value: s.dose, unit: drug.unit } }],
+      };
+    });
+    return [general, ...rows];
+  }
   const structured: Json = {
     timing: raqeeb
       ? { code: cc(SYS.snomed, `${DEMO_PREFIX}FREQ-${f.id}`, f.label) }
@@ -453,7 +496,9 @@ export function buildMedicationRequest(
   const type = PRESCRIPTION_TYPE[drug.controlClass];
   const raqeeb = drug.controlClass !== "U" && ctx.usage !== "inpatient";
   const start = ksaDate(ctx.authoredAt);
-  const end = addDays(start, Math.max(1, item.durationDays) * (item.refills + 1) + 7);
+  // A course that starts later than the day it was written stays valid for the same span after its own start.
+  const treatStart = item.startDate && item.startDate > start ? item.startDate : start;
+  const end = addDays(treatStart, Math.max(1, item.durationDays) * (item.refills + 1) + 7);
   return {
     resourceType: "MedicationRequest",
     id: ctx.id,
@@ -473,7 +518,7 @@ export function buildMedicationRequest(
     requester: { reference: ref("PractitionerRole", ctx.roleId) },
     encounter: { reference: ref("Encounter", ctx.encounterId), identifier: ident(SYS.encounter, ctx.encounter.visitNumber) },
     medicationReference: { reference: "#medicationprescribed" },
-    dosageInstruction: buildDosage(drug, item, raqeeb),
+    dosageInstruction: buildDosage(drug, item, raqeeb, item.durationDays, item.startDate || start),
     ...(item.fulfillmentNote ? { note: [{ text: item.fulfillmentNote }] } : {}),
     dispenseRequest: {
       validityPeriod: { start, end },

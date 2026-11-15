@@ -1,4 +1,5 @@
-import type { Check, EdData, Encounter, HisState, Patient, ScenarioForm } from "./model";
+import type { Check, Dx, EdData, Encounter, HisState, Patient, ScenarioForm } from "./model";
+import { dxPriority } from "./chart-entries";
 import { VS } from "./nphies-valuesets";
 import {
   ADDRESS_PATTERN, ADT_APP_OID, ALLERGY_SEVERITIES, BED_BY_ID, CNHI_DISPOSITIONS, DOCTORS, DX_TYPES, OID, ORG_ID, ORG_OID, PR_SYSTEMS,
@@ -314,13 +315,16 @@ export function buildSegments(ctx: BuildContext): BuiltMessage {
     return { id: "AL1" as const, f };
   });
 
-  const dxList = form.dx.length ? form.dx : [{ code: "", text: "", type: "W" as const }];
+  const dxList: Dx[] = form.dx.length ? form.dx : [{ code: "", text: "", type: "W" }];
+  const discharging = trigger === "A03" || cnhi;
   const dg1: Seg[] = dxList.map((d, i) => {
     const f: Record<number, string> = { 1: String(i + 1), 3: d.code ? coded(d.code, d.text, OID.icd10am) : "" };
-    if ("at" in d && d.at) f[5] = ts(d.at);
-    f[6] = `${d.type}^${DX_TYPES.find((t) => t.code === d.type)?.label ?? ""}`;
-    // DG1-15: the first diagnosis is the primary one, the rest are ranked secondary.
-    f[15] = i === 0 ? "1" : "2";
+    if (d.at) f[5] = ts(d.at);
+    // DG1-6: a Principal or Secondary diagnosis from the chart is final once the patient is discharged.
+    const type = discharging && (d.kind === "P" || d.kind === "S") ? "F" : d.type;
+    f[6] = `${type}^${DX_TYPES.find((t) => t.code === type)?.label ?? ""}`;
+    // DG1-15: the Principal diagnosis is 1, the rest are ranked secondary. Older records without a type use the first place.
+    f[15] = dxPriority(dxList, i);
     return { id: "DG1" as const, f };
   });
 

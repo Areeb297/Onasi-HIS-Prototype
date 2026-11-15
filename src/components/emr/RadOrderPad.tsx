@@ -1,15 +1,23 @@
 import * as React from "react";
+import { X } from "lucide-react";
 import { Gate } from "@/components/emr/fhir-ui";
+import { OrderCoverageField, OrderDiagnosisField } from "@/components/emr/OrderFields";
 import { Button, Field, Input, Select, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { BODY_REGIONS, MODALITIES, QUICK_RAD, RAD_CATALOG, procByCode, type RadProcedure } from "@/lib/fhir/rad-catalog";
-import { PRIORITIES, type Priority } from "@/lib/fhir/types";
+import { PRIORITIES, type OrderCoverage, type OrderDiagnosis, type Priority } from "@/lib/fhir/types";
+import type { Dx } from "@/lib/model";
+import { defaultOrderDiagnosis } from "@/lib/order-fields";
 
 export interface RadOrderInput {
+  /** The exams in this order. Each goes to NPHIES as its own order document. */
   procCodes: string[];
   priority: Priority;
   indication: string;
   clinicalInfo: string;
+  /** Visit diagnosis the order is for. null = none linked. */
+  diagnosis: OrderDiagnosis | null;
+  coverage: OrderCoverage;
 }
 
 function Chip({ proc, on, toggle, disabled }: { proc: RadProcedure; on: boolean; toggle: () => void; disabled?: boolean }) {
@@ -32,7 +40,10 @@ function Chip({ proc, on, toggle, disabled }: { proc: RadProcedure; on: boolean;
   );
 }
 
-/** Order pad for imaging. Tap the procedure, check the reason, place the order. Each procedure becomes its own order. */
+/**
+ * Order pad for imaging. Tap one or more exams, check the reason, place the order. One order can hold several exams;
+ * each exam still gets its own worklist line, report and NPHIES order document.
+ */
 export function RadOrderPad({
   initial,
   defaultIndication,
@@ -45,10 +56,17 @@ export function RadOrderPad({
   onSubmit,
   onCancel,
   duplicatesOf,
+  diagnoses = [],
+  insured = false,
 }: {
   /** Names of picked exams that are already open for the visit. The pad warns before it adds them again. */
   duplicatesOf?: (procCodes: string[]) => string[];
-  initial?: { procCode: string; priority: Priority; indication: string; clinicalInfo: string };
+  /** The visit's diagnoses, for the Diagnosis picker. */
+  diagnoses?: Dx[];
+  /** The visit is billed to an insurance plan. Plan Coverage is offered only then. */
+  insured?: boolean;
+  /** An existing exam. Orders saved before diagnosis and coverage existed have neither. */
+  initial?: { procCode: string; priority: Priority; indication: string; clinicalInfo: string; diagnosis?: OrderDiagnosis | null; coverage?: OrderCoverage };
   defaultIndication?: string;
   /** Amend mode: one procedure only. */
   single?: boolean;
@@ -66,14 +84,21 @@ export function RadOrderPad({
   const [priority, setPriority] = React.useState<Priority>(initial?.priority ?? "routine");
   const [indication, setIndication] = React.useState(initial?.indication ?? defaultIndication ?? "");
   const [clinicalInfo, setClinicalInfo] = React.useState(initial?.clinicalInfo ?? "");
+  const [diagnosis, setDiagnosis] = React.useState<OrderDiagnosis | null>(initial ? initial.diagnosis ?? null : defaultOrderDiagnosis(diagnoses));
+  const [coverage, setCoverage] = React.useState<OrderCoverage>(initial?.coverage ?? (insured ? "plan" : "self-pay"));
   const [pending, setPending] = React.useState<{ andSend: boolean } | null>(null);
 
   const toggle = (c: string) => setCodes((cur) => (single ? [c] : cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
+  const pickDiagnosis = (d: OrderDiagnosis | null) => {
+    setDiagnosis(d);
+    // The diagnosis is a good start for the reason when none is typed yet.
+    if (d && !indication.trim()) setIndication(d.text);
+  };
   const picked = codes.map((c) => procByCode(c)).filter((p): p is RadProcedure => !!p);
   const hasReason = indication.trim().length > 0;
   const ready = canOrder && picked.length > 0 && hasReason;
-  const whyOff = !canOrder ? "" : picked.length === 0 ? "Pick a procedure first." : !hasReason ? "Enter the reason for the exam. NPHIES rejects a radiology order without it." : "";
-  const value: RadOrderInput = { procCodes: codes, priority, indication, clinicalInfo };
+  const whyOff = !canOrder ? "" : picked.length === 0 ? "Pick an exam first." : !hasReason ? "Enter the reason for the exam. NPHIES rejects a radiology order without it." : "";
+  const value: RadOrderInput = { procCodes: codes, priority, indication, clinicalInfo, diagnosis, coverage };
   const dupes = duplicatesOf && !procLocked ? duplicatesOf(codes) : [];
   /** A duplicate asks first. Anything else goes straight through. */
   const submit = (andSend: boolean) => (dupes.length > 0 ? setPending({ andSend }) : onSubmit(value, andSend));
@@ -99,21 +124,61 @@ export function RadOrderPad({
           ))}
         </div>
       </div>
-      {picked.length > 0 && (
-        <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-          {picked.map((p) => (
-            <div key={p.code} className="flex flex-wrap items-center gap-x-3">
-              <span className="font-medium">{p.display}</span>
-              <span className="text-xs text-muted-foreground">
-                {MODALITIES[p.modality].display} · {BODY_REGIONS[p.region].display}
-                {p.contrast && " · Contrast needed"}
-              </span>
-              {dev && <span className="font-mono text-xs text-muted-foreground">orderDetail {p.modality}, bodySite {BODY_REGIONS[p.region].code}</span>}
-            </div>
-          ))}
-          {picked.length > 1 && <p className="mt-1 text-xs text-muted-foreground">Each procedure becomes its own order, because an order document holds one imaging procedure.</p>}
-        </div>
-      )}
+      <div className="rounded-lg border border-border bg-muted/30">
+        <div className="px-3 pt-2.5 text-xs font-medium text-muted-foreground">{single ? "Exam" : `Exams In This Order (${picked.length})`}</div>
+        {picked.length === 0 ? (
+          <p className="px-3 pb-3 pt-1 text-sm text-muted-foreground">Tap an exam above to add it.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[30rem] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th scope="col" className="px-3 py-1.5 font-medium">Exam</th>
+                  <th scope="col" className="px-3 py-1.5 font-medium">Modality</th>
+                  <th scope="col" className="px-3 py-1.5 font-medium">Body Site</th>
+                  <th scope="col" className="px-3 py-1.5 font-medium">Contrast</th>
+                  {!single && <th scope="col" className="px-3 py-1.5"><span className="sr-only">Remove</span></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {picked.map((p) => (
+                  <tr key={p.code} className="border-t border-border">
+                    <td className="px-3 py-1.5 font-medium">
+                      {p.display}
+                      {dev && <div className="font-mono text-xs font-normal text-muted-foreground">{p.code}</div>}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {MODALITIES[p.modality].display}
+                      {dev && <div className="font-mono text-xs text-muted-foreground">orderDetail {MODALITIES[p.modality].code}</div>}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {BODY_REGIONS[p.region].display}
+                      {dev && <div className="font-mono text-xs text-muted-foreground">bodySite {BODY_REGIONS[p.region].code}</div>}
+                    </td>
+                    <td className="px-3 py-1.5">{p.contrast ? "Needed" : "No"}</td>
+                    {!single && (
+                      <td className="px-3 py-1.5 text-right">
+                        <button type="button" className="rounded p-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => toggle(p.code)} aria-label={`Remove ${p.short}`}>
+                          <X className="size-3.5" />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {picked.length > 1 && (
+          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            One order, {picked.length} exams. Modality and body site come with each exam. Radiology does and reports each exam on its own, and each is sent to NPHIES as its own order document.
+          </p>
+        )}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <OrderDiagnosisField diagnoses={diagnoses} value={diagnosis} onChange={pickDiagnosis} />
+        <OrderCoverageField value={coverage} onChange={setCoverage} insured={insured || coverage === "plan"} />
+      </div>
       <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)_minmax(0,1fr)]">
         <Field label="Priority" hl7="ServiceRequest.priority">
           <Select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>

@@ -5,6 +5,7 @@ import { ClassBadge } from "@/components/badges";
 import { RowActions, type ActionKey } from "@/components/RowActions";
 import { VisitDischargeProgress, useVisitActions } from "@/components/VisitActions";
 import { CodeBlock } from "@/components/ui/code-block";
+import { NphiesLogo } from "@/components/NphiesLogo";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { Timeline, type TimelineEvent } from "@/components/ui/timeline";
 import { quickSend } from "@/lib/actions";
@@ -32,10 +33,15 @@ import { FollowUpSection } from "@/components/emr/FollowUpSection";
 import { RadiologySection } from "@/components/emr/RadiologySection";
 import { SoapSection } from "@/components/emr/SoapSection";
 import { TheatreSection } from "@/components/emr/TheatreSection";
+import { AllergySection } from "@/components/emr/AllergySection";
+import { ComplaintsSection } from "@/components/emr/ComplaintsSection";
+import { DiagnosisSection } from "@/components/emr/DiagnosisSection";
 import { audit } from "@/lib/audit";
 import { EMR_FORM_BY_ID } from "@/lib/emr-forms";
 import { EMR_MENU, type NativeId } from "@/lib/emr-menu";
 import { breakGlass, can, hasGlass, useSession } from "@/lib/session";
+import { coverageView, normalizeDx } from "@/lib/chart-entries";
+import { caseOf, useFinancial } from "@/lib/nphies-financial";
 
 const age = (dob: string) => Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86_400_000));
 const doctorName = (id: string) => {
@@ -77,8 +83,8 @@ function GlassGate({ patient }: { patient: Patient }) {
 }
 
 const NATIVE: Record<NativeId, (p: { enc: Encounter }) => React.ReactElement> = {
-  overview: OverviewTab, complaints: Complaints, vitals: VitalsSection, diagnosis: Diagnosis, prescription: PrescriptionSection,
-  procedures: Procedures, allergies: Allergies, laboratory: LabSection, radiology: RadiologySection, notes: Notes,
+  overview: OverviewTab, complaints: ComplaintsSection, vitals: VitalsSection, diagnosis: DiagnosisSection, prescription: PrescriptionSection,
+  procedures: Procedures, allergies: AllergySection, laboratory: LabSection, radiology: RadiologySection, notes: Notes,
   soap: SoapSection, documents: ClinicalDocsSection, adt: AdtMessages, surgery: TheatreSection,
   emar: EmarSection, "follow-up": FollowUpSection, consults: ConsultSection,
 };
@@ -180,42 +186,65 @@ function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
   const num = (s?: string) => (s ? parseFloat(s) : NaN);
   const temp = num(v?.temp), spo2 = num(v?.spo2), pulse = num(v?.pulse), rr = num(v?.rr);
   const sbp = num(v?.bp?.split("/")[0]);
-  const primaryDx = enc.dx[0];
+  const primaryDx = normalizeDx(enc.dx)[0];
   const initials = `${patient.given[0] ?? ""}${patient.family[0] ?? ""}`;
   const sev = { SV: "severe", MO: "moderate", MI: "mild" } as const;
+  useFinancial();
+  const cover = coverageView(patient, new Date().toISOString().slice(0, 10), caseOf(enc.visitNumber).eligibility);
   return (
     <>
-      <div className="sticky top-[3.4rem] z-20 overflow-hidden rounded-xl border border-border bg-card shadow-sm" role="region" aria-label="Patient header">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 border-l-4 border-l-move px-4 py-3">
-          <div className="flex items-center gap-3.5">
-            <span className="flex size-11 items-center justify-center rounded-full bg-move/12 text-sm font-semibold text-move" aria-hidden="true">{initials}</span>
-            <div>
-              <h1 className="text-lg font-semibold leading-tight">{patientName(patient)}</h1>
-              <div className="text-[0.8125rem] text-muted-foreground">
-                {age(patient.dob)} years · {patient.sex === "M" ? "Male" : "Female"} · Health ID <span className="font-mono">{patient.healthId}</span>
+      <div className="z-20 overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:sticky sm:top-[3.4rem]" role="region" aria-label="Patient header">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 border-l-4 border-l-move px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-move/12 text-sm font-semibold text-move sm:size-11" aria-hidden="true">{initials}</span>
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold leading-tight sm:text-lg">{patientName(patient)}</h1>
+              <div className="flex flex-wrap gap-x-1.5 text-[0.8125rem] text-muted-foreground">
+                <span>{age(patient.dob)} years · {patient.sex === "M" ? "Male" : "Female"}</span>
+                <span>· MRN <span className="font-mono text-foreground">{patient.mrn}</span></span>
+                <span>· Health ID <span className="font-mono">{patient.healthId}</span></span>
+                <span>· Blood Group <span className="font-medium text-foreground">{patient.extra?.bloodGroup || "Not recorded"}</span></span>
               </div>
             </div>
           </div>
-          <div>
-            <div className="text-xs text-muted-foreground">Visit</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-sm font-medium">{enc.visitNumber}</span>
-              <ClassBadge cls={enc.cls} />
-              <Badge tone={st.tone}>{st.label}</Badge>
+          <div className="grid w-full grid-cols-2 gap-x-4 gap-y-2 sm:flex sm:w-auto sm:flex-1 sm:flex-wrap sm:items-center sm:gap-x-6">
+            <div>
+              <div className="text-xs text-muted-foreground">Visit</div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-mono text-sm font-medium">{enc.visitNumber}</span>
+                <ClassBadge cls={enc.cls} />
+                <Badge tone={st.tone}>{st.label}</Badge>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Location</div>
+              <div className="text-sm font-medium">{enc.status === "active" && enc.bedId ? bedLabel(enc.bedId) : enc.cls === "I" ? "None" : "Outpatient"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Doctor</div>
+              <div className="text-sm font-medium">{doctorName(enc.attending)}</div>
+            </div>
+            <div title={cover.basis}>
+              <div className="text-xs text-muted-foreground">Payer</div>
+              {cover.payer === "Cash" ? (
+                <div className="text-sm font-medium">Cash</div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
+                  <span>{cover.payer}{cover.plan ? <span className="font-normal text-muted-foreground"> · {cover.plan}</span> : null}</span>
+                  <Badge tone={cover.eligible ? "ok" : "danger"}>{cover.eligible ? "Eligible" : "Not Eligible"}</Badge>
+                </div>
+              )}
+            </div>
+            <div className="col-span-2 min-w-0 sm:max-w-xs">
+              <div className="text-xs text-muted-foreground">Primary Diagnosis</div>
+              <div className="truncate text-sm font-medium" title={primaryDx ? `${primaryDx.code} ${primaryDx.text}` : undefined}>
+                {primaryDx ? <><span className="font-mono">{primaryDx.code}</span> {primaryDx.text}</> : "Not set"}
+              </div>
             </div>
           </div>
-          <div>
-            <div className="text-xs text-muted-foreground">Location</div>
-            <div className="text-sm font-medium">{enc.status === "active" && enc.bedId ? bedLabel(enc.bedId) : enc.cls === "I" ? "None" : "Outpatient"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">Doctor</div>
-            <div className="text-sm font-medium">{doctorName(enc.attending)}</div>
-          </div>
-          <div className="ml-auto">
-            <div className="text-xs text-muted-foreground">Primary diagnosis</div>
-            <div className="text-sm font-medium">{primaryDx ? `${primaryDx.code}` : "Not set"}</div>
-          </div>
+          <button type="button" onClick={() => navigate("/nphies-clinical")} title="See what this hospital sends to NPHIES" aria-label="Open NPHIES Clinical" className="rounded-md transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-ring sm:ml-auto">
+            <NphiesLogo height={18} />
+          </button>
         </div>
         {enc.allergies.length ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-destructive/30 bg-destructive/10 px-4 py-2" role="alert">
@@ -362,79 +391,6 @@ function Remove({ onClick }: { onClick: () => void }) {
   );
 }
 
-function Complaints({ enc }: { enc: Encounter }) {
-  const [text, setText] = React.useState("");
-  const add = (code: string, t: string) =>
-    updateEncounter(enc.visitNumber, (e) => {
-      e.complaints = [...e.complaints, { code, text: t }];
-      e.reason = e.complaints.map((c) => c.text).join("; ");
-    });
-  const remove = (i: number) =>
-    updateEncounter(enc.visitNumber, (e) => {
-      e.complaints = e.complaints.filter((_, j) => j !== i);
-      e.reason = e.complaints.map((c) => c.text).join("; ");
-    });
-  return (
-    <SectionCard title="Chief Complaints" tag="PV2-3">
-      <AddBar label="Tap a complaint to add it">
-        <Chips items={COMPLAINT_SAMPLES.map((c) => ({ key: c.code, label: c.text }))} onPick={(k) => { const c = COMPLAINT_SAMPLES.find((x) => x.code === k)!; add(c.code, c.text); }} />
-        <div className="mt-2 flex max-w-md gap-2">
-          <Input placeholder="Or type another complaint" value={text} onChange={(e) => setText(e.target.value)} />
-          <Button disabled={!text.trim()} onClick={() => { add("", text.trim()); setText(""); }}>Add</Button>
-        </div>
-      </AddBar>
-      <Table>
-        <thead><tr><Th>Date and Time</Th><Th>Doctor</Th><Th>Complaint</Th><Th>Status</Th><Th /></tr></thead>
-        <tbody>
-          {enc.complaints.length === 0 && <tr><Td colSpan={5}><Empty>No complaints yet.</Empty></Td></tr>}
-          {enc.complaints.map((c, i) => (
-            <tr key={i}>
-              <Td className="font-mono text-xs text-muted-foreground">{when(enc.admitAt ?? enc.expectedAdmitAt)}</Td>
-              <Td>{doctorName(enc.attending)}</Td>
-              <Td><div className="font-medium">{c.code ? `${c.code} - ` : ""}{c.text}</div>{c.code && <div className="text-xs text-muted-foreground">Type: SNOMED CT</div>}</Td>
-              <Td><Badge tone="ok">Active</Badge></Td>
-              <Td className="text-right"><Remove onClick={() => remove(i)} /></Td>
-            </tr>
-          ))}
-        </tbody>
-      </Table>
-    </SectionCard>
-  );
-}
-
-function Diagnosis({ enc }: { enc: Encounter }) {
-  const add = (code: string) => {
-    const d = DX_SAMPLES.find((x) => x.code === code)!;
-    updateEncounter(enc.visitNumber, (e) => { if (!e.dx.some((x) => x.code === code)) e.dx = [...e.dx, { ...d, type: enc.status === "discharged" ? "F" : d.type, at: nowLocal() }]; });
-  };
-  return (
-    <SectionCard title="Diagnosis" tag="DG1">
-      <AddBar label="Tap a diagnosis to add it (ICD-10-AM)">
-        <Chips items={DX_SAMPLES.map((d) => ({ key: d.code, label: `${d.code} ${d.text}` }))} onPick={add} />
-      </AddBar>
-      <Table>
-        <thead><tr><Th>Code</Th><Th>Description</Th><Th>Type</Th><Th>Status</Th><Th /></tr></thead>
-        <tbody>
-          {enc.dx.length === 0 && <tr><Td colSpan={5}><Empty>No diagnoses yet. A discharge needs at least one.</Empty></Td></tr>}
-          {enc.dx.map((d, i) => (
-            <tr key={d.code + i}>
-              <Td className="font-mono text-xs font-semibold">{d.code}</Td>
-              <Td>{d.text}</Td>
-              <Td>
-                <Select className="h-8 w-32" value={d.type} aria-label="Diagnosis type" onChange={(ev) => updateEncounter(enc.visitNumber, (e) => { e.dx = e.dx.map((x, j) => (j === i ? { ...x, type: ev.target.value as "A" | "W" | "F" } : x)); })}>
-                  {DX_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
-                </Select>
-              </Td>
-              <Td><Badge tone="ok">Active</Badge></Td>
-              <Td className="text-right"><Remove onClick={() => updateEncounter(enc.visitNumber, (e) => { e.dx = e.dx.filter((_, j) => j !== i); })} /></Td>
-            </tr>
-          ))}
-        </tbody>
-      </Table>
-    </SectionCard>
-  );
-}
-
 function Procedures({ enc }: { enc: Encounter }) {
   return (
     <SectionCard title="Procedures" tag="PR1">
@@ -468,39 +424,6 @@ function Procedures({ enc }: { enc: Encounter }) {
                 </Select>
               </Td>
               <Td className="text-right"><Remove onClick={() => updateEncounter(enc.visitNumber, (e) => { e.pr = e.pr.filter((_, j) => j !== i); })} /></Td>
-            </tr>
-          ))}
-        </tbody>
-      </Table>
-    </SectionCard>
-  );
-}
-
-function Allergies({ enc }: { enc: Encounter }) {
-  const sev = { SV: "Severe", MO: "Moderate", MI: "Mild" } as const;
-  return (
-    <SectionCard title="Allergies" tag="AL1">
-      <AddBar label="Tap an allergy to add it">
-        <Chips
-          items={ALLERGY_SAMPLES.map((a) => ({ key: a.text, label: `${a.text} (${sev[a.severity]})` }))}
-          onPick={(k) => { const a = ALLERGY_SAMPLES.find((x) => x.text === k)!; updateEncounter(enc.visitNumber, (e) => { if (!e.allergies.some((x) => x.text === k)) e.allergies = [...e.allergies, { ...a }]; }); }}
-        />
-      </AddBar>
-      <Table>
-        <thead><tr><Th>Allergen</Th><Th>Type</Th><Th>Severity</Th><Th>Reaction</Th><Th /></tr></thead>
-        <tbody>
-          {enc.allergies.length === 0 && <tr><Td colSpan={5}><Empty>No allergies recorded.</Empty></Td></tr>}
-          {enc.allergies.map((a, i) => (
-            <tr key={a.text + i}>
-              <Td className="font-medium">{a.text}</Td>
-              <Td>
-                <Select className="h-8 w-24" value={a.type ?? "DALG"} aria-label="Allergy type" onChange={(ev) => updateEncounter(enc.visitNumber, (e) => { e.allergies = e.allergies.map((x, j) => (j === i ? { ...x, type: ev.target.value as typeof x.type } : x)); })}>
-                  {ALLERGY_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
-                </Select>
-              </Td>
-              <Td><Badge tone={a.severity === "SV" ? "danger" : a.severity === "MO" ? "warn" : "neutral"}>{sev[a.severity]}</Badge></Td>
-              <Td>{a.reaction || "None"}</Td>
-              <Td className="text-right"><Remove onClick={() => updateEncounter(enc.visitNumber, (e) => { e.allergies = e.allergies.filter((_, j) => j !== i); })} /></Td>
             </tr>
           ))}
         </tbody>

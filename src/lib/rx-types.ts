@@ -66,6 +66,28 @@ export interface Reason {
   text: string;
 }
 
+/** How the doses are laid out. Normal: one dose and frequency. Split: two or more doses every day. Taper: two or more phases one after the other. */
+export type Regimen = "normal" | "split" | "taper";
+
+/** Duration unit the prescriber typed. The stored duration is always in days (week = 7, month = 30). */
+export type DurationUnit = "d" | "wk" | "mo";
+
+/** Time of day of a split dose. Sent as FHIR Timing.repeat.when (EventTiming). */
+export type DoseTime = "MORN" | "NOON" | "EVE" | "NIGHT";
+
+/** One row of a split or taper regimen. */
+export interface DoseStep {
+  /** Units per dose (tablets, mL...). */
+  dose: number;
+  frequencyId: string;
+  days: number;
+  /** Split rows only. */
+  time?: DoseTime;
+}
+
+/** Who pays for the item. Taken from the visit when the item is added. */
+export type RxCoverage = "Insured" | "Cash";
+
 export interface RxItem {
   id: string;
   /** Business identifier of the Prescription Item (MedicationRequest.identifier). */
@@ -95,6 +117,21 @@ export interface RxItem {
   allergyOverride?: { reason: string; by: string; at: string; allergy: string };
   /** Pharmacist check before dispensing. Hospital record only, never sent to nphies. Empty means not checked yet. */
   verify?: RxVerification;
+  /**
+   * Fields added later. All optional so older saved items still open: no regimen means normal, no unit means days,
+   * no start date means the day the prescription was written.
+   */
+  regimen?: Regimen;
+  /** Rows of a split or taper regimen (two or more). The item's dose and frequency repeat the first row. */
+  schedule?: DoseStep[];
+  /** Unit the duration was typed in. durationDays stays the source of truth. */
+  durationUnit?: DurationUnit;
+  /** First day of treatment, YYYY-MM-DD. The end date is worked out from it and the duration. */
+  startDate?: string;
+  /** The patient brought this medicine. It is recorded on its own prescription, never sent to nphies and never dispensed. */
+  patientProvided?: boolean;
+  /** Insured or Cash, from the visit. */
+  coverage?: RxCoverage;
 }
 
 /** The latest pharmacist decision on an item. It counts only while the item version is the one that was checked. */

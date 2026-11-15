@@ -1,5 +1,7 @@
 import { FREQ_BY_ID } from "./rx-catalogue";
-import type { ControlClass, Drug, DispenseLine, FillType, ItemStatus, RxItem, SendRecord, UsageSetting } from "./rx-types";
+import type {
+  ControlClass, DoseStep, DoseTime, Drug, DispenseLine, DurationUnit, FillType, ItemStatus, Regimen, RxItem, SendRecord, UsageSetting,
+} from "./rx-types";
 
 /** Pure rules for quantity, fills, statuses and the conformance checklist. No storage here. */
 
@@ -40,6 +42,124 @@ export function addDays(date: string, days: number): string {
 export function validityEnd(startDate: string, durationDays: number, refills: number): string {
   return addDays(startDate, Math.max(1, durationDays) * (refills + 1) + 7);
 }
+
+/* ---------- duration, start and end dates ---------- */
+
+export const DURATION_UNITS: { id: DurationUnit; label: string; days: number }[] = [
+  { id: "d", label: "Days", days: 1 },
+  { id: "wk", label: "Weeks", days: 7 },
+  { id: "mo", label: "Months", days: 30 },
+];
+const UNIT_DAYS: Record<DurationUnit, number> = { d: 1, wk: 7, mo: 30 };
+
+/** Days in a duration. A month counts as 30 days. */
+export const toDays = (value: number, unit: DurationUnit = "d"): number => Math.max(0, Math.round(value * (UNIT_DAYS[unit] ?? 1)));
+
+/** The duration in the unit asked for, or in days when the days do not divide evenly. */
+export function fromDays(days: number, unit: DurationUnit = "d"): { value: number; unit: DurationUnit } {
+  const per = UNIT_DAYS[unit] ?? 1;
+  return days > 0 && days % per === 0 ? { value: days / per, unit } : { value: days, unit: "d" };
+}
+
+/** Last day of treatment. A course that starts on the 1st and runs 5 days ends on the 5th. */
+export const endDateFor = (start: string, days: number): string => addDays(start, Math.max(1, Math.round(days)) - 1);
+
+/** Days from start to end, both days counted. Zero when the end is before the start. */
+export function daysBetween(start: string, end: string): number {
+  const a = Date.parse(`${start.slice(0, 10)}T00:00:00Z`);
+  const b = Date.parse(`${end.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 0;
+  return Math.round((b - a) / 86_400_000) + 1;
+}
+
+/** Start and end of an item. Items saved before the start date existed start on the day the prescription was written. */
+export function itemDates(item: Pick<RxItem, "startDate" | "durationDays">, authoredAt: string): { start: string; end: string } {
+  const start = item.startDate || authoredAt.slice(0, 10);
+  return { start, end: endDateFor(start, item.durationDays) };
+}
+
+/* ---------- regimens: normal, split and taper ---------- */
+
+export const REGIMENS: { id: Regimen; label: string; help: string }[] = [
+  { id: "normal", label: "Normal", help: "One dose and frequency for the whole course." },
+  { id: "split", label: "Split", help: "Different doses at set times every day, for example 2 tablets in the morning and 1 at night." },
+  { id: "taper", label: "Taper", help: "Phases one after the other, for example 40 mg for 5 days, then 20 mg for 5 days." },
+];
+
+export const DOSE_TIMES: { id: DoseTime; label: string }[] = [
+  { id: "MORN", label: "Morning" },
+  { id: "NOON", label: "Noon" },
+  { id: "EVE", label: "Evening" },
+  { id: "NIGHT", label: "Night" },
+];
+
+/** Regimen of an item. Older items have none and are normal. */
+export const regimenOf = (item: Pick<RxItem, "regimen" | "schedule">): Regimen =>
+  item.regimen && item.regimen !== "normal" && (item.schedule?.length ?? 0) > 0 ? item.regimen : "normal";
+
+/** The rows of an item. A normal item is one row made of its dose, frequency and duration. */
+export function stepsOf(item: Pick<RxItem, "regimen" | "schedule" | "dose" | "frequencyId" | "durationDays">): DoseStep[] {
+  return regimenOf(item) === "normal" ? [{ dose: item.dose, frequencyId: item.frequencyId, days: item.durationDays }] : (item.schedule as DoseStep[]);
+}
+
+/** Overall course: split rows run side by side (the longest counts), taper phases run one after the other (they add up). */
+export function regimenDays(regimen: Regimen, steps: DoseStep[]): number {
+  if (!steps.length) return 0;
+  if (regimen === "taper") return steps.reduce((n, s) => n + Math.max(0, s.days), 0);
+  return Math.max(...steps.map((s) => Math.max(0, s.days)));
+}
+
+/** Quantity for all rows together: each row is dose x times per day x days. Rounded up once at the end. */
+export function regimenQuantity(regimen: Regimen, steps: DoseStep[], unit: string): number {
+  if (regimen === "normal" || steps.length === 0) {
+    const s = steps[0];
+    return s ? calcQuantity(s.dose, s.frequencyId, s.days, unit) : 0;
+  }
+  const raw = steps.reduce((n, s) => n + s.dose * (FREQ_BY_ID[s.frequencyId]?.perDay ?? 1) * s.days, 0);
+  if (!(raw > 0)) return 0;
+  const step = unit === "mL" ? 0.1 : 1;
+  return Math.max(step, roundUp(raw, step));
+}
+
+/** Highest amount in the strength unit taken on any one day. Split rows add up; taper phases do not overlap. */
+export function regimenDailyAmount(drug: Drug, regimen: Regimen, steps: DoseStep[]): number {
+  const each = steps.map((s) => dailyAmount(drug, s.dose, s.frequencyId));
+  if (!each.length) return 0;
+  return regimen === "split" ? each.reduce((a, b) => a + b, 0) : Math.max(...each);
+}
+
+/** Start and end date of every row. Split rows all start on the first day; taper phases start the day after the last one ended. */
+export function stepDates(regimen: Regimen, steps: DoseStep[], start: string): { start: string; end: string }[] {
+  let from = start;
+  return steps.map((s) => {
+    const span = { start: regimen === "taper" ? from : start, end: endDateFor(regimen === "taper" ? from : start, s.days) };
+    if (regimen === "taper") from = addDays(span.end, 1);
+    return span;
+  });
+}
+
+/** Problems with the rows of a split or taper regimen. Empty when fine. */
+export function regimenProblems(regimen: Regimen, steps: DoseStep[]): string[] {
+  if (regimen === "normal") return [];
+  const out: string[] = [];
+  const name = regimen === "split" ? "A split regimen" : "A taper regimen";
+  if (steps.length < 2) out.push(`${name} needs two or more rows.`);
+  steps.forEach((s, i) => {
+    if (!(s.dose > 0)) out.push(`Row ${i + 1}: enter a dose above zero.`);
+    if (!(s.days > 0) || !Number.isInteger(s.days)) out.push(`Row ${i + 1}: enter the number of days as a whole number above zero.`);
+    if (!FREQ_BY_ID[s.frequencyId]) out.push(`Row ${i + 1}: choose a frequency.`);
+  });
+  if (regimen === "split") {
+    const times = steps.map((s) => s.time).filter(Boolean);
+    if (new Set(times).size !== times.length) out.push("Two split rows have the same time of day. Use one row per time.");
+  }
+  return out;
+}
+
+/* ---------- patient's own medicine ---------- */
+
+/** A prescription that only records medicine the patient brought. It is never sent to nphies and never dispensed. */
+export const isPatientOwn = (rx: { items: Pick<RxItem, "patientProvided">[] }): boolean => rx.items.length > 0 && rx.items.every((i) => !!i.patientProvided);
 
 /* ---------- fills ---------- */
 

@@ -8,7 +8,8 @@ import { can } from "@/lib/session";
 import { nowLocal } from "@/lib/store";
 import { amendPanel, currentRecorder, obsValue, savePanel, sendPanel, type VitalPanel } from "@/lib/vitals";
 import {
-  BP_POSITIONS, CONSCIOUSNESS, CONTEXTS, VITALS, bmiOf, flagFor, news2, refRangeText, type Consciousness, type PanelContext, type VitalKey,
+  BP_POSITIONS, CONSCIOUSNESS, CONTEXTS, DIPSTICK, LOCAL_VITALS, VITALS, bmiOf, flagFor, localFlag, news2, refRangeText,
+  type Consciousness, type LocalReadings, type PanelContext, type VitalKey,
 } from "@/lib/vitals-spec";
 
 const ageOf = (p: Patient) => Math.floor((Date.now() - new Date(p.dob).getTime()) / (365.25 * 86_400_000));
@@ -46,15 +47,27 @@ export function VitalsSheet({ enc, patient, panel, hasPanels, onClose }: { enc: 
   const [at, setAt] = React.useState(panel?.at ?? nowLocal());
   const [by, setBy] = React.useState(panel?.recordedBy ?? currentRecorder());
   const [note, setNote] = React.useState(panel?.note ?? "");
+  const [localVals, setLocalVals] = React.useState<Record<string, string>>(() =>
+    Object.fromEntries(LOCAL_VITALS.map((d) => { const v = panel?.local?.[d.key]; return [d.key, v !== undefined ? String(v) : ""]; })),
+  );
 
   const age = ageOf(patient);
+  const local: LocalReadings = {};
+  for (const d of LOCAL_VITALS) {
+    const raw = localVals[d.key]?.trim() ?? "";
+    if (raw === "") continue;
+    if (d.kind === "number") { if (!Number.isNaN(Number(raw))) local[d.key] = Number(raw); }
+    else local[d.key] = raw;
+  }
+  const hasLocal = Object.keys(local).length > 0;
   const num = (k: string) => (vals[k]?.trim() !== "" && !Number.isNaN(Number(vals[k])) ? Number(vals[k]) : undefined);
   const nums: Partial<Record<VitalKey, number>> = {};
   for (const v of VITALS) if (num(v.key) !== undefined && !absent[v.key]) nums[v.key] = num(v.key);
   const bmi = nums.weight !== undefined && nums.height !== undefined ? bmiOf(nums.weight, nums.height) : undefined;
   const score = news2(nums, onOx, cons);
   const outOfRange = VITALS.filter((v) => nums[v.key] !== undefined && (nums[v.key]! < v.min || nums[v.key]! > v.max));
-  const something = Object.keys(nums).length > 0 || Object.keys(absent).length > 0;
+  const forOru = Object.keys(nums).length > 0 || Object.keys(absent).length > 0;
+  const something = forOru || hasLocal || (correcting && !!panel?.local);
   const canWrite = can("emr.write");
 
   function save(andSend: boolean) {
@@ -65,11 +78,11 @@ export function VitalsSheet({ enc, patient, panel, hasPanels, onClose }: { enc: 
     }
     let id: string | undefined;
     if (panel) {
-      id = amendPanel(panel.id, { values: nums, absences, note })?.id;
+      id = amendPanel(panel.id, { values: nums, absences, note, local })?.id;
     } else {
       id = savePanel({
         visit: enc.visitNumber, at, context, recordedBy: by, values: nums, absences, onOxygen: onOx,
-        o2flow: o2 !== "" ? Number(o2) : undefined, position: pos || undefined, consciousness: cons, note: note || undefined,
+        o2flow: o2 !== "" ? Number(o2) : undefined, position: pos || undefined, consciousness: cons, note: note || undefined, local,
       })?.id;
     }
     if (andSend && id && can("adt.send")) sendPanel(id);
@@ -136,6 +149,36 @@ export function VitalsSheet({ enc, patient, panel, hasPanels, onClose }: { enc: 
             </div>
           </div>
 
+          <fieldset className="rounded-lg border border-border p-3">
+            <legend className="px-1 text-sm font-semibold">Bedside Tests</legend>
+            <p className="mb-3 text-xs text-muted-foreground">Optional. Kept in the HIS only: the national vital signs message has no code for these readings.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {LOCAL_VITALS.map((d) => {
+                const raw = localVals[d.key] ?? "";
+                const n = d.kind === "number" && raw.trim() !== "" ? Number(raw) : undefined;
+                const flag = n !== undefined && !Number.isNaN(n) ? localFlag(d, n, age) : "";
+                const off = n !== undefined && (Number.isNaN(n) || (d.min !== undefined && n < d.min) || (d.max !== undefined && n > d.max));
+                const set = (v: string) => setLocalVals((x) => ({ ...x, [d.key]: v }));
+                return (
+                  <Field key={d.key} label={d.display ? `${d.label} (${d.display})` : d.label} hint={d.range && !off ? `Normal ${d.range.low}-${d.range.high}` : off ? `Check this value. Expected ${d.min} to ${d.max}.` : undefined}>
+                    {d.kind === "number" ? (
+                      <div className="flex items-center gap-2">
+                        <Input type="number" step={d.step ?? 1} inputMode="decimal" value={raw} onChange={(e) => set(e.target.value)} aria-invalid={off} className={cn(flag && "border-warn")} />
+                        {flag && <Badge tone="warn">{flag}</Badge>}
+                      </div>
+                    ) : (
+                      <Select value={raw} onChange={(e) => set(e.target.value)}>
+                        <option value="">Not tested</option>
+                        {DIPSTICK.map((g) => <option key={g}>{g}</option>)}
+                        {raw && !(DIPSTICK as readonly string[]).includes(raw) && <option>{raw}</option>}
+                      </Select>
+                    )}
+                  </Field>
+                );
+              })}
+            </div>
+          </fieldset>
+
           {!correcting && (
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Why was it taken?"><Select value={context} onChange={(e) => setContext(e.target.value as PanelContext)}>{CONTEXTS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</Select></Field>
@@ -162,7 +205,11 @@ export function VitalsSheet({ enc, patient, panel, hasPanels, onClose }: { enc: 
           {outOfRange.length > 0 && <span className="me-auto text-xs text-warn">{outOfRange.length} value{outOfRange.length > 1 ? "s" : ""} look wrong.</span>}
           <Button onClick={onClose}>Cancel</Button>
           <Button disabled={!something || !canWrite} onClick={() => save(false)}>{correcting ? "Save Correction" : "Save"}</Button>
-          <Button variant="primary" disabled={!something || !canWrite || !can("adt.send")} title={can("adt.send") ? undefined : "Your role cannot send messages"} onClick={() => save(true)}>
+          <Button
+            variant="primary" disabled={!forOru || !canWrite || !can("adt.send")}
+            title={!can("adt.send") ? "Your role cannot send messages" : !forOru ? "Only bedside tests are filled in. They are not sent." : undefined}
+            onClick={() => save(true)}
+          >
             Save And Send To NPHIES
           </Button>
         </SheetFooter>

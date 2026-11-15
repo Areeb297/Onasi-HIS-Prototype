@@ -8,6 +8,7 @@
 
 import type { Encounter, Patient } from "../model";
 import { OID } from "../reference-data";
+import { orderDiagnosis } from "../order-fields";
 import {
   EXT, FILLER_OID, PROFILE, SPECIMEN_OID, SYS, TERM, addDays, buildParticipants, codeable, coding, fhirDateTime, identifier, makeBundle,
   narrative, orgIdentifier, oidSystem, participantResources, quantity, refTo, uuid, versionExtension, type Json, type Person,
@@ -135,7 +136,9 @@ export function buildLabOrderBundle(ctx: LabBuildCtx): Json {
     };
   };
   const extra: Json[] = [];
-  const dx = enc.dx[0];
+  // The diagnosis picked on the order (the reason for it). Older orders fall back to the visit's first diagnosis.
+  // The ServiceRequest page lists no reasonCode, so the diagnosis travels as Preliminary Diagnosis order information.
+  const dx = orderDiagnosis(order, enc);
   if (dx) {
     extra.push(aoi("148006", "Preliminary diagnosis", { valueCodeableConcept: { coding: [coding(TERM.icd10am, dx.code, dx.text)], text: dx.text } }));
   }

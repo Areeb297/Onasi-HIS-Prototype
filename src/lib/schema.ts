@@ -92,6 +92,8 @@ export interface MasterColumn {
   type?: CellType;
   /** Fields in the add and edit form. Defaults to a text field. */
   field?: Pick<FieldDef, "type" | "options" | "required" | "placeholder">;
+  /** Shown in the add and edit form but not as a column in the list. For masters with more fields than a list can hold. */
+  formOnly?: boolean;
 }
 
 export type Row = Record<string, string | number | boolean>;

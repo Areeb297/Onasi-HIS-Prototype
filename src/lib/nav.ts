@@ -44,12 +44,13 @@ export const NAV: NavGroup[] = [
     pages: [
       { id: "patients", label: "Patient", path: "/patients", perm: "patient.read" },
       { id: "confidential", label: "Confidential Patient", path: "/confidential", perm: "patient.read" },
+      m("synced-patients", "Synced Patients", "admin"),
       { id: "registration", label: "Patient Registration", path: "/registration", perm: "patient.register" },
     ],
   },
   {
     id: "appointments", label: "Appointments", icon: IconCalendar, color: "text-move",
-    pages: [m("appointments", "Appointments", "patient.read")],
+    pages: [{ id: "appointments", label: "Appointments", path: "/appointments", perm: "patient.read" }],
   },
   {
     id: "opd", label: "OPD", icon: IconStethoscope, color: "text-admit",
@@ -58,9 +59,9 @@ export const NAV: NavGroup[] = [
   {
     id: "ipd", label: "IPD", icon: IconBuildingHospital, color: "text-move",
     pages: [
-      m("admission-approval", "Admission Approval Worklist", "patient.read"),
-      m("admission-request", "Admission Request", "patient.read"),
+      { id: "admission-requests", label: "Admission Requests", path: "/admission-requests", perm: "patient.read" },
       { id: "beds", label: "Beds", path: "/beds", perm: "patient.read" },
+      m("bed-master", "Bed Master", "patient.read"),
       { id: "ipd", label: "IPD Worklist", path: "/ipd", perm: "patient.read" },
     ],
   },
@@ -84,6 +85,8 @@ export const NAV: NavGroup[] = [
     id: "pharmacy", label: "Pharmacy", icon: IconPill, color: "text-ok",
     pages: [
       m("pharmacy", "Pharmacy", "admin"),
+      m("pharmacy-catalog-items", "Catalog Items", "admin"), m("pharmacy-generics", "Generic Medications", "admin"), m("pharmacy-brands", "Brand Medications", "admin"),
+      m("pharmacy-suppliers", "Suppliers", "admin"), m("pharmacy-locations", "Stock Locations", "admin"), m("pharmacy-grn", "Goods Receipt", "admin"),
       { id: "dispense", label: "Dispense Worklist", path: "/pharmacy/dispense", perm: "rx.dispense" },
     ],
   },
@@ -103,6 +106,7 @@ export const NAV: NavGroup[] = [
       m("fwa-management", "FWA Management", "billing"), m("denial-management", "Denial Management", "billing"),
       m("ar-management", "AR Management", "billing"), m("payment-reconciliations", "Payment Reconciliations", "billing"),
       m("claim-import", "Claim Import", "billing"), m("refer-patient", "Refer Patient", "billing"),
+      m("ar-cases", "AR Cases", "billing"), m("manual-payments", "Manual Payments", "billing"), m("manual-responses", "Manual Responses", "billing"),
       { id: "nphies-financial", label: "NPHIES Financial", path: "/nphies-financial", perm: "billing" },
     ],
   },
@@ -122,12 +126,15 @@ export const NAV: NavGroup[] = [
     pages: [
       m("rehab-schedules", "Rehabilitation Schedules"), m("rehab-classes", "Rehabilitation Classes"),
       m("rehab-attendance", "Rehabilitation Attendance"), m("rehab-dashboard", "Rehabilitation Dashboard"),
-      m("treatment-plan-goals", "Treatment Plan Goals"), m("treatment-plan", "Treatment Plan"),
+      m("treatment-plan-goals", "Treatment Plan Goals"), m("treatment-plan", "Treatment Plan"), m("rehab-schedule-slots", "Rehabilitation Schedule Slots"),
     ],
   },
   {
     id: "client-setup", label: "Client Setup", icon: IconBuildingBank, color: "text-move", perm: "admin",
-    pages: [m("clinic", "Clinic"), m("department", "Department"), m("sub-department", "Sub Department"), m("client-branding", "Client Branding")],
+    pages: [
+      m("client", "Client"), m("clinic", "Clinic"), m("department", "Department"), m("sub-department", "Sub Department"), m("client-branding", "Client Branding"),
+      m("care-faculty-module", "Care Faculty Module"), m("country", "Country"), m("state", "State"), m("city", "City"),
+    ],
   },
   {
     id: "settings", label: "Settings", icon: IconSettings, color: "text-muted-foreground", perm: "admin",
@@ -135,11 +142,12 @@ export const NAV: NavGroup[] = [
       m("lookup", "Lookup"), m("module", "Module"), m("page", "Page"), m("clinical-integrations", "Clinical Integrations"),
       m("fee-scheduler", "Fee Scheduler"), m("tax-registration", "Tax Registration"), m("loinc-mapping", "LOINC Code Mapping"),
       m("client-diagnoses", "Client Diagnoses"), m("rule-engine", "Rule Engine"), m("rule-engine-field-mapping", "Rule Engine Field Mapping"),
+      m("code-type", "Code Type"), m("code", "Code"), m("whatsapp-templates", "WhatsApp Templates"), m("patient-education-materials", "Patient Education Materials"),
     ],
   },
   {
     id: "lab-setup", label: "Laboratory Setup", icon: IconFlask, color: "text-update", perm: "admin",
-    pages: [m("lab-groups", "Group & Sub-Group"), m("lab-test-details", "Test Details"), m("lab-permissions", "Permissions")],
+    pages: [m("lab-groups", "Group & Sub-Group"), m("lab-test-details", "Test Details"), m("lab-test-components", "Test Result Components"), m("lab-permissions", "Permissions")],
   },
   {
     id: "rad-setup", label: "Radiology Setup", icon: IconRadioactive, color: "text-move", perm: "admin",
@@ -166,7 +174,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: "users", label: "Users", icon: IconUserShield, color: "text-move", perm: "admin",
-    pages: [m("users", "User")],
+    pages: [m("users", "User"), m("superuser", "Super User")],
   },
   {
     id: "roles", label: "Role Permissions", icon: IconLock, color: "text-cancel", perm: "admin",

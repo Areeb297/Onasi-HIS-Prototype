@@ -505,6 +505,12 @@ export function updateEncounter(visit: string, fn: (e: Encounter) => void, opts:
   emit();
 }
 
+/** Put in a whole new state worked out by a pure function elsewhere, for example a patient merge (see patient-merge.ts). */
+export function replaceState(next: HisState) {
+  current = next;
+  emit();
+}
+
 /** Mark a bed as being cleaned or out of service, or clear the mark (null) so the bed is free again. No ADT message is sent. */
 export function setBedFlag(bedId: string, flag: BedFlag | null) {
   const s = getState();

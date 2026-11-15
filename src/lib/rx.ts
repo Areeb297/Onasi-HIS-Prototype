@@ -2,8 +2,10 @@ import { useSyncExternalStore } from "react";
 import { audit } from "./audit";
 import type { Encounter } from "./model";
 import { DRUG_BY_ID } from "./rx-catalogue";
-import { calcQuantity, fillState, isControlled, recomputeStatus, type FillState } from "./rx-logic";
-import type { DispenseLine, Drug, ItemStatus, Prescription, Reason, RxItem, RxState, SendRecord, UsageSetting } from "./rx-types";
+import { calcQuantity, fillState, isControlled, isPatientOwn, recomputeStatus, regimenDays, regimenOf, regimenQuantity, stepsOf, type FillState } from "./rx-logic";
+import type {
+  DispenseLine, DoseStep, Drug, DurationUnit, ItemStatus, Prescription, Reason, Regimen, RxCoverage, RxItem, RxState, SendRecord, UsageSetting,
+} from "./rx-types";
 import { getState } from "./store";
 
 /**
@@ -90,10 +92,10 @@ export function dispensedQty(s: RxState, rx: Prescription, item: RxItem): number
   return fillOf(s, rx, item).dispensedTotal;
 }
 
-/** Items a pharmacist can still dispense: sent, active and not fully dispensed. */
+/** Items a pharmacist can still dispense: sent, active, not fully dispensed and not the patient's own medicine. */
 export function openItems(s: RxState, rx: Prescription): RxItem[] {
   if (!rx.sentAt) return [];
-  return rx.items.filter((i) => i.status === "active" && !fillOf(s, rx, i).done);
+  return rx.items.filter((i) => i.status === "active" && !i.patientProvided && !fillOf(s, rx, i).done);
 }
 
 /** Everything on the visit that matters for the duplicate check. */
@@ -122,6 +124,13 @@ export interface NewItem {
   reason: Reason;
   usage: UsageSetting;
   allergyOverride?: RxItem["allergyOverride"];
+  regimen?: Regimen;
+  /** Split or taper rows. Dose, frequency and duration above are replaced from them. */
+  schedule?: DoseStep[];
+  durationUnit?: DurationUnit;
+  startDate?: string;
+  patientProvided?: boolean;
+  coverage?: RxCoverage;
 }
 
 export function defaultUsage(cls: Encounter["cls"]): UsageSetting {
@@ -132,6 +141,26 @@ export function quantityFor(drug: Drug, dose: number, frequencyId: string, days:
   return calcQuantity(dose, frequencyId, days, drug.unit);
 }
 
+/** Calculated quantity of an item, for any regimen. */
+export function itemQuantity(drug: Drug, item: Pick<RxItem, "regimen" | "schedule" | "dose" | "frequencyId" | "durationDays">): number {
+  const reg = regimenOf(item);
+  return reg === "normal" ? quantityFor(drug, item.dose, item.frequencyId, item.durationDays) : regimenQuantity(reg, stepsOf(item), drug.unit);
+}
+
+/**
+ * Brings a split or taper item in line with its rows: dose and frequency repeat the first row and the duration is
+ * the whole course. A normal item drops any rows left over from an earlier choice.
+ */
+function settleRegimen<T extends Pick<RxItem, "regimen" | "schedule" | "dose" | "frequencyId" | "durationDays">>(item: T): T {
+  if (!item.regimen || item.regimen === "normal" || !item.schedule?.length) {
+    const { schedule: _drop, ...rest } = item;
+    void _drop;
+    return { ...rest, regimen: item.regimen && item.regimen !== "normal" ? "normal" : item.regimen } as T;
+  }
+  const first = item.schedule[0];
+  return { ...item, dose: first.dose, frequencyId: first.frequencyId, durationDays: regimenDays(item.regimen, item.schedule) };
+}
+
 /** Add an item to the open draft for this visit and class, or start a new prescription. */
 export function addDraftItem(enc: Pick<Encounter, "visitNumber" | "patientId" | "attending">, n: NewItem): { rx: Prescription; item: RxItem } {
   const drug = getDrug(n.drugId);
@@ -140,26 +169,38 @@ export function addDraftItem(enc: Pick<Encounter, "visitNumber" | "patientId" | 
   const counters = { ...s.counters };
   counters.item += 1;
   const manual = n.quantity !== undefined && n.quantity > 0;
+  const own = !!n.patientProvided;
+  const shape = settleRegimen({ regimen: n.regimen, schedule: n.schedule, dose: n.dose, frequencyId: n.frequencyId, durationDays: n.durationDays });
   const item: RxItem = {
     id: `ri-${counters.item}-${Date.now().toString(36)}`,
     identifier: `RXI-${pad(counters.item)}`,
     drugId: drug.id,
-    dose: n.dose,
-    frequencyId: n.frequencyId,
+    dose: shape.dose,
+    frequencyId: shape.frequencyId,
     asNeeded: n.asNeeded,
-    durationDays: n.durationDays,
-    quantity: manual ? (n.quantity as number) : quantityFor(drug, n.dose, n.frequencyId, n.durationDays),
+    durationDays: shape.durationDays,
+    quantity: manual ? (n.quantity as number) : itemQuantity(drug, shape),
     quantityManual: manual,
     route: n.route,
     patientInstruction: n.patientInstruction,
     fulfillmentNote: n.fulfillmentNote,
-    refills: controlled ? 0 : n.refills,
+    // The patient's own medicine is never dispensed, so it has no repeats.
+    refills: controlled || own ? 0 : n.refills,
     reason: n.reason,
     status: "active",
     version: 1,
     allergyOverride: n.allergyOverride,
+    ...(shape.regimen ? { regimen: shape.regimen } : {}),
+    ...(shape.schedule ? { schedule: shape.schedule.map((x) => ({ ...x })) } : {}),
+    ...(n.durationUnit ? { durationUnit: n.durationUnit } : {}),
+    ...(n.startDate ? { startDate: n.startDate } : {}),
+    ...(own ? { patientProvided: true } : {}),
+    ...(n.coverage ? { coverage: n.coverage } : {}),
   };
-  let rx = s.prescriptions.find((p) => p.visitNumber === enc.visitNumber && !p.sentAt && p.controlled === controlled && p.usage === n.usage);
+  // Controlled items, each usage setting and the patient's own medicine each go on a prescription of their own.
+  let rx = s.prescriptions.find(
+    (p) => p.visitNumber === enc.visitNumber && !p.sentAt && p.controlled === controlled && p.usage === n.usage && isPatientOwn(p) === own,
+  );
   let prescriptions: Prescription[];
   if (rx) {
     const target = rx;
@@ -183,7 +224,10 @@ export function addDraftItem(enc: Pick<Encounter, "visitNumber" | "patientId" | 
     prescriptions = [...s.prescriptions, rx];
   }
   setRx({ ...s, prescriptions, counters });
-  audit("create", `Prescription item ${item.identifier}`, { patient: enc.patientId, detail: `Visit ${enc.visitNumber}. ${drug.generic} ${drug.strengthValue} ${drug.strengthUnit}, ${rx.number}` });
+  audit("create", `Prescription item ${item.identifier}`, {
+    patient: enc.patientId,
+    detail: `Visit ${enc.visitNumber}. ${drug.generic} ${drug.strengthValue} ${drug.strengthUnit}, ${rx.number}${own ? ". Provided by the patient, not for dispensing" : ""}${item.regimen && item.regimen !== "normal" ? `. ${item.regimen === "split" ? "Split" : "Taper"} regimen, ${item.schedule?.length ?? 0} rows` : ""}`,
+  });
   if (n.allergyOverride) {
     audit("create", `Allergy override ${item.identifier}`, {
       patient: enc.patientId,
@@ -206,6 +250,11 @@ export interface ItemPatch {
   reason?: Reason;
   /** Set to false to go back to the calculated quantity. */
   quantityManual?: boolean;
+  regimen?: Regimen;
+  schedule?: DoseStep[];
+  durationUnit?: DurationUnit;
+  startDate?: string;
+  coverage?: RxCoverage;
 }
 
 /** Change an item. If the prescription was sent, it becomes "changes not sent" and the item version goes up. */
@@ -216,10 +265,10 @@ export function updateItem(rxId: string, itemId: string, patch: ItemPatch) {
   const items = rx.items.map((i) => {
     if (i.id !== itemId) return i;
     const drug = getDrug(i.drugId);
-    const next: RxItem = { ...i, ...patch };
+    const next: RxItem = settleRegimen({ ...i, ...patch });
     if (patch.quantity !== undefined) next.quantityManual = true;
-    else if (!next.quantityManual) next.quantity = quantityFor(drug, next.dose, next.frequencyId, next.durationDays);
-    if (isControlled(drug.controlClass)) next.refills = 0;
+    else if (!next.quantityManual) next.quantity = itemQuantity(drug, next);
+    if (isControlled(drug.controlClass) || next.patientProvided) next.refills = 0;
     if (rx.sentAt) next.version = i.version + 1;
     return next;
   });

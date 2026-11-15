@@ -38,6 +38,8 @@ export interface PatientExtra {
   insurance?: {
     payer: string; policyNo: string; memberId: string; className: string; network: string;
     startDate: string; expiryDate: string; copayPercent: number; status: "Active" | "Expired";
+    /** What the payer answered for an active card. Covered when empty. */
+    coverage?: "Covered" | "Not Covered" | "Out Of Network" | "Limit Exhausted";
   };
   /** Cards saved to the patient file with the Archive buttons. */
   archive?: { kind: "Insurance card" | "ID card"; at: string; summary: string }[];
@@ -45,6 +47,20 @@ export interface PatientExtra {
   flags?: PatientFlags;
   /** What the clerk chose when the insurance did not cover the visit, in words. HIS only. */
   coverageDecision?: string;
+  /** Mr, Mrs, Miss, Ms, Dr or Baby. HIS only. */
+  title?: string;
+  /** Alias shown instead of the name for a confidential patient. HIS only. */
+  nickName?: string;
+  /** Registered as a newborn. `parentId` is the parent's patient id. HIS only. */
+  newborn?: boolean;
+  parentId?: string;
+  /** Registered as unknown or unconscious in the emergency department. The details are completed later. HIS only. */
+  unknown?: boolean;
+  /** State or region and city of the address. HIS only. */
+  region?: string;
+  city?: string;
+  addressLine1?: string;
+  addressLine2?: string;
 }
 
 /** Safety flags on the patient file. All optional, so older saved patients still load. */
@@ -79,6 +95,10 @@ export interface Patient {
   /** Consent to process and share the record. ISO time when given. */
   consentAt?: string;
   extra?: PatientExtra;
+  /** Set when this file was merged into another one (the patient id kept). A merged file leaves the patient lists. */
+  mergedInto?: string;
+  /** When the merge was done. ISO time. */
+  mergedAt?: string;
 }
 
 export interface Doctor {
@@ -105,6 +125,16 @@ export interface Dx {
   at?: string;
   /** ZDG1-3 condition onset flag (CS-Clinical-ConditionOnsetFlag: 1, 2 or 9). Inpatients only. */
   onset?: "1" | "2" | "9";
+  /**
+   * Diagnosis type as the HIS records it: P Principal, S Secondary, AD Admitting, DF Differential.
+   * Empty on older records, which are read from `type` and their place in the list. HIS only:
+   * DG1-6 still carries A, W or F in `type`, and DG1-15 is 1 for the Principal diagnosis.
+   */
+  kind?: "P" | "S" | "AD" | "DF";
+  /** The condition was present on admission. Sets the ZDG1-3 onset flag of an inpatient. HIS only. */
+  onAdmission?: boolean;
+  /** Who entered or last changed the diagnosis. HIS only. */
+  by?: string;
 }
 
 export interface Pr {
@@ -120,6 +150,14 @@ export interface Pr {
   type?: "A" | "D" | "I" | "P";
   /** Doctor id. PR1-11. */
   surgeon?: string;
+  /** Clinical procedure type chosen in the HIS, such as "Minor Surgical". HIS only, not sent. Separate from the PR1-6 functional type. */
+  procType?: string;
+  /** ICD-10-AM code of the visit diagnosis this procedure is for. HIS only. */
+  dxCode?: string;
+  /** Who pays for this procedure. HIS only. Empty means it follows the visit. */
+  coverage?: "Insured" | "Cash";
+  /** Whether the procedure is done yet. HIS only. Empty means Completed, as older records were. */
+  status?: "Completed" | "Pending";
 }
 
 export interface Allergy {
@@ -130,11 +168,42 @@ export interface Allergy {
   type?: "DALG" | "FALG" | "ALG";
   /** SNOMED CT code of the allergen for AL1-3. Empty means free text only. */
   code?: string;
+  /** The fields below are HIS only. AL1-2, AL1-4 and AL1-5 are worked out from them when the allergy is saved. */
+  category?: AllergyCategory;
+  /** Allergy or intolerance. */
+  reactionType?: "Allergy" | "Intolerance";
+  clinicalStatus?: "Active" | "Inactive" | "Resolved";
+  verification?: "Unconfirmed" | "Presumed" | "Confirmed" | "Refuted" | "Entered In Error";
+  criticality?: "Low" | "High" | "Unable To Assess";
+  /** Who reported the allergy. */
+  source?: string;
+  reactions?: AllergyReaction[];
+  notes?: string;
+  /** False when the record was deactivated. Empty means active. */
+  active?: boolean;
+  at?: string;
+  by?: string;
+}
+
+export type AllergyCategory = "Medication" | "Food" | "Environment" | "Biologic";
+
+/** One reaction to an allergen, as the HIS records it. */
+export interface AllergyReaction {
+  manifestations: string[];
+  severity?: "SV" | "MO" | "MI";
+  route?: string;
+  outcome?: string;
+  anaphylaxis?: boolean;
+  notes?: string;
 }
 
 export interface Complaint {
   code: string;
   text: string;
+  /** Code system of `code`. SNOMED CT when empty. HIS only. */
+  system?: "SNOMED" | "ICD10AM";
+  at?: string;
+  by?: string;
 }
 
 export interface Vitals {
@@ -228,6 +297,13 @@ export interface Encounter {
   allergies: Allergy[];
   /** EMR data. Not part of the ADT message, except the reason (PV2-3). */
   complaints: Complaint[];
+  /**
+   * Entries set to Inactive in the chart. They are kept apart so that messages, documents, the allergy strip
+   * and every other reader of `dx`, `allergies` and `complaints` see active entries only. HIS only.
+   */
+  dxInactive?: Dx[];
+  allergiesInactive?: Allergy[];
+  complaintsInactive?: Complaint[];
   vitals?: Vitals;
   notes: Note[];
   /** Outpatient worklist step. Checking in does not send an ADT message. */
@@ -244,6 +320,17 @@ export interface Encounter {
   reservedBedId?: string;
   /** Why the visit, admission or transfer was cancelled. HIS only. */
   cancelReason?: string;
+  /** Admission details taken at registration. HIS only, except the admission type, which sets PV1-4. */
+  admission?: AdmissionDetails;
+}
+
+/** Inpatient admission details from the registration desk. */
+export interface AdmissionDetails {
+  admissionType?: string;
+  patientCondition?: string;
+  expectedStayDays?: number;
+  activityLevel?: string;
+  specialty?: string;
 }
 
 export type ClearanceKey = "clinical" | "pharmacy" | "nursing" | "finance";

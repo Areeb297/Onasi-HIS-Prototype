@@ -73,6 +73,7 @@ export function MasterPage({ id }: { id: string }) {
   useRecords();
   const dev = useDevMode();
   const def = MASTERS.find((m) => m.id === id);
+  const listed = def ? def.columns.filter((c) => !c.formOnly) : [];
   const [q, setQ] = React.useState("");
   const [edit, setEdit] = React.useState<{ index: number | null; row: Row } | null>(null);
   const canEdit = can("admin") || can("billing");
@@ -113,15 +114,15 @@ export function MasterPage({ id }: { id: string }) {
         <Table>
           <thead>
             <tr>
-              {def.columns.map((c) => <Th key={c.key}>{c.label}</Th>)}
+              {listed.map((c) => <Th key={c.key}>{c.label}</Th>)}
               {!def.readOnly && <Th />}
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <tr><Td colSpan={def.columns.length + 1}><Empty>No rows.</Empty></Td></tr>}
+            {shown.length === 0 && <tr><Td colSpan={listed.length + 1}><Empty>No rows.</Empty></Td></tr>}
             {shown.map(({ r, i }) => (
               <tr key={i} className="hover:bg-muted/40">
-                {def.columns.map((c) => <Td key={c.key}><Cell c={c} v={r[c.key]} /></Td>)}
+                {listed.map((c) => <Td key={c.key}><Cell c={c} v={r[c.key]} /></Td>)}
                 {!def.readOnly && (
                   <Td className="text-right">
                     <span className="inline-flex gap-1">

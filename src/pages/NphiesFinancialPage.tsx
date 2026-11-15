@@ -3,6 +3,7 @@ import { Money } from "@/components/Money";
 import { Eye, EyeOff } from "lucide-react";
 import { Gate } from "@/components/emr/fhir-ui";
 import { CodeBlock } from "@/components/ui/code-block";
+import { NphiesLogo } from "@/components/NphiesLogo";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Switch, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import {
@@ -39,6 +40,7 @@ export function NphiesFinancialPage() {
   return (
     <div>
       <PageHeader
+        mark={<NphiesLogo height={22} />}
         title="NPHIES Financial"
         subtitle="Check coverage, ask for approval, send the claim and confirm the payment for each visit. Clinical items are sent from NPHIES Clinical. Nothing here is really sent: the payer answers are simulated."
         right={

@@ -96,6 +96,60 @@ export const EXTRA_CODES = {
   o2flow: { loinc: "3151-8", text: "Inhaled oxygen flow rate", unit: "L/min" },
 } as const;
 
+/* ---------- readings kept in the HIS only ---------- */
+
+/**
+ * Bedside readings the HIS records with the vitals: blood sugar, urine dipstick and EtCO2.
+ * None of them has a code in the NPHIES "Vital signs - Observations" value set above (the ORU accepts only the
+ * eight vitals, BMI, mean BP, oxygen flow and body position), so they are stored and shown here and never sent in the ORU.
+ * Blood sugar and urine tests belong in a lab result message if they must reach the UHR.
+ */
+export type LocalVitalKey = "sugarRandom" | "sugarFasting" | "urineProtein" | "urineGlucose" | "urineBlood" | "urineKetones" | "etco2";
+
+/** Urine dipstick grades. */
+export const DIPSTICK = ["Negative", "Trace", "1+", "2+", "3+", "4+"] as const;
+export type Dipstick = (typeof DIPSTICK)[number];
+
+export interface LocalVitalDef {
+  key: LocalVitalKey;
+  label: string;
+  kind: "number" | "dipstick";
+  /** Plain unit for screens. */
+  display?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Adult reference range, for a flag on screen only. */
+  range?: { low: number; high: number };
+  /** Group on the entry form. */
+  group: "Metabolic" | "Urine" | "Respiratory";
+}
+
+export const LOCAL_VITALS: LocalVitalDef[] = [
+  { key: "sugarRandom", label: "Blood Sugar (Random)", kind: "number", display: "mg/dL", min: 10, max: 1500, range: { low: 70, high: 140 }, group: "Metabolic" },
+  { key: "sugarFasting", label: "Blood Sugar (Fasting)", kind: "number", display: "mg/dL", min: 10, max: 1500, range: { low: 70, high: 100 }, group: "Metabolic" },
+  { key: "urineProtein", label: "Urine Protein", kind: "dipstick", group: "Urine" },
+  { key: "urineGlucose", label: "Urine Glucose", kind: "dipstick", group: "Urine" },
+  { key: "urineBlood", label: "Urine Blood", kind: "dipstick", group: "Urine" },
+  { key: "urineKetones", label: "Urine Ketones", kind: "dipstick", group: "Urine" },
+  { key: "etco2", label: "EtCO2", kind: "number", display: "mmHg", min: 0, max: 150, range: { low: 35, high: 45 }, group: "Respiratory" },
+];
+
+export const LOCAL_VITAL_BY_KEY: Record<LocalVitalKey, LocalVitalDef> = Object.fromEntries(LOCAL_VITALS.map((v) => [v.key, v])) as Record<LocalVitalKey, LocalVitalDef>;
+
+/** Readings kept in the HIS. Numbers for blood sugar and EtCO2, a dipstick grade for urine. */
+export type LocalReadings = Partial<Record<LocalVitalKey, number | string>>;
+
+/** Screen flag for a numeric local reading: "L", "H" or "". Adults only, like the vitals above. */
+export function localFlag(d: LocalVitalDef, value: number | string | undefined, ageYears: number): "" | "L" | "H" {
+  if (typeof value !== "number" || !d.range || ageYears < ADULT_RANGE_FROM_AGE) return "";
+  return value < d.range.low ? "L" : value > d.range.high ? "H" : "";
+}
+
+/** A local reading as text for screens, for example "180 mg/dL" or "Trace". */
+export const localText = (d: LocalVitalDef, value: number | string | undefined): string =>
+  value === undefined || value === "" ? "" : typeof value === "number" ? `${value}${d.display ? ` ${d.display}` : ""}` : String(value);
+
 export const BP_POSITIONS = ["Sitting", "Standing", "Lying", "Semi-recumbent"];
 
 export const OBR_PANEL_CODE = { code: "85353-1", text: "Vital Signs Panel", system: "2.16.840.1.113883.6.1" } as const;

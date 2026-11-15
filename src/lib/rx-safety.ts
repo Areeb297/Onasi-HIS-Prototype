@@ -1,7 +1,7 @@
 import type { Allergy } from "./model";
 import { PARENTERAL, ROUTE_LABEL } from "./rx-catalogue";
-import { dailyAmount, isControlled, isRaqeebScope } from "./rx-logic";
-import type { Drug, UsageSetting } from "./rx-types";
+import { isControlled, isRaqeebScope, regimenDailyAmount, regimenOf, regimenProblems, stepsOf } from "./rx-logic";
+import type { DoseStep, Drug, Regimen, UsageSetting } from "./rx-types";
 
 /**
  * Medication safety checks. They run while the prescriber types.
@@ -40,6 +40,12 @@ export interface SafetyInput {
   heightCm?: number;
   weightKg?: number;
   ageYears?: number;
+  /** Split or taper. Empty means normal, as on older items. */
+  regimen?: Regimen;
+  /** Rows of a split or taper regimen. */
+  schedule?: DoseStep[];
+  /** The patient brought the medicine. Height and weight are not needed since nothing is sent. */
+  patientProvided?: boolean;
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -105,13 +111,23 @@ export function checkSafety(i: SafetyInput): SafetyFinding[] {
     out.push({ id: "opioid-benzo", kind: "interaction", level: "warn", text: "Opioid with a benzodiazepine can cause heavy sedation and slow breathing. Review the need." });
   }
 
-  // Dose sanity
-  if (!(i.dose > 0)) {
-    out.push({ id: "dose-zero", kind: "dose", level: "error", text: "Dose must be above zero." });
+  // Dose sanity. A split regimen adds its rows up for each day; a taper is checked at its highest phase.
+  const reg = regimenOf(i);
+  const steps = stepsOf({ ...i, regimen: reg });
+  if (reg !== "normal") {
+    for (const p of regimenProblems(reg, steps)) out.push({ id: `regimen-${p}`, kind: "dose", level: "error", text: p });
+  }
+  if (!(i.dose > 0) || steps.some((s) => !(s.dose > 0))) {
+    if (reg === "normal") out.push({ id: "dose-zero", kind: "dose", level: "error", text: "Dose must be above zero." });
   } else {
-    const day = dailyAmount(d, i.dose, i.frequencyId);
+    const day = regimenDailyAmount(d, reg, steps);
     if (day > d.maxDailyDose) {
-      out.push({ id: "dose-high", kind: "dose", level: "warn", text: `Daily dose ${round(day)} ${unitOf(d)} is above the usual maximum of ${d.maxDailyDose} ${unitOf(d)}.` });
+      out.push({
+        id: "dose-high",
+        kind: "dose",
+        level: "warn",
+        text: `${reg === "split" ? "Daily dose of all split rows together" : reg === "taper" ? "Daily dose of the highest phase" : "Daily dose"} ${round(day)} ${unitOf(d)} is above the usual maximum of ${d.maxDailyDose} ${unitOf(d)}.`,
+      });
     }
   }
   if (i.durationDays > 90) {
@@ -130,7 +146,7 @@ export function checkSafety(i: SafetyInput): SafetyFinding[] {
 
   // Height and weight are mandatory in the prescription bundle
   const missing = [!(i.heightCm && i.heightCm > 0) && "height", !(i.weightKg && i.weightKg > 0) && "weight"].filter(Boolean);
-  if (missing.length) {
+  if (missing.length && !i.patientProvided) {
     out.push({ id: "measure", kind: "measure", level: "warn", text: `Add ${missing.join(" and ")} before sending. nphies needs both on every prescription.` });
   }
 
@@ -147,13 +163,24 @@ export function checkSafety(i: SafetyInput): SafetyFinding[] {
     if (i.durationDays > 30) {
       out.push({ id: "ctrl-days", kind: "controlled", level: "warn", text: "Controlled drugs are usually limited to 30 days. Check the local policy." });
     }
+    // Raqeeb accepts only Normal Dosing (MedicationRequest 2.18). The patient's own medicine is not sent, so it is not affected.
+    if (reg !== "normal" && isRaqeebScope(true, i.usage) && !i.patientProvided) {
+      out.push({
+        id: "ctrl-regimen",
+        kind: "controlled",
+        level: "error",
+        text: `Raqeeb accepts only normal dosing for narcotic, controlled and restricted drugs. Use Normal and add each ${reg === "split" ? "time of day" : "phase"} as its own item.`,
+      });
+    }
     out.push({
       id: "ctrl-scope",
       kind: "controlled",
       level: "info",
-      text: isRaqeebScope(true, i.usage)
-        ? "Raqeeb item. A Raqeeb reference id is issued when this prescription is accepted. It is needed to cancel or change it."
-        : "Inpatient use is outside the Raqeeb scope. No Raqeeb reference id is issued.",
+      text: i.patientProvided
+        ? "Provided by the patient. Recorded on the chart only, so no Raqeeb reference id is issued."
+        : isRaqeebScope(true, i.usage)
+          ? "Raqeeb item. A Raqeeb reference id is issued when this prescription is accepted. It is needed to cancel or change it."
+          : "Inpatient use is outside the Raqeeb scope. No Raqeeb reference id is issued.",
     });
   }
   return out;

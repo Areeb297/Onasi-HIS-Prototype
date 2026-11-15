@@ -1,6 +1,6 @@
 import { ageInMonths, ageText } from "./ctas";
 import type { Patient, PatientFlags } from "./model";
-import type { InsuranceCard } from "./registry";
+import { lookupById, type InsuranceCard } from "./registry";
 
 /**
  * Rules for the registration desk, kept free of screens so they can be tested:
@@ -168,13 +168,81 @@ export function flagViews(flags: PatientFlags | undefined): FlagView[] {
   return out;
 }
 
+/* ---------- lists for the form ---------- */
+
+export const TITLES = ["Mr", "Mrs", "Miss", "Ms", "Dr", "Baby"];
+
+/** The usual title for the sex and marital status, the way the HIS fills it in until the clerk picks one. */
+export function defaultTitle(sex: "M" | "F", marital: string, newborn = false): string {
+  if (newborn) return "Baby";
+  if (sex === "M") return "Mr";
+  if (marital === "M" || marital === "W" || marital === "D" || marital === "A") return "Mrs";
+  if (marital === "S") return "Miss";
+  return "Ms";
+}
+
+/** Saudi regions with their main cities, for the State / Region and City fields. */
+export const SAUDI_REGIONS: { region: string; cities: string[] }[] = [
+  { region: "Riyadh", cities: ["Riyadh", "Al Kharj", "Ad Diriyah", "Al Majmaah", "Wadi Ad Dawasir"] },
+  { region: "Makkah", cities: ["Makkah", "Jeddah", "Taif", "Rabigh", "Al Qunfudhah"] },
+  { region: "Madinah", cities: ["Madinah", "Yanbu", "Al Ula", "Badr"] },
+  { region: "Eastern Province", cities: ["Dammam", "Al Khobar", "Dhahran", "Al Ahsa", "Jubail", "Hafar Al Batin", "Qatif"] },
+  { region: "Asir", cities: ["Abha", "Khamis Mushait", "Bisha", "An Namas"] },
+  { region: "Qassim", cities: ["Buraydah", "Unaizah", "Ar Rass"] },
+  { region: "Tabuk", cities: ["Tabuk", "Duba", "Al Wajh"] },
+  { region: "Hail", cities: ["Hail", "Baqaa"] },
+  { region: "Jazan", cities: ["Jazan", "Sabya", "Abu Arish"] },
+  { region: "Najran", cities: ["Najran", "Sharurah"] },
+  { region: "Al Baha", cities: ["Al Baha", "Baljurashi"] },
+  { region: "Al Jouf", cities: ["Sakaka", "Dumat Al Jandal", "Qurayyat"] },
+  { region: "Northern Borders", cities: ["Arar", "Rafha", "Turaif"] },
+];
+
+/**
+ * Admission types. Each one sets PV1-4 (CS-Adm-AdmissionMethod), so the message says how the patient came in.
+ * The match from the HIS words to the published codes is our choice: confirm it with the facility.
+ */
+export const ADMISSION_TYPES: { label: string; method: string }[] = [
+  { label: "Elective", method: "14" },
+  { label: "Emergency", method: "15" },
+  { label: "Urgent", method: "01" },
+  { label: "Maternity, Planned", method: "13" },
+  { label: "Maternity, Emergency", method: "12" },
+  { label: "Newborn", method: "N" },
+];
+
+export const PATIENT_CONDITIONS = ["Stable", "Fair", "Serious", "Critical"];
+export const ACTIVITY_LEVELS = ["Bed Rest", "Up With Help", "Up As Tolerated", "Walks Freely"];
+export const ADMISSION_SPECIALTIES = [
+  "Internal Medicine", "General Surgery", "Orthopedics", "Cardiology", "Intensive Care", "Neurology", "Obstetrics And Gynecology",
+  "Pediatrics", "Neonatology", "Urology", "Nephrology", "Pulmonology",
+];
+
+/* ---------- Health ID from the registry ---------- */
+
+export type HealthIdAnswer = { ok: true; healthId: string } | { ok: false; message: string };
+
+/**
+ * Fetch Health ID: asks the national registry with the ID number and the date of birth, as the HIS does.
+ * Simulated with the same registry the ID lookup uses. Both must match a person.
+ */
+export function fetchHealthId(idNumber: string, dob: string, today: string): HealthIdAnswer {
+  const id = idNumber.trim();
+  if (!/^\d{10}$/.test(id)) return { ok: false, message: "Enter the 10 digit ID number first." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob > today) return { ok: false, message: "Enter a valid date of birth first." };
+  const p = lookupById(id);
+  if (!p || p.dob !== dob || !p.healthId) return { ok: false, message: "No Health ID was returned by the registry. Check the ID number and the date of birth." };
+  return { ok: true, healthId: p.healthId };
+}
+
 /* ---------- form checks ---------- */
 
 export type VisitChoice = "none" | "O" | "I" | "E";
 
 export type RegField =
   | "idNumber" | "first" | "family" | "dob" | "mobile" | "email" | "shortCode" | "healthId" | "bedId"
-  | "dnrDoctor" | "dnrDate" | "language" | "consent";
+  | "dnrDoctor" | "dnrDate" | "language" | "consent"
+  | "title" | "nickName" | "parentId" | "addressLine1" | "admissionType" | "patientCondition" | "expectedStay";
 
 export interface RegistrationInput {
   idNumber: string;
@@ -196,6 +264,21 @@ export interface RegistrationInput {
   language: string;
   /** yyyy-mm-dd */
   today: string;
+  /** Address Line 1. Required, except for an unknown patient. */
+  addressLine1?: string;
+  title?: string;
+  /** Confidential patient: a nick name is required. */
+  confidential?: boolean;
+  nickName?: string;
+  /** Newborn: the parent (a patient already on file) is required. The ID number is not: a baby often has none yet. */
+  newborn?: boolean;
+  parentId?: string;
+  /** Unknown or unconscious emergency patient: only the title and the sex are required. */
+  unknown?: boolean;
+  /** Inpatient: admission type and patient condition are required. Expected stay is optional, in whole days. */
+  admissionType?: string;
+  patientCondition?: string;
+  expectedStay?: string;
 }
 
 export interface FieldProblem {
@@ -211,23 +294,42 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function validateRegistration(i: RegistrationInput): FieldProblem[] {
   const out: FieldProblem[] = [];
   const add = (field: RegField, message: string, messageAr: string) => out.push({ field, message, messageAr });
-  if (!i.idNumber.trim()) add("idNumber", "Enter the ID number.", "أدخل رقم الهوية.");
+  const unknown = !!i.unknown;
+  const s = (v: string | undefined) => (v ?? "").trim();
+  if (!unknown && !i.newborn && !i.idNumber.trim()) add("idNumber", "Enter the ID number.", "أدخل رقم الهوية.");
+  if (i.newborn && !unknown && !s(i.parentId)) add("parentId", "Pick the parent of the newborn.", "اختر أحد والدي المولود.");
   if (i.visit === "I" && !i.bedId) add("bedId", "Pick a bed for the admission.", "اختر سريرا للتنويم.");
-  if (!i.first.trim()) add("first", "Enter the first name.", "أدخل الاسم الأول.");
-  if (!i.family.trim()) add("family", "Enter the family name.", "أدخل اسم العائلة.");
-  if (!i.dob) add("dob", "Enter the date of birth.", "أدخل تاريخ الميلاد.");
-  else if (i.dob > i.today) add("dob", "The date of birth cannot be in the future.", "تاريخ الميلاد لا يمكن أن يكون في المستقبل.");
+  if (i.visit === "I" && !s(i.admissionType)) add("admissionType", "Pick the admission type.", "اختر نوع التنويم.");
+  if (i.visit === "I" && !s(i.patientCondition)) add("patientCondition", "Pick the patient condition.", "اختر حالة المريض.");
+  if (i.visit === "I" && s(i.expectedStay) && !/^\d{1,3}$/.test(s(i.expectedStay))) add("expectedStay", "The expected stay is a whole number of days.", "مدة الإقامة المتوقعة عدد صحيح من الأيام.");
+  if (unknown && !s(i.title)) add("title", "Pick a title. It is required for an unknown patient.", "اختر اللقب. هو مطلوب للمريض المجهول.");
+  if (!unknown && !i.first.trim()) add("first", "Enter the first name.", "أدخل الاسم الأول.");
+  if (!unknown && !i.family.trim()) add("family", "Enter the family name.", "أدخل اسم العائلة.");
+  if (i.confidential && !s(i.nickName)) add("nickName", "Enter a nick name for the confidential patient.", "أدخل اسما مستعارا للمريض السري.");
+  if (!unknown && !i.dob) add("dob", "Enter the date of birth.", "أدخل تاريخ الميلاد.");
+  else if (i.dob && i.dob > i.today) add("dob", "The date of birth cannot be in the future.", "تاريخ الميلاد لا يمكن أن يكون في المستقبل.");
+  if (!unknown && !s(i.addressLine1)) add("addressLine1", "Enter Address Line 1.", "أدخل سطر العنوان الأول.");
   if (i.shortCode && !SHORT_ADDRESS.test(i.shortCode)) add("shortCode", "The short address is 4 capital letters then 4 digits.", "العنوان المختصر 4 أحرف كبيرة ثم 4 أرقام.");
-  if (!i.mobile.trim()) add("mobile", "Enter the mobile number.", "أدخل رقم الجوال.");
-  else if (!phoneKey(i.mobile)) add("mobile", "The mobile number is too short.", "رقم الجوال قصير.");
+  if (!unknown && !i.mobile.trim()) add("mobile", "Enter the mobile number.", "أدخل رقم الجوال.");
+  else if (i.mobile.trim() && !phoneKey(i.mobile)) add("mobile", "The mobile number is too short.", "رقم الجوال قصير.");
   if (i.email.trim() && !EMAIL.test(i.email.trim())) add("email", "The email address is not valid.", "البريد الإلكتروني غير صحيح.");
   if (i.dnr && !i.dnrDoctor) add("dnrDoctor", "Pick the doctor who ordered Do Not Resuscitate.", "اختر الطبيب الذي أمر بعدم الإنعاش.");
   if (i.dnr && !i.dnrDate) add("dnrDate", "Enter the date of the Do Not Resuscitate order.", "أدخل تاريخ أمر عدم الإنعاش.");
   else if (i.dnr && i.dnrDate > i.today) add("dnrDate", "The order date cannot be in the future.", "تاريخ الأمر لا يمكن أن يكون في المستقبل.");
   if (i.interpreter && !i.language.trim()) add("language", "Pick the language for the interpreter.", "اختر لغة المترجم.");
-  if (!i.healthId.trim()) add("healthId", "Enter the Health ID.", "أدخل رقم الهوية الصحية.");
-  if (!i.consent) add("consent", "Confirm the patient consent.", "أكد موافقة المريض.");
+  // An unknown patient gets a test Health ID when saved, and cannot give consent until the details are completed.
+  if (!unknown && !i.healthId.trim()) add("healthId", "Enter the Health ID.", "أدخل رقم الهوية الصحية.");
+  if (!unknown && !i.consent) add("consent", "Confirm the patient consent.", "أكد موافقة المريض.");
   return out;
+}
+
+/** The name saved for an unknown or unconscious patient. */
+export const UNKNOWN_NAME = { given: "Unknown", family: "Patient" } as const;
+
+/** The name to show in lists: the nick name for a confidential patient, unless the user has opened the record. */
+export function listName(p: Pick<Patient, "given" | "family" | "confidential" | "extra">, opened = false): string {
+  if (p.confidential && !opened) return p.extra?.nickName?.trim() || "Confidential Patient";
+  return `${p.given} ${p.family}`;
 }
 
 /** Builds the flags object to store. Flags that are off are left out. Returns nothing when no flag is on. */

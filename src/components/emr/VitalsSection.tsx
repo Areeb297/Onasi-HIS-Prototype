@@ -10,10 +10,10 @@ import type { Encounter, Patient } from "@/lib/model";
 import { can } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import {
-  buildOru, cancelPanel, cancelReading, claimReadiness, claimVitalsJson, ensureSeedSends, needsSend, obsValue, panelsOf, scenarioCoverage,
+  buildOru, cancelPanel, cancelReading, claimReadiness, claimVitalsJson, ensureSeedSends, localOf, needsSend, obsValue, panelsOf, scenarioCoverage,
   sendHistorical, sendPanel, setVitalsRejectNext, useVitals, validateOru, type VitalPanel,
 } from "@/lib/vitals";
-import { CONTEXTS, ROUTINE_INTERVAL_HOURS, VITALS, VITAL_BY_KEY, flagFor, news2, type VitalKey } from "@/lib/vitals-spec";
+import { CONTEXTS, LOCAL_VITALS, ROUTINE_INTERVAL_HOURS, VITALS, VITAL_BY_KEY, flagFor, localFlag, localText, news2, type VitalKey } from "@/lib/vitals-spec";
 
 const ageOf = (p: Patient) => Math.floor((Date.now() - new Date(p.dob).getTime()) / (365.25 * 86_400_000));
 const fmt = (local: string) => new Date(local).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -99,6 +99,23 @@ function PanelRow({ p, enc, patient, dev, open, onToggle, onCorrect }: { p: Vita
                     </li>
                   ))}
                 </ul>
+                {LOCAL_VITALS.some((d) => localOf(p)[d.key] !== undefined) && (
+                  <>
+                    <div className="mb-1.5 mt-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">Bedside tests <Badge tone="neutral">Kept in the HIS, not sent</Badge></div>
+                    <ul className="divide-y divide-border rounded-lg border border-border bg-card text-sm">
+                      {LOCAL_VITALS.filter((d) => localOf(p)[d.key] !== undefined).map((d) => {
+                        const x = localOf(p)[d.key];
+                        const f = localFlag(d, x, age);
+                        return (
+                          <li key={d.key} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                            <span>{d.label}</span>
+                            <span className={cn("tabular-nums", f && "font-semibold text-warn")}>{localText(d, x)}{f ? ` ${f}` : ""}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button size="sm" disabled={!write || p.status === "X"} onClick={onCorrect}>Correct</Button>
                   <Button size="sm" variant="danger" disabled={!write || p.status === "X"} onClick={() => confirm("Cancel this whole panel? It was entered in error.") && cancelPanel(p.id, "W")}>Cancel Panel</Button>
@@ -205,6 +222,21 @@ export function VitalsSection({ enc }: { enc: Encounter }) {
               <Spark label="Weight" unit="kg" last={obsValue(newest, "weight")} points={series("weight")} flags={flagsOf("weight")} />
               <Spark label="Height" unit="cm" last={obsValue(newest, "height")} points={series("height")} flags={flagsOf("height")} />
             </div>
+            {(() => {
+              const withLocal = live.find((p) => LOCAL_VITALS.some((d) => localOf(p)[d.key] !== undefined));
+              if (!withLocal) return null;
+              const l = localOf(withLocal);
+              return (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="font-medium">Bedside tests, {fmt(withLocal.at)}:</span>
+                  {LOCAL_VITALS.filter((d) => l[d.key] !== undefined).map((d) => {
+                    const f = localFlag(d, l[d.key], age);
+                    return <span key={d.key} className={cn("rounded-md border border-border px-2 py-0.5", f && "border-warn/50 text-warn")}>{d.label} {localText(d, l[d.key])}{f ? ` ${f}` : ""}</span>;
+                  })}
+                  <span className="text-muted-foreground">Kept in the HIS, not sent to NPHIES.</span>
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <Empty>No vital signs yet. Use Record Vitals.</Empty>

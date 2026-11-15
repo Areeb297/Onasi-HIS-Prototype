@@ -163,8 +163,14 @@ export function drugLabel(d: Drug): string {
   return `${d.generic} ${d.strengthValue} ${d.strengthUnit} ${d.form}`;
 }
 
-export function searchDrugs(q: string, limit = 12): Drug[] {
+/** What the drug search looks at. "any" also matches the class and the code. */
+export type DrugSearchBy = "generic" | "brand" | "any";
+
+export function searchDrugs(q: string, limit = 12, by: DrugSearchBy = "any"): Drug[] {
   const s = q.trim().toLowerCase();
   if (!s) return [];
-  return DRUGS.filter((d) => `${d.generic} ${d.brand} ${d.therapeuticClass} ${d.code}`.toLowerCase().includes(s)).slice(0, limit);
+  const text = (d: Drug) => (by === "generic" ? d.generic : by === "brand" ? d.brand : `${d.generic} ${d.brand} ${d.therapeuticClass} ${d.code}`);
+  const hits = DRUGS.filter((d) => text(d).toLowerCase().includes(s));
+  // Names that start with what was typed come first.
+  return [...hits.filter((d) => text(d).toLowerCase().startsWith(s)), ...hits.filter((d) => !text(d).toLowerCase().startsWith(s))].slice(0, limit);
 }

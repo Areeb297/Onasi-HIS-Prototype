@@ -7,7 +7,7 @@ import { cn } from "@/components/ui/primitives";
 export function OnasiAiMark({ size = 24, thinking = false, className }: { size?: number; thinking?: boolean; className?: string }) {
   return (
     <img
-      src="/brand/onasi-icon.png"
+      src="/brand/onasi-icon-mint.png"
       alt=""
       aria-hidden="true"
       width={Math.round(size * 0.92)}

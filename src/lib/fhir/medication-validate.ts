@@ -219,7 +219,26 @@ export function validatePrescriptionBundle(b: FhirBundle): RxCheck[] {
     const gen = dosage[0];
     c.rule(!!gen && !!str(gen.text) && !!at(gen, "route.coding.0.code") && typeof gen.asNeededBoolean === "boolean" && durationOk(at(gen, "timing.repeat.boundsDuration")), `${tag}: general dosage has text, duration, route and as-needed.`, `${tag}: general dosage needs text, duration of treatment, route and the as-needed flag.`, "Dosage General 5.1, 5.3, 5.4, 5.7", "required");
     const structured = dosage.length > 1 ? dosage[1] : undefined;
-    c.rule(itemRaqeeb ? dosage.length === 2 && structuredOk(structured, true) : !structured || structuredOk(structured, false), itemRaqeeb ? `${tag}: normal dosing carries the frequency code.` : `${tag}: structured dosing is in the right form.`, itemRaqeeb ? `${tag}: Raqeeb items need exactly one structured Normal Dosing instruction with timing.code (Frequency Code) and no frequency, period or periodUnit.` : `${tag}: structured dosing needs frequency, period and periodUnit, and no timing.code.`, "MedicationRequest 2.18, Normal Dosing 7.2 to 7.5", itemRaqeeb ? "required" : "invalid");
+    const rows = dosage.slice(1);
+    c.rule(itemRaqeeb ? dosage.length === 2 && structuredOk(structured, true) : rows.every((x) => structuredOk(x, false)), itemRaqeeb ? `${tag}: normal dosing carries the frequency code.` : `${tag}: structured dosing is in the right form.`, itemRaqeeb ? `${tag}: Raqeeb items need exactly one structured Normal Dosing instruction with timing.code (Frequency Code) and no frequency, period or periodUnit.` : `${tag}: structured dosing needs frequency, period and periodUnit, and no timing.code.`, "MedicationRequest 2.18, Normal Dosing 7.2 to 7.5", itemRaqeeb ? "required" : "invalid");
+    if (rows.length > 1) {
+      // Split or tapered dosing: the general duration spans every row (Dosage General 5.3).
+      const span = (x: unknown) => {
+        const a = Date.parse(`${str(at(x, "timing.repeat.boundsPeriod.start"))}T00:00:00Z`);
+        const b = Date.parse(`${str(at(x, "timing.repeat.boundsPeriod.end"))}T00:00:00Z`);
+        return Number.isNaN(a) || Number.isNaN(b) || b < a ? 0 : Math.round((b - a) / 86_400_000) + 1;
+      };
+      const seqs = rows.map((x) => Number(at(x, "sequence")));
+      const taper = new Set(seqs).size > 1;
+      const total = taper ? rows.reduce((n: number, x) => n + span(x), 0) : Math.max(...rows.map(span));
+      const general = Number(at(gen, "timing.repeat.boundsDuration.value"));
+      c.rule(
+        seqs.every((n) => Number.isInteger(n) && n >= 1) && rows.every((x) => span(x) > 0) && total === general,
+        `${tag}: ${taper ? "taper phases" : "split doses"} are numbered, dated and add up to the overall duration.`,
+        `${tag}: each ${taper ? "taper phase" : "split dose"} needs a sequence number and a start and end date, and together they must span the overall duration (${general} days, found ${total}).`,
+        "Structured Dosage Instructions, Dosing variants 2 and 3; Dosage General 5.3",
+      );
+    }
     c.rule(DATE.test(str(at(r, "dispenseRequest.validityPeriod.start"))), `${tag}: validity start present.`, `${tag}: validity start must be YYYY-MM-DD.`, "MedicationRequest 2.21");
     c.rule(!itemRaqeeb || DATE.test(str(at(r, "dispenseRequest.validityPeriod.end"))), `${tag}: validity end is set.`, `${tag}: Raqeeb items need a validity end date.`, "MedicationRequest 2.22", "required");
     const repeats = at(r, "dispenseRequest.numberOfRepeatsAllowed");

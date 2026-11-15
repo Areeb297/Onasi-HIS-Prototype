@@ -208,11 +208,11 @@ export function CardHeader({ title, subtitle, right, tag }: { title: string; sub
   );
 }
 
-export function PageHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
+export function PageHeader({ title, subtitle, right, mark }: { title: string; subtitle?: string; right?: React.ReactNode; mark?: React.ReactNode }) {
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <div className="flex flex-wrap items-center gap-3">{mark}<h1 className="text-xl font-semibold tracking-tight">{title}</h1></div>
         {subtitle && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{subtitle}</p>}
       </div>
       {right}

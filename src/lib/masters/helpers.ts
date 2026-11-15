@@ -29,5 +29,8 @@ export const monoPick = (key: string, label: string, options: string[], required
   key, label, type: "mono", field: { type: "select", options, required },
 });
 
+/** Marks a field as form only: it is asked in the add and edit form and left out of the list. */
+export const more = (...cols: MasterColumn[]): MasterColumn[] => cols.map((c) => ({ ...c, formOnly: true }));
+
 export const STATUS = ["Active", "Draft", "Review", "Disabled"];
 export const CLINICS = ["Family Medicine", "Internal Medicine", "Pediatrics", "Orthopedics", "Radiology", "Laboratory", "Emergency", "Rehabilitation"];

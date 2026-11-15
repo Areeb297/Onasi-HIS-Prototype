@@ -58,6 +58,8 @@ export function VerifyDialog({ rx, itemId, onClose }: { rx: Prescription; itemId
     dose: item.dose,
     frequencyId: item.frequencyId,
     durationDays: item.durationDays,
+    regimen: item.regimen,
+    schedule: item.schedule,
     route: item.route,
     refills: item.refills,
     usage: rx.usage,

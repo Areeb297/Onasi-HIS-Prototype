@@ -38,6 +38,21 @@ export const lastAttempt = (sends: SendRecord[], kind: DocKind): SendRecord | un
 
 export const nextVersion = (sends: SendRecord[], kind: DocKind): number => (lastAccepted(sends, kind)?.version ?? 0) + 1;
 
+/* ---------- shared by laboratory and radiology orders ---------- */
+
+/**
+ * Who pays for an order line. "plan" = covered by the visit's insurance plan, "self-pay" = additional, paid by the patient.
+ * HIS only: not sent in the NPHIES order bundle.
+ */
+export type OrderCoverage = "plan" | "self-pay";
+
+/** A diagnosis of the visit picked as the reason for an order. Sent as the Preliminary Diagnosis order information. */
+export interface OrderDiagnosis {
+  /** ICD-10-AM code. */
+  code: string;
+  text: string;
+}
+
 /* ---------- laboratory ---------- */
 
 export type LabStatus = "received" | "collected" | "in-progress" | "resulted" | "amended" | "cancelled";
@@ -104,6 +119,10 @@ export interface LabOrder {
   sentBack?: { by: string; at: string; reason: string };
   /** Critical result call-back: who was told, by whom, when, and that they read the value back. */
   criticalCall?: CriticalCall;
+  /** Visit diagnosis picked as the reason for the order. Optional, so orders saved before this was added still load. */
+  diagnosis?: OrderDiagnosis;
+  /** Plan coverage or additional self-pay. Optional: older orders show "Not Recorded". */
+  coverage?: OrderCoverage;
 }
 
 /** An app user at a point in time: user id (for the two-person rule) and the name to show. */
@@ -183,4 +202,13 @@ export interface RadOrder {
   orderDirty: boolean;
   reportDirty: boolean;
   sends: SendRecord[];
+  /**
+   * Order number shared by the exams ordered together, for example RQ-200004. Each exam keeps its own placer number,
+   * worklist line, report and NPHIES order document (one imaging procedure per bundle). Optional: older orders stand alone.
+   */
+  groupId?: string;
+  /** Visit diagnosis picked as the reason for the order. Optional, so orders saved before this was added still load. */
+  diagnosis?: OrderDiagnosis;
+  /** Plan coverage or additional self-pay. Optional: older orders show "Not Recorded". */
+  coverage?: OrderCoverage;
 }

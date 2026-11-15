@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { pretty } from "./hl7";
 import { getState } from "./store";
 import {
-  amendPanel, buildOru, cancelPanel, cancelReading, claimReadiness, claimVitalsJson, claimVitalsMissing, getVitals, needsSend, panelsOf, resetVitals,
-  savePanel, scenarioCoverage, sendHistorical, sendPanel, validateOru, setVitalsRejectNext,
+  amendPanel, buildOru, cancelPanel, cancelReading, claimReadiness, claimVitalsJson, claimVitalsMissing, cleanLocal, getVitals, hasOruReadings, localOf,
+  needsSend, panelsOf, resetVitals, savePanel, scenarioCoverage, sendHistorical, sendPanel, validateOru, setVitalsRejectNext,
 } from "./vitals";
-import { VITALS, VITAL_BY_KEY, bmiOf, flagFor, news2 } from "./vitals-spec";
+import { LOCAL_VITALS, LOCAL_VITAL_BY_KEY, VITALS, VITAL_BY_KEY, bmiOf, flagFor, localFlag, localText, news2 } from "./vitals-spec";
 
 const visitOf = (pid: string) => [...getState().encounters].reverse().find((e) => e.patientId === pid && e.status !== "cancelled")!.visitNumber;
 const ctxOf = (visit: string) => {
@@ -292,6 +292,71 @@ describe("ORU details from the guide", () => {
     for (const l of obxChild) { expect(l.split("|")[7] ?? "").toBe(""); expect(l.split("|")[8] ?? "").toBe(""); }
     const obxAdult = buildOru([panel], adult, enc, "T2").message.split("\r").filter((l) => l.startsWith("OBX|"));
     expect(obxAdult[0].split("|")[7]).toBe("90-140");
+  });
+});
+
+describe("bedside tests kept in the HIS", () => {
+  beforeEach(() => resetVitals());
+  const LOCAL = { sugarRandom: 186, sugarFasting: 110, urineProtein: "Trace", urineGlucose: "1+", urineBlood: "Negative", urineKetones: "2+", etco2: 38 };
+
+  it("has no code for them in the ORU value set, so none is sent", () => {
+    for (const d of LOCAL_VITALS) expect(VITALS.some((v) => v.key === (d.key as string))).toBe(false);
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: FULL, local: LOCAL })!;
+    expect(p.local).toEqual(LOCAL);
+    const { enc, patient } = ctxOf(visit);
+    const { segs, message } = buildOru([p], patient, enc, "LOC1");
+    expect(validateOru(segs).filter((c) => c.level === "error")).toEqual([]);
+    const plain = buildOru([savePanel({ visit, context: "routine", values: FULL })!], patient, enc, "LOC1").message;
+    expect(message.split("\r").filter((l) => l.startsWith("OBX|")).length).toBe(plain.split("\r").filter((l) => l.startsWith("OBX|")).length);
+    // glucose, urine dipstick and EtCO2 LOINC codes, and the values themselves, are absent
+    for (const code of ["2339-0", "1558-6", "2345-7", "5804-0", "5792-7", "5794-3", "5797-6", "19891-1"]) expect(message).not.toContain(code);
+    expect(message).not.toContain("|186|");
+    expect(message).not.toContain("Trace");
+  });
+
+  it("drops empty or unusable local readings", () => {
+    expect(cleanLocal({ sugarRandom: "abc" as unknown as number, urineBlood: "", etco2: 40 })).toEqual({ etco2: 40 });
+    expect(cleanLocal({})).toBeUndefined();
+    const visit = visitOf("P001");
+    expect(savePanel({ visit, context: "routine", values: FULL, local: {} })!.local).toBeUndefined();
+  });
+
+  it("changing only bedside tests on a sent panel does not make a correction", () => {
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: FULL })!;
+    sendPanel(p.id);
+    const after = amendPanel(p.id, { values: FULL, local: { sugarFasting: 95 } })!;
+    expect(after.version).toBe(1);
+    expect(after.status).toBe("F");
+    expect(after.local).toEqual({ sugarFasting: 95 });
+    expect(needsSend(after)).toBe(false);
+  });
+
+  it("does not offer to send a panel that has only bedside tests", () => {
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: {}, local: { sugarRandom: 140 } })!;
+    expect(hasOruReadings(p)).toBe(false);
+    expect(needsSend(p)).toBe(false);
+  });
+
+  it("opens old panels saved before bedside tests existed", () => {
+    const visit = visitOf("P001");
+    const p = savePanel({ visit, context: "routine", values: FULL })!;
+    const old = JSON.parse(JSON.stringify(p)) as typeof p;
+    delete old.local;
+    expect(localOf(old)).toEqual({});
+    const { enc, patient } = ctxOf(visit);
+    expect(validateOru(buildOru([old], patient, enc, "OLD").segs).filter((c) => c.level === "error")).toEqual([]);
+  });
+
+  it("flags blood sugar and EtCO2 on screen for adults only, and shows dipstick grades as text", () => {
+    expect(localFlag(LOCAL_VITAL_BY_KEY.sugarFasting, 130, 40)).toBe("H");
+    expect(localFlag(LOCAL_VITAL_BY_KEY.etco2, 30, 40)).toBe("L");
+    expect(localFlag(LOCAL_VITAL_BY_KEY.sugarRandom, 300, 6)).toBe("");
+    expect(localFlag(LOCAL_VITAL_BY_KEY.urineGlucose, "2+", 40)).toBe("");
+    expect(localText(LOCAL_VITAL_BY_KEY.sugarRandom, 186)).toBe("186 mg/dL");
+    expect(localText(LOCAL_VITAL_BY_KEY.urineKetones, "Trace")).toBe("Trace");
   });
 });
 

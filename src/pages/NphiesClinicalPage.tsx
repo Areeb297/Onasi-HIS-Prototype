@@ -2,6 +2,7 @@ import * as React from "react";
 import { Eye, EyeOff, Send } from "lucide-react";
 import { Gate } from "@/components/emr/fhir-ui";
 import { CodeBlock } from "@/components/ui/code-block";
+import { NphiesLogo } from "@/components/NphiesLogo";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { useDocs } from "@/lib/docs";
@@ -52,6 +53,7 @@ export function NphiesClinicalPage() {
   return (
     <div>
       <PageHeader
+        mark={<NphiesLogo height={22} />}
         title="NPHIES Clinical"
         subtitle="Everything the clinical side sends to NPHIES, in one list: visit updates, lab, radiology, medication, vital signs and clinical documents. Items appear as ready once they are complete, for example a lab order after the specimen is collected."
         right={

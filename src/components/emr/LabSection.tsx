@@ -4,6 +4,8 @@ import { Dialog } from "@/components/Dialog";
 import { AssumptionNote, DocViewer, Gate, NphiesPill, PRIORITY_UI, LAB_STATUS_UI, StatusBadge } from "@/components/emr/fhir-ui";
 import { LabOrderPad } from "@/components/emr/LabOrderPad";
 import { LabResultsTable } from "@/components/emr/LabResultsTable";
+import { OrderMetaLine } from "@/components/emr/OrderFields";
+import { visitInsured } from "@/lib/order-fields";
 import { Badge, Button, Card, CardHeader, Empty, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { LAB_ASSUMPTIONS } from "@/lib/fhir/assumptions";
@@ -48,6 +50,7 @@ export function LabSection({ enc }: { enc: Encounter }) {
   const visitOpen = enc.status !== "cancelled";
   const canOrder = can("order.lab") && visitOpen;
   const reason = !visitOpen ? "This visit is cancelled." : "Your role cannot order laboratory tests.";
+  const insured = visitInsured(patient);
 
   const criticals = orders.flatMap((o) =>
     Object.values(o.results)
@@ -83,6 +86,8 @@ export function LabSection({ enc }: { enc: Encounter }) {
         <div className="px-4 py-4">
           <LabOrderPad
             key={padKey}
+            diagnoses={enc.dx}
+            insured={insured}
             duplicatesOf={(codes) => openLabDuplicates(lab.orders, enc.visitNumber, codes)}
             canOrder={canOrder}
             reason={reason}
@@ -133,6 +138,7 @@ export function LabSection({ enc }: { enc: Encounter }) {
                       {o.note && ` · ${o.note}`}
                       {dev && <span className="ml-2 font-mono">Visit {o.visitNumber}</span>}
                     </div>
+                    <OrderMetaLine diagnosis={o.diagnosis} coverage={o.coverage} />
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {label && (
@@ -201,8 +207,13 @@ export function LabSection({ enc }: { enc: Encounter }) {
         {amendingOrder && (
           <LabOrderPad
             key={amendingOrder.id}
+            diagnoses={enc.dx}
+            insured={insured}
             duplicatesOf={(codes) => openLabDuplicates(lab.orders, enc.visitNumber, codes, amendingOrder.id)}
-            initial={{ codes: amendingOrder.codes, priority: amendingOrder.priority, fasting: amendingOrder.fasting, note: amendingOrder.note }}
+            initial={{
+              codes: amendingOrder.codes, priority: amendingOrder.priority, fasting: amendingOrder.fasting, note: amendingOrder.note,
+              diagnosis: amendingOrder.diagnosis ?? null, coverage: amendingOrder.coverage,
+            }}
             testsLocked={amendingOrder.status !== "received"}
             canOrder={canOrder}
             reason={reason}

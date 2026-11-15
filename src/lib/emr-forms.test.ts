@@ -49,10 +49,11 @@ describe("EMR form definitions", () => {
     }
   });
 
-  it("keeps each form between 6 and 20 fields", () => {
+  // The forms follow the HIS field for field, so the long nursing and rehabilitation forms are long here too.
+  it("keeps each form between 6 and 120 fields", () => {
     for (const f of EMR_FORMS) {
       expect(f.fields.length, f.id).toBeGreaterThanOrEqual(6);
-      expect(f.fields.length, f.id).toBeLessThanOrEqual(20);
+      expect(f.fields.length, f.id).toBeLessThanOrEqual(120);
     }
   });
 

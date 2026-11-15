@@ -254,12 +254,9 @@ table,
 :is(button, a, span, label):hover > .onasi-mark-white {
   filter: brightness(0) invert(1) drop-shadow(0 0 5px var(--brand-mint)) drop-shadow(0 0 14px var(--brand-mint));
 }
-.onasi-wordmark {
-  filter: brightness(0) invert(1);
-  transition: filter 0.35s ease;
-}
+.onasi-wordmark { transition: filter 0.35s ease; }
 :is(button, a):hover > .onasi-wordmark {
-  filter: brightness(0) invert(1) drop-shadow(0 0 6px var(--brand-mint)) drop-shadow(0 0 16px color-mix(in srgb, var(--brand-mint) 60%, transparent));
+  filter: drop-shadow(0 0 6px var(--brand-mint)) drop-shadow(0 0 16px color-mix(in srgb, var(--brand-mint) 60%, transparent));
 }
 @media (prefers-reduced-motion: reduce) {
   .onasi-mark { transition: filter 0.35s ease; }

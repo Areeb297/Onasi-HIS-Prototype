@@ -1,5 +1,5 @@
 import type { MasterDef } from "../schema";
-import { badge, bool, date, mono, num, pick, text } from "./helpers";
+import { badge, bool, date, mono, more, num, pick, text } from "./helpers";
 
 /**
  * Insurance setup. Insurer and TPA names are real market names. Policy numbers,
@@ -8,6 +8,7 @@ import { badge, bool, date, mono, num, pick, text } from "./helpers";
 
 const INSURERS = ["Bupa Arabia", "Tawuniya", "MedGulf", "Daman", "NextCare", "Malath Insurance", "Walaa Insurance", "Self-pay"];
 const TPAS = ["None", "NextCare", "GlobeMed Saudi", "Mednet (sample)"];
+const NETWORKS = ["Premier Network (sample)", "Standard Network (sample)", "Gold Network (sample)", "Basic Network (sample)", "Government Network (sample)", "Corporate Network (sample)"];
 
 export const INSURANCE: MasterDef[] = [
   {
@@ -21,13 +22,20 @@ export const INSURANCE: MasterDef[] = [
       text("contact", "Contact Person"),
       text("email", "Email", false, "name@example.com"),
       text("phone", "Phone"),
+      mono("licenseNo", "TPA License / CHI Code", false, "CHI-TPA-000"),
+      text("payers", "Payers"),
       badge("status", "Status", ["Active", "Draft", "Disabled"]),
+      ...more(
+        text("countries", "Countries / Regions", false, "Saudi Arabia, GCC"),
+        mono("policyNumber", "Policy Number"),
+        mono("groupNumber", "Group Number"),
+      ),
     ],
     seed: [
-      { code: "TPA-NC", name: "NextCare", contact: "Claims desk (sample)", email: "claims@example.com", phone: "+966 11 000 0101", status: "Active" },
-      { code: "TPA-GM", name: "GlobeMed Saudi", contact: "Provider relations (sample)", email: "providers@example.com", phone: "+966 12 000 0102", status: "Active" },
-      { code: "TPA-MN", name: "Mednet (sample)", contact: "Provider desk (sample)", email: "desk@example.com", phone: "+966 11 000 0103", status: "Active" },
-      { code: "TPA-GC", name: "Gulf Care TPA (sample)", contact: "Claims desk (sample)", email: "claims2@example.com", phone: "+966 13 000 0104", status: "Draft" },
+      { code: "TPA-NC", name: "NextCare", contact: "Claims desk (sample)", email: "claims@example.com", phone: "+966 11 000 0101", licenseNo: "CHI-TPA-0101", payers: "NextCare", status: "Active", countries: "Saudi Arabia, GCC", policyNumber: "TPA-POL-1101", groupNumber: "GRP-501" },
+      { code: "TPA-GM", name: "GlobeMed Saudi", contact: "Provider relations (sample)", email: "providers@example.com", phone: "+966 12 000 0102", licenseNo: "CHI-TPA-0102", payers: "Malath Insurance", status: "Active", countries: "Saudi Arabia", policyNumber: "TPA-POL-1102", groupNumber: "GRP-502" },
+      { code: "TPA-MN", name: "Mednet (sample)", contact: "Provider desk (sample)", email: "desk@example.com", phone: "+966 11 000 0103", licenseNo: "CHI-TPA-0103", payers: "MedGulf", status: "Active", countries: "Saudi Arabia", policyNumber: "TPA-POL-1103", groupNumber: "" },
+      { code: "TPA-GC", name: "Gulf Care TPA (sample)", contact: "Claims desk (sample)", email: "claims2@example.com", phone: "+966 13 000 0104", licenseNo: "CHI-TPA-0104", payers: "", status: "Draft" },
     ],
   },
   {
@@ -41,17 +49,31 @@ export const INSURANCE: MasterDef[] = [
       pick("type", "Type", ["Private insurer", "Government payer", "Self-pay"], true),
       pick("tpa", "TPA", TPAS),
       mono("payerId", "Payer Id", false, "PAYER-000"),
+      mono("registrationNumber", "CR / Unified No", false, "7000000000"),
+      text("networkName", "Network Name"),
       badge("status", "Status", ["Active", "Draft", "Disabled"]),
+      ...more(
+        mono("licenseNumber", "License Number (NPHIES)", true),
+        text("contactEmail", "Email", false, "payer@example.com"),
+        text("contactPhone", "Phone", false, "+966 5..."),
+        text("address", "Address", false, "District, City, KSA"),
+        pick("adminRoute", "Admin Route", ["Direct", "TPA"]),
+        text("fhirEndpoint", "FHIR Endpoint URL", false, "https://nphies.sa/fhir/r4/..."),
+        mono("vatNumber", "VAT Number"),
+        num("vatPercentage", "VAT %"),
+        bool("drgEnabled", "Enable DRG"),
+        bool("ebpEnabled", "Enable EBP"),
+      ),
     ],
     seed: [
-      { code: "INS-BUPA", name: "Bupa Arabia", type: "Private insurer", tpa: "None", payerId: "PAYER-0001", status: "Active" },
-      { code: "INS-TAW", name: "Tawuniya", type: "Private insurer", tpa: "None", payerId: "PAYER-0002", status: "Active" },
-      { code: "INS-MEDG", name: "MedGulf", type: "Private insurer", tpa: "Mednet (sample)", payerId: "PAYER-0003", status: "Active" },
-      { code: "INS-DAM", name: "Daman", type: "Government payer", tpa: "None", payerId: "PAYER-0004", status: "Active" },
-      { code: "INS-NXC", name: "NextCare", type: "Private insurer", tpa: "NextCare", payerId: "PAYER-0005", status: "Active" },
-      { code: "INS-MAL", name: "Malath Insurance", type: "Private insurer", tpa: "GlobeMed Saudi", payerId: "PAYER-0006", status: "Active" },
-      { code: "INS-WAL", name: "Walaa Insurance", type: "Private insurer", tpa: "None", payerId: "PAYER-0007", status: "Draft" },
-      { code: "INS-SELF", name: "Self-pay", type: "Self-pay", tpa: "None", payerId: "", status: "Active" },
+      { code: "INS-BUPA", name: "Bupa Arabia", type: "Private insurer", tpa: "None", payerId: "PAYER-0001", registrationNumber: "7001000011", networkName: "Premier Network (sample)", status: "Active", licenseNumber: "INS-LIC-0001", contactEmail: "providers.bupa@example.com", contactPhone: "+966 12 000 1001", address: "Al Khalidiyah, Jeddah", adminRoute: "Direct", fhirEndpoint: "https://nphies.example/fhir/r4/bupa", vatNumber: "300000000100003", vatPercentage: 15, drgEnabled: true, ebpEnabled: false },
+      { code: "INS-TAW", name: "Tawuniya", type: "Private insurer", tpa: "None", payerId: "PAYER-0002", registrationNumber: "7001000022", networkName: "Gold Network (sample)", status: "Active", licenseNumber: "INS-LIC-0002", contactEmail: "providers.taw@example.com", contactPhone: "+966 11 000 1002", address: "Al Olaya, Riyadh", adminRoute: "Direct", fhirEndpoint: "https://nphies.example/fhir/r4/tawuniya", vatNumber: "300000000200003", vatPercentage: 15, drgEnabled: true, ebpEnabled: true },
+      { code: "INS-MEDG", name: "MedGulf", type: "Private insurer", tpa: "Mednet (sample)", payerId: "PAYER-0003", registrationNumber: "7001000033", networkName: "Basic Network (sample)", status: "Active", licenseNumber: "INS-LIC-0003", contactEmail: "providers.medgulf@example.com", contactPhone: "+966 11 000 1003", address: "Al Malaz, Riyadh", adminRoute: "TPA", vatNumber: "300000000300003", vatPercentage: 15, drgEnabled: false, ebpEnabled: false },
+      { code: "INS-DAM", name: "Daman", type: "Government payer", tpa: "None", payerId: "PAYER-0004", registrationNumber: "7001000044", networkName: "Government Network (sample)", status: "Active", licenseNumber: "INS-LIC-0004", adminRoute: "Direct", vatPercentage: 0, drgEnabled: true, ebpEnabled: false },
+      { code: "INS-NXC", name: "NextCare", type: "Private insurer", tpa: "NextCare", payerId: "PAYER-0005", registrationNumber: "7001000055", networkName: "Corporate Network (sample)", status: "Active", licenseNumber: "INS-LIC-0005", adminRoute: "TPA", vatPercentage: 15, drgEnabled: false, ebpEnabled: false },
+      { code: "INS-MAL", name: "Malath Insurance", type: "Private insurer", tpa: "GlobeMed Saudi", payerId: "PAYER-0006", registrationNumber: "7001000066", networkName: "", status: "Active", licenseNumber: "INS-LIC-0006", adminRoute: "TPA", vatPercentage: 15, drgEnabled: false, ebpEnabled: false },
+      { code: "INS-WAL", name: "Walaa Insurance", type: "Private insurer", tpa: "None", payerId: "PAYER-0007", registrationNumber: "7001000077", networkName: "", status: "Draft", licenseNumber: "INS-LIC-0007", adminRoute: "Direct", vatPercentage: 15, drgEnabled: false, ebpEnabled: false },
+      { code: "INS-SELF", name: "Self-pay", type: "Self-pay", tpa: "None", payerId: "", registrationNumber: "", networkName: "", status: "Active", licenseNumber: "N/A", adminRoute: "Direct", vatPercentage: 15, drgEnabled: false, ebpEnabled: false },
     ],
   },
   {
@@ -66,15 +88,23 @@ export const INSURANCE: MasterDef[] = [
       pick("class", "Class", ["VIP", "A", "B", "C"]),
       date("start", "Start", true),
       date("end", "End", true),
+      text("copay", "Copay Rules", false, "10% on outpatient consults"),
       badge("status", "Status", ["Active", "Pending", "Expired"]),
+      ...more(
+        text("coverage", "Coverage Summary", false, "e.g. Full outpatient and rehab"),
+        text("premium", "Premium Details", false, "e.g. Monthly premium 500 SAR"),
+        text("deductible", "Deductible Rules / Details", false, "e.g. 100 SAR max deductible"),
+        text("cancellation", "Cancellation Terms", false, "e.g. 30 days notice"),
+        pick("network", "Linked Networks", NETWORKS),
+      ),
     ],
     seed: [
-      { policyNo: "POL-24-81001", insurer: "Bupa Arabia", holder: "Gulf Logistics Co (sample)", class: "A", start: "2026-01-01", end: "2026-12-31", status: "Active" },
-      { policyNo: "POL-24-81002", insurer: "Tawuniya", holder: "Najd Construction (sample)", class: "B", start: "2026-03-01", end: "2027-02-28", status: "Active" },
-      { policyNo: "POL-24-81003", insurer: "MedGulf", holder: "Red Sea Retail (sample)", class: "C", start: "2025-07-01", end: "2026-06-30", status: "Expired" },
-      { policyNo: "POL-24-81004", insurer: "Daman", holder: "Government employees (sample)", class: "A", start: "2026-01-01", end: "2026-12-31", status: "Active" },
-      { policyNo: "POL-24-81005", insurer: "NextCare", holder: "Eastern Foods (sample)", class: "VIP", start: "2026-12-01", end: "2027-11-30", status: "Pending" },
-      { policyNo: "POL-24-81006", insurer: "Malath Insurance", holder: "Individual plan (sample)", class: "B", start: "2026-05-15", end: "2027-05-14", status: "Active" },
+      { policyNo: "POL-24-81001", insurer: "Bupa Arabia", holder: "Gulf Logistics Co (sample)", class: "A", start: "2026-01-01", end: "2026-12-31", copay: "10% on outpatient, up to SAR 100", status: "Active", coverage: "Outpatient, inpatient and maternity", premium: "Annual premium SAR 6,200 per member", deductible: "SAR 100 per outpatient visit", cancellation: "30 days notice", network: "Premier Network (sample)" },
+      { policyNo: "POL-24-81002", insurer: "Tawuniya", holder: "Najd Construction (sample)", class: "B", start: "2026-03-01", end: "2027-02-28", copay: "20% on outpatient, up to SAR 150", status: "Active", coverage: "Outpatient and inpatient", premium: "Annual premium SAR 4,800 per member", deductible: "SAR 150 per outpatient visit", cancellation: "60 days notice", network: "Gold Network (sample)" },
+      { policyNo: "POL-24-81003", insurer: "MedGulf", holder: "Red Sea Retail (sample)", class: "C", start: "2025-07-01", end: "2026-06-30", copay: "20% on all services", status: "Expired" },
+      { policyNo: "POL-24-81004", insurer: "Daman", holder: "Government employees (sample)", class: "A", start: "2026-01-01", end: "2026-12-31", copay: "No copay", status: "Active", coverage: "Full outpatient, inpatient and emergency", premium: "Paid by the employer", deductible: "None", cancellation: "End of the policy year", network: "Government Network (sample)" },
+      { policyNo: "POL-24-81005", insurer: "NextCare", holder: "Eastern Foods (sample)", class: "VIP", start: "2026-12-01", end: "2027-11-30", copay: "No copay", status: "Pending" },
+      { policyNo: "POL-24-81006", insurer: "Malath Insurance", holder: "Individual plan (sample)", class: "B", start: "2026-05-15", end: "2027-05-14", copay: "20% on outpatient, up to SAR 200", status: "Active" },
     ],
   },
   {
@@ -85,17 +115,24 @@ export const INSURANCE: MasterDef[] = [
     columns: [
       mono("code", "Class", true),
       text("name", "Class Name", true),
+      pick("planType", "Class Type", ["Corporate", "Individual", "Family", "Government"], true),
       text("room", "Room Entitlement"),
       num("copay", "Co-pay %"),
       num("deductible", "Deductible (SAR)"),
       num("annualLimit", "Annual Limit (SAR)"),
       bool("active", "Active"),
+      ...more(
+        text("package", "Package", false, "e.g. VIP, Basic"),
+        num("coInsurance", "Co-Insurance %"),
+        date("startDate", "Start Date"),
+        date("endDate", "End Date"),
+      ),
     ],
     seed: [
-      { code: "VIP", name: "VIP", room: "Private suite", copay: 0, deductible: 0, annualLimit: 1000000, active: true },
-      { code: "A", name: "Class A", room: "Private room", copay: 10, deductible: 0, annualLimit: 500000, active: true },
-      { code: "B", name: "Class B", room: "Shared room (2 beds)", copay: 20, deductible: 50, annualLimit: 250000, active: true },
-      { code: "C", name: "Class C", room: "Shared room (3 or more beds)", copay: 20, deductible: 100, annualLimit: 150000, active: true },
+      { code: "VIP", name: "VIP", planType: "Corporate", room: "Private suite", copay: 0, deductible: 0, annualLimit: 1000000, active: true, package: "VIP", coInsurance: 0, startDate: "2026-01-01", endDate: "2026-12-31" },
+      { code: "A", name: "Class A", planType: "Corporate", room: "Private room", copay: 10, deductible: 0, annualLimit: 500000, active: true, package: "Gold", coInsurance: 0, startDate: "2026-01-01", endDate: "2026-12-31" },
+      { code: "B", name: "Class B", planType: "Family", room: "Shared room (2 beds)", copay: 20, deductible: 50, annualLimit: 250000, active: true, package: "Silver", coInsurance: 10, startDate: "2026-01-01", endDate: "2026-12-31" },
+      { code: "C", name: "Class C", planType: "Individual", room: "Shared room (3 or more beds)", copay: 20, deductible: 100, annualLimit: 150000, active: true, package: "Basic", coInsurance: 20, startDate: "2026-01-01", endDate: "2026-12-31" },
     ],
   },
   {
@@ -109,15 +146,21 @@ export const INSURANCE: MasterDef[] = [
       pick("insurer", "Insurer", INSURERS, true),
       pick("tier", "Tier", ["Premium", "Standard", "Basic"]),
       pick("region", "Region", ["Riyadh", "Jeddah", "Dammam", "All regions"]),
+      text("service", "Service", false, "Outpatient, Inpatient"),
+      text("note", "Note"),
       badge("status", "Status", ["Active", "Draft", "Expired"]),
+      ...more(
+        text("networkType", "Network Type", false, "e.g. A4"),
+        mono("insurerAbbreviation", "Insurer Abbreviation", false, "BUPA"),
+      ),
     ],
     seed: [
-      { code: "NET-BUPA-1", name: "Premier Network (sample)", insurer: "Bupa Arabia", tier: "Premium", region: "All regions", status: "Active" },
-      { code: "NET-BUPA-2", name: "Standard Network (sample)", insurer: "Bupa Arabia", tier: "Standard", region: "Riyadh", status: "Active" },
-      { code: "NET-TAW-1", name: "Gold Network (sample)", insurer: "Tawuniya", tier: "Premium", region: "All regions", status: "Active" },
-      { code: "NET-MEDG-1", name: "Basic Network (sample)", insurer: "MedGulf", tier: "Basic", region: "Jeddah", status: "Active" },
-      { code: "NET-DAM-1", name: "Government Network (sample)", insurer: "Daman", tier: "Standard", region: "All regions", status: "Active" },
-      { code: "NET-NXC-1", name: "Corporate Network (sample)", insurer: "NextCare", tier: "Standard", region: "Dammam", status: "Draft" },
+      { code: "NET-BUPA-1", name: "Premier Network (sample)", insurer: "Bupa Arabia", tier: "Premium", region: "All regions", service: "Outpatient, Inpatient, Dental", note: "Direct billing for all classes", status: "Active", networkType: "A1", insurerAbbreviation: "BUPA" },
+      { code: "NET-BUPA-2", name: "Standard Network (sample)", insurer: "Bupa Arabia", tier: "Standard", region: "Riyadh", service: "Outpatient, Inpatient", note: "", status: "Active", networkType: "B2", insurerAbbreviation: "BUPA" },
+      { code: "NET-TAW-1", name: "Gold Network (sample)", insurer: "Tawuniya", tier: "Premium", region: "All regions", service: "Outpatient, Inpatient, Maternity", note: "", status: "Active", networkType: "A3", insurerAbbreviation: "TAW" },
+      { code: "NET-MEDG-1", name: "Basic Network (sample)", insurer: "MedGulf", tier: "Basic", region: "Jeddah", service: "Outpatient", note: "Referral needed for inpatient care", status: "Active", networkType: "C1", insurerAbbreviation: "MEDG" },
+      { code: "NET-DAM-1", name: "Government Network (sample)", insurer: "Daman", tier: "Standard", region: "All regions", service: "Outpatient, Inpatient, Emergency", note: "", status: "Active" },
+      { code: "NET-NXC-1", name: "Corporate Network (sample)", insurer: "NextCare", tier: "Standard", region: "Dammam", service: "Outpatient, Inpatient", note: "Contract under review", status: "Draft" },
     ],
   },
   {
@@ -134,13 +177,20 @@ export const INSURANCE: MasterDef[] = [
       pick("claimRoute", "Claim Route", ["NPHIES", "TPA portal", "Insurer portal"]),
       date("validFrom", "Valid From"),
       badge("status", "Status", ["Active", "Draft", "Expired"]),
+      ...more(
+        pick("adminRoute", "Admin Route", ["Direct", "TPA"]),
+        pick("tpa", "Associated TPA", TPAS),
+        mono("policy", "Policy", false, "POL-24-81001"),
+        pick("insuranceClass", "Class", ["VIP", "A", "B", "C"]),
+        pick("network", "Network", NETWORKS),
+      ),
     ],
     seed: [
-      { code: "IM-001", insurer: "Bupa Arabia", priceList: "Insured Standard", preauth: true, copay: 20, claimRoute: "NPHIES", validFrom: "2026-01-01", status: "Active" },
-      { code: "IM-002", insurer: "Tawuniya", priceList: "Insured Standard", preauth: true, copay: 20, claimRoute: "NPHIES", validFrom: "2026-01-01", status: "Active" },
-      { code: "IM-003", insurer: "MedGulf", priceList: "Insured Standard", preauth: true, copay: 20, claimRoute: "TPA portal", validFrom: "2026-01-01", status: "Active" },
-      { code: "IM-004", insurer: "Daman", priceList: "Insured Standard", preauth: false, copay: 10, claimRoute: "NPHIES", validFrom: "2026-01-01", status: "Active" },
-      { code: "IM-005", insurer: "NextCare", priceList: "Insured VIP", preauth: true, copay: 0, claimRoute: "TPA portal", validFrom: "2026-06-01", status: "Draft" },
+      { code: "IM-001", insurer: "Bupa Arabia", priceList: "Insured Standard", preauth: true, copay: 20, claimRoute: "NPHIES", validFrom: "2026-01-01", status: "Active", adminRoute: "Direct", tpa: "None", policy: "POL-24-81001", insuranceClass: "A", network: "Premier Network (sample)" },
+      { code: "IM-002", insurer: "Tawuniya", priceList: "Insured Standard", preauth: true, copay: 20, claimRoute: "NPHIES", validFrom: "2026-01-01", status: "Active", adminRoute: "Direct", tpa: "None", policy: "POL-24-81002", insuranceClass: "B", network: "Gold Network (sample)" },
+      { code: "IM-003", insurer: "MedGulf", priceList: "Insured Standard", preauth: true, copay: 20, claimRoute: "TPA portal", validFrom: "2026-01-01", status: "Active", adminRoute: "TPA", tpa: "Mednet (sample)", policy: "POL-24-81003", insuranceClass: "C", network: "Basic Network (sample)" },
+      { code: "IM-004", insurer: "Daman", priceList: "Insured Standard", preauth: false, copay: 10, claimRoute: "NPHIES", validFrom: "2026-01-01", status: "Active", adminRoute: "Direct", tpa: "None", policy: "POL-24-81004", insuranceClass: "A", network: "Government Network (sample)" },
+      { code: "IM-005", insurer: "NextCare", priceList: "Insured VIP", preauth: true, copay: 0, claimRoute: "TPA portal", validFrom: "2026-06-01", status: "Draft", adminRoute: "TPA", tpa: "NextCare", policy: "POL-24-81005", insuranceClass: "VIP", network: "Corporate Network (sample)" },
       { code: "IM-006", insurer: "Self-pay", priceList: "Cash", preauth: false, copay: 0, claimRoute: "Insurer portal", validFrom: "2026-01-01", status: "Active" },
     ],
   },

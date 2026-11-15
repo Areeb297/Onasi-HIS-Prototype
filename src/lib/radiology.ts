@@ -17,9 +17,11 @@ import { machinesFor, procByCode, reportTemplatesFor } from "./fhir/rad-catalog"
 import { amendmentChecks, validateRadOrderBundle, validateRadReportBundle } from "./fhir/rad-validate";
 import { createStore } from "./fhir/store-util";
 import {
-  lastAccepted, nextVersion, type DocStatus, type PregnancyCheck, type Priority, type RadOrder, type RadReport, type RadStudy, type SendRecord,
+  lastAccepted, nextVersion, type DocStatus, type OrderCoverage, type OrderDiagnosis, type PregnancyCheck, type Priority, type RadOrder, type RadReport,
+  type RadStudy, type SendRecord,
 } from "./fhir/types";
 import type { Encounter, Patient } from "./model";
+import { coverageLabel } from "./order-fields";
 import { doctorIdForUser, personFromDoctor, personFromUser } from "./fhir/people";
 import { can, currentUser, type DemoUser } from "./session";
 import { getState, patientName } from "./store";
@@ -132,7 +134,56 @@ function allowed(perm: "order.rad" | "rad.report", target: string, patient?: str
 
 /* ---------- order lifecycle (chart side) ---------- */
 
-export function placeRadOrder(enc: Encounter, input: { procCode: string; priority: Priority; indication: string; clinicalInfo: string }): RadOrder | null {
+/** What the chart sends to place or amend one exam. Diagnosis, coverage and group are optional so older callers still work. */
+export interface RadOrderFields {
+  procCode: string;
+  priority: Priority;
+  indication: string;
+  clinicalInfo: string;
+  /** Visit diagnosis the order is for. null = none picked. */
+  diagnosis?: OrderDiagnosis | null;
+  coverage?: OrderCoverage;
+  /** Order number shared with the other exams ordered at the same time. */
+  groupId?: string;
+}
+
+/**
+ * Place one order that holds several exams. Every exam gets its own placer number and worklist line and goes to NPHIES as
+ * its own order document (one imaging procedure per bundle). They share the order number, diagnosis, coverage and reason.
+ */
+export function placeRadOrderGroup(
+  enc: Encounter,
+  input: Omit<RadOrderFields, "procCode" | "groupId"> & { procCodes: string[] },
+): { groupId: string; orders: RadOrder[] } {
+  const codes = [...new Set(input.procCodes)].filter((c) => procByCode(c));
+  if (!codes.length) return { groupId: "", orders: [] };
+  const groupId = `RQ-${200000 + store.get().counter + 1}`;
+  const orders: RadOrder[] = [];
+  for (const procCode of codes) {
+    const o = placeRadOrder(enc, { ...input, procCode, groupId });
+    if (!o) break;
+    orders.push(o);
+  }
+  return { groupId: orders.length ? groupId : "", orders };
+}
+
+/** Orders of a visit put together by order number, in the order given. An order saved without a number stands alone. */
+export function groupRadOrders(orders: RadOrder[]): { groupId: string; orders: RadOrder[] }[] {
+  const out: { groupId: string; orders: RadOrder[] }[] = [];
+  const at = new Map<string, number>();
+  for (const o of orders) {
+    const key = o.groupId ?? o.id;
+    const i = at.get(key);
+    if (i === undefined) {
+      at.set(key, out.length);
+      out.push({ groupId: key, orders: [o] });
+    } else out[i].orders.push(o);
+  }
+  for (const g of out) g.orders.sort((a, b) => a.id.localeCompare(b.id));
+  return out;
+}
+
+export function placeRadOrder(enc: Encounter, input: RadOrderFields): RadOrder | null {
   const patient = getState().patients.find((p) => p.id === enc.patientId);
   if (!allowed("order.rad", "Radiology order", patient && patientName(patient))) return null;
   if (!procByCode(input.procCode)) return null;
@@ -156,13 +207,19 @@ export function placeRadOrder(enc: Encounter, input: { procCode: string; priorit
     orderDirty: false,
     reportDirty: false,
     sends: [],
+    ...(input.groupId ? { groupId: input.groupId } : {}),
+    ...(input.diagnosis?.code ? { diagnosis: { code: input.diagnosis.code, text: input.diagnosis.text } } : {}),
+    ...(input.coverage ? { coverage: input.coverage } : {}),
   };
   store.set({ ...s, counter, orders: [order, ...s.orders] });
-  audit("create", `Radiology order ${order.id}`, { patient: patientName(patient), detail: `Visit ${order.visitNumber}: ${procByCode(order.procCode)?.short}` });
+  audit("create", `Radiology order ${order.id}`, {
+    patient: patientName(patient),
+    detail: `Visit ${order.visitNumber}: ${procByCode(order.procCode)?.short}${order.groupId ? `. Order ${order.groupId}` : ""}${order.diagnosis ? `. Diagnosis ${order.diagnosis.code}` : ""}${order.coverage ? `. ${coverageLabel(order.coverage)}` : ""}`,
+  });
   return order;
 }
 
-export function amendRadOrder(id: string, input: { procCode: string; priority: Priority; indication: string; clinicalInfo: string }): boolean {
+export function amendRadOrder(id: string, input: RadOrderFields): boolean {
   const o = getRadOrder(id);
   if (!o || !allowed("order.rad", `Radiology order ${id}`)) return false;
   if (o.status === "cancelled" || o.status === "resulted" || o.status === "amended") return false;
@@ -176,6 +233,12 @@ export function amendRadOrder(id: string, input: { procCode: string; priority: P
     x.priority = input.priority;
     x.indication = input.indication.trim();
     x.clinicalInfo = input.clinicalInfo.trim();
+    // Left out of the input = leave as it is. null = the diagnosis was cleared.
+    if (input.diagnosis !== undefined) {
+      if (input.diagnosis?.code) x.diagnosis = { code: input.diagnosis.code, text: input.diagnosis.text };
+      else delete x.diagnosis;
+    }
+    if (input.coverage) x.coverage = input.coverage;
     if (wasSent) x.orderDirty = true;
   });
   audit("update", `Radiology order ${id}`, { patient: nameOf(o), detail: "Order changed" });

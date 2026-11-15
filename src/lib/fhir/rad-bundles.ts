@@ -11,6 +11,7 @@
 
 import type { Encounter, Patient } from "../model";
 import { OID } from "../reference-data";
+import { orderDiagnosis } from "../order-fields";
 import {
   EXT, FILLER_OID, PROFILE, SYS, addDays, buildParticipants, coding, fhirDateTime, identifier, makeBundle,
   orgIdentifier, oidSystem, participantResources, refTo, uuid, versionExtension, type Json, type Participants, type Person,
@@ -185,7 +186,9 @@ export function buildRadOrderBundle(ctx: RadBuildCtx): Json {
     ...value,
   });
   const extra: Json[] = [];
-  const dx = enc.dx[0];
+  // The diagnosis picked on the order (the reason for it). Older orders fall back to the visit's first diagnosis.
+  // The ServiceRequest page lists no reasonCode, so the diagnosis travels as Preliminary Diagnosis order information.
+  const dx = orderDiagnosis(order, enc);
   if (dx) extra.push(aoi("148006", "Preliminary diagnosis", { valueCodeableConcept: { coding: [coding(DIAGNOSIS_SYSTEM, dx.code, dx.text)] } }));
   // Units: code "a" (year) from KSA Time Units (page id 23169515), "kg" from KSA Weight Units (page id 23234332).
   extra.push(aoi("424144002", "Current Chronological Age", { valueQuantity: { value: ageYears(patient.dob, now), unit: "year", system: UNIT_SYSTEM, code: "a" } }));

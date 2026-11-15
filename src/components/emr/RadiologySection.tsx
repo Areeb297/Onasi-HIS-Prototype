@@ -2,6 +2,7 @@ import * as React from "react";
 import { ChevronDown, ShieldAlert } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { AssumptionNote, DocViewer, Gate, NphiesPill, PRIORITY_UI, RAD_STATUS_UI, StatusBadge } from "@/components/emr/fhir-ui";
+import { OrderMetaLine } from "@/components/emr/OrderFields";
 import { RadOrderPad } from "@/components/emr/RadOrderPad";
 import { RadReportView } from "@/components/emr/RadReportEditor";
 import { Badge, Button, Card, CardHeader, Empty, cn } from "@/components/ui/primitives";
@@ -12,9 +13,11 @@ import { BODY_REGIONS, MODALITIES, procByCode } from "@/lib/fhir/rad-catalog";
 import { lastAccepted, lastAttempt, type RadOrder } from "@/lib/fhir/types";
 import type { Encounter } from "@/lib/model";
 import {
-  amendRadOrder, cancelRadOrder, openRadDuplicates, placeRadOrder, radOrderNphiesState, radReportNphiesState, radSendsOf, sendRadOrder, useRad,
+  amendRadOrder, cancelRadOrder, groupRadOrders, openRadDuplicates, placeRadOrderGroup, radOrderNphiesState, radReportNphiesState, radSendsOf, sendRadOrder, useRad,
 } from "@/lib/radiology";
+import { visitInsured } from "@/lib/order-fields";
 import { can, useSession } from "@/lib/session";
+import { useHis } from "@/lib/store";
 
 const when = (iso: string) =>
   `${new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
@@ -43,6 +46,8 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
   const visitOpen = enc.status !== "cancelled";
   const canOrder = can("order.rad") && visitOpen;
   const reason = !visitOpen ? "This visit is cancelled." : "Your role cannot order radiology exams.";
+  const his = useHis();
+  const insured = visitInsured(his.patients.find((p) => p.id === enc.patientId));
   const amendingOrder = orders.find((o) => o.id === amending);
   const cancellingOrder = orders.find((o) => o.id === cancelling);
   const criticals = orders.filter((o) => o.report?.critical && (o.status === "resulted" || o.status === "amended"));
@@ -63,12 +68,14 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
       <Card>
         <CardHeader
           title="Order Imaging"
-          subtitle={`Visit ${enc.visitNumber}. Tap the exam, then place the order.`}
+          subtitle={`Visit ${enc.visitNumber}. Tap one or more exams, then place the order.`}
           right={dev ? <Badge tone="update">Visit number goes in Encounter.identifier</Badge> : undefined}
         />
         <div className="px-4 py-4">
           <RadOrderPad
             key={padKey}
+            diagnoses={enc.dx}
+            insured={insured}
             duplicatesOf={(codes) => openRadDuplicates(rad.orders, enc.visitNumber, codes).map((c) => procByCode(c)?.short ?? c)}
             canOrder={canOrder}
             reason={reason}
@@ -76,15 +83,9 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
             submitLabel="Place Order"
             showSend
             onSubmit={(v, andSend) => {
-              let placed = 0;
-              for (const code of v.procCodes) {
-                const o = placeRadOrder(enc, { procCode: code, priority: v.priority, indication: v.indication, clinicalInfo: v.clinicalInfo });
-                if (o) {
-                  placed++;
-                  if (andSend) sendRadOrder(o.id);
-                }
-              }
-              if (placed) setPadKey((k) => k + 1);
+              const { orders: placed } = placeRadOrderGroup(enc, v);
+              if (andSend) for (const o of placed) sendRadOrder(o.id);
+              if (placed.length) setPadKey((k) => k + 1);
             }}
           />
         </div>
@@ -94,7 +95,27 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
         <CardHeader title="Radiology Orders" subtitle={`${orders.length} for this visit`} />
         {orders.length === 0 && <Empty>No radiology orders for this visit yet.</Empty>}
         <div className="divide-y divide-border">
-          {orders.map((o) => {
+          {groupRadOrders(orders).map((g) => {
+            const unsent = g.orders.filter((o) => sendLabel(o) === "Send Order To NPHIES");
+            return (
+              <div key={g.groupId}>
+                {g.orders[0].groupId && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/30 px-4 py-2">
+                    <div className="text-sm">
+                      <span className="font-semibold">Order {g.groupId}</span>
+                      <span className="text-muted-foreground"> · {g.orders.length} {g.orders.length === 1 ? "Exam" : "Exams"}</span>
+                    </div>
+                    {unsent.length > 1 && (
+                      <Gate allowed={can("order.rad")} reason="Your role cannot send radiology orders.">
+                        <Button size="sm" disabled={!can("order.rad")} onClick={() => unsent.forEach((o) => sendRadOrder(o.id))}>
+                          Send All {unsent.length} To NPHIES
+                        </Button>
+                      </Gate>
+                    )}
+                  </div>
+                )}
+                <div className="divide-y divide-border">
+          {g.orders.map((o) => {
             const proc = procByCode(o.procCode);
             const nph = radOrderNphiesState(o);
             const rep = radReportNphiesState(o);
@@ -115,12 +136,13 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
                       {o.report?.critical && published && <Badge tone="danger">Critical Result</Badge>}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {proc && `${MODALITIES[proc.modality].display} · ${BODY_REGIONS[proc.region].display}`}
+                      {proc && `Modality: ${MODALITIES[proc.modality].display} · Body Site: ${BODY_REGIONS[proc.region].display}`}
                       <br />
                       Ordered {when(o.orderedAt)} by {personFromDoctor(o.orderedById).name}
                       {o.indication && ` · Reason: ${o.indication}`}
                       {dev && <span className="ml-2 font-mono">Visit {o.visitNumber}</span>}
                     </div>
+                    <OrderMetaLine diagnosis={o.diagnosis} coverage={o.coverage} />
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {label && (
@@ -178,6 +200,10 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
               </div>
             );
           })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
       <AssumptionNote items={RAD_ASSUMPTIONS} />
@@ -186,16 +212,21 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
         {amendingOrder && (
           <RadOrderPad
             key={amendingOrder.id}
+            diagnoses={enc.dx}
+            insured={insured}
             duplicatesOf={(codes) => openRadDuplicates(rad.orders, enc.visitNumber, codes, amendingOrder.id).map((c) => procByCode(c)?.short ?? c)}
             single
             procLocked={amendingOrder.status !== "received"}
-            initial={{ procCode: amendingOrder.procCode, priority: amendingOrder.priority, indication: amendingOrder.indication, clinicalInfo: amendingOrder.clinicalInfo }}
+            initial={{
+              procCode: amendingOrder.procCode, priority: amendingOrder.priority, indication: amendingOrder.indication, clinicalInfo: amendingOrder.clinicalInfo,
+              diagnosis: amendingOrder.diagnosis ?? null, coverage: amendingOrder.coverage,
+            }}
             canOrder={canOrder}
             reason={reason}
             submitLabel="Save Changes"
             showSend={!!lastAccepted(amendingOrder.sends, "rad-order")}
             onSubmit={(v, andSend) => {
-              if (amendRadOrder(amendingOrder.id, { procCode: v.procCodes[0], priority: v.priority, indication: v.indication, clinicalInfo: v.clinicalInfo })) {
+              if (amendRadOrder(amendingOrder.id, { ...v, procCode: v.procCodes[0] })) {
                 if (andSend) sendRadOrder(amendingOrder.id);
                 setAmending(null);
               }

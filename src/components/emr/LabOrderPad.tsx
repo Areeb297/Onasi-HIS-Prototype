@@ -1,17 +1,26 @@
 import * as React from "react";
 import { Search, X } from "lucide-react";
 import { Gate } from "@/components/emr/fhir-ui";
+import { OrderCoverageField, OrderDiagnosisField } from "@/components/emr/OrderFields";
 import { Button, Field, Input, Select, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { COMMON_PANELS, COMMON_SINGLES, LAB_CATALOG, QUICK_SETS, testByCode, type LabTest } from "@/lib/fhir/lab-catalog";
-import { PRIORITIES, type Priority } from "@/lib/fhir/types";
+import { PRIORITIES, type OrderCoverage, type OrderDiagnosis, type Priority } from "@/lib/fhir/types";
+import type { Dx } from "@/lib/model";
+import { defaultOrderDiagnosis } from "@/lib/order-fields";
 
 export interface LabOrderInput {
   codes: string[];
   priority: Priority;
   fasting: boolean | null;
   note: string;
+  /** Visit diagnosis the order is for. null = none linked. */
+  diagnosis: OrderDiagnosis | null;
+  coverage: OrderCoverage;
 }
+
+/** What an existing order brings into the pad. Orders saved before diagnosis and coverage existed have neither. */
+export type LabOrderInitial = Omit<LabOrderInput, "diagnosis" | "coverage"> & { diagnosis?: OrderDiagnosis | null; coverage?: OrderCoverage };
 
 function Chip({ test, on, toggle }: { test: LabTest; on: boolean; toggle: () => void }) {
   const dev = useDevMode();
@@ -47,10 +56,16 @@ export function LabOrderPad({
   onSubmit,
   onCancel,
   duplicatesOf,
+  diagnoses = [],
+  insured = false,
 }: {
   /** Names of picked tests that are already open for the visit. The pad warns before it adds them again. */
   duplicatesOf?: (codes: string[]) => string[];
-  initial?: LabOrderInput;
+  /** The visit's diagnoses, for the Diagnosis picker. */
+  diagnoses?: Dx[];
+  /** The visit is billed to an insurance plan. Plan Coverage is offered only then. */
+  insured?: boolean;
+  initial?: LabOrderInitial;
   canOrder: boolean;
   reason: string;
   /** The specimen is already collected, so tests cannot change. */
@@ -64,6 +79,8 @@ export function LabOrderPad({
   const [priority, setPriority] = React.useState<Priority>(initial?.priority ?? "routine");
   const [fasting, setFasting] = React.useState<"" | "yes" | "no">(initial?.fasting === true ? "yes" : initial?.fasting === false ? "no" : "");
   const [note, setNote] = React.useState(initial?.note ?? "");
+  const [diagnosis, setDiagnosis] = React.useState<OrderDiagnosis | null>(initial ? initial.diagnosis ?? null : defaultOrderDiagnosis(diagnoses));
+  const [coverage, setCoverage] = React.useState<OrderCoverage>(initial?.coverage ?? (insured ? "plan" : "self-pay"));
   const [q, setQ] = React.useState("");
   const [pending, setPending] = React.useState<{ andSend: boolean } | null>(null);
 
@@ -73,7 +90,7 @@ export function LabOrderPad({
     ? LAB_CATALOG.filter((t) => `${t.short} ${t.display} ${t.code}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 12)
     : [];
 
-  const value: LabOrderInput = { codes, priority, fasting: fasting === "yes" ? true : fasting === "no" ? false : null, note };
+  const value: LabOrderInput = { codes, priority, fasting: fasting === "yes" ? true : fasting === "no" ? false : null, note, diagnosis, coverage };
   const ready = codes.length > 0 && canOrder;
   const dupes = duplicatesOf && !testsLocked ? duplicatesOf(codes) : [];
   /** A duplicate asks first. Anything else goes straight through. */
@@ -162,6 +179,11 @@ export function LabOrderPad({
         <Field label="Note For The Lab">
           <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
         </Field>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <OrderDiagnosisField diagnoses={diagnoses} value={diagnosis} onChange={setDiagnosis} />
+        <OrderCoverageField value={coverage} onChange={setCoverage} insured={insured || coverage === "plan"} />
       </div>
 
       {pending && dupes.length > 0 && (
