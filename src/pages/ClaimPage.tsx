@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ArrowLeft, ClipboardCheck, Plus, Save, Send, ShieldCheck, Trash2, UserCheck } from "lucide-react";
 import {
-  IconAlertTriangle, IconCircleCheck, IconClipboardList, IconFileDescription, IconHandStop, IconHeartRateMonitor, IconOctagon, IconStack2, IconStethoscope, IconUsers, IconWallet,
+  IconAlertTriangle, IconCalendar, IconCircleCheck, IconClipboardList, IconFileDescription, IconHandStop, IconHeartRateMonitor, IconOctagon, IconStack2, IconStethoscope, IconUsers, IconWallet,
 } from "@tabler/icons-react";
 import { ReviewDialog, useClaimSend } from "@/components/claims/ClaimParts";
 import { BrandChip, StatusChip, fmtDate, fmtDateTime } from "@/components/claims/RcmUi";
@@ -67,13 +67,15 @@ function goToField(id: string) {
   el.setAttribute("data-flash", "true");
   window.setTimeout(() => el.removeAttribute("data-flash"), 1800);
 }
+/** Form controls on glass: frosted white, a soft inner shadow, a cyan focus ring. */
+const glassField = "rounded-xl border-[#035d53]/20 bg-white/85 shadow-[inset_0_1px_2px_rgba(3,44,38,0.06)] focus-visible:border-[#03c1ac] focus-visible:ring-[#39edd5]/60 disabled:bg-[#edf4f1]/80 dark:bg-white/[0.05]";
 const flash = "transition-shadow data-[flash=true]:ring-2 data-[flash=true]:ring-[#03c1ac] data-[flash=true]:ring-offset-2 data-[flash=true]:ring-offset-background";
 
 function Fact({ label, children, id }: { label: string; children: React.ReactNode; id?: string }) {
   return (
-    <div id={id} tabIndex={id ? -1 : undefined} className={cn("min-w-0 rounded-lg", id && flash)}>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 text-sm font-medium">{children}</dd>
+    <div id={id} tabIndex={id ? -1 : undefined} className={cn("glass-row min-w-0 rounded-xl px-3 py-2.5", id && flash)}>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-sm font-semibold">{children}</dd>
     </div>
   );
 }
@@ -88,17 +90,28 @@ const SECTION_ICON: Record<string, typeof IconUsers> = {
 const HIT_EDGE: Record<Severity, string> = { hard: "border-l-destructive", soft: "border-l-warn", warning: "border-l-move" };
 const HIT_TONE: Record<Severity, "danger" | "warn" | "info"> = { hard: "danger", soft: "warn", warning: "info" };
 
+/** A frosted group of related fields inside a section, with a small coloured heading. */
+function FieldGroup({ title, icon, className, children }: { title: string; icon: React.ReactNode; className?: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="min-w-0 rounded-2xl border border-[color:var(--glass-border)] bg-white/60 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-white/[0.03] dark:shadow-none">
+      <legend className="sr-only">{title}</legend>
+      <p aria-hidden="true" className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-[#035d53] dark:text-[#39edd5]">{icon} {title}</p>
+      <div className={cn("grid gap-3", className)}>{children}</div>
+    </fieldset>
+  );
+}
+
 function Section({ id, title, subtitle, right, children }: { id: string; title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
   const hit = React.useContext(HitsContext).get(id);
   const Icon = SECTION_ICON[id] ?? IconFileDescription;
   return (
     <section id={id} aria-labelledby={`${id}-title`} tabIndex={-1} className={cn("scroll-mt-48 rounded-2xl focus-visible:outline-none", flash)}>
       <Card className={cn(hit && "border-l-[3px]", hit && HIT_EDGE[hit])}>
-        <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <header className="flex items-start justify-between gap-3 rounded-t-2xl border-b border-border bg-[linear-gradient(90deg,rgba(57,237,213,0.16),rgba(57,237,213,0.04)_45%,transparent_80%)] px-4 py-3 dark:bg-[linear-gradient(90deg,rgba(57,237,213,0.10),transparent_70%)]">
           <div className="flex min-w-0 items-start gap-3">
             <span aria-hidden="true" className="glass-icon mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg"><Icon className="size-[1.05rem]" stroke={1.75} /></span>
             <div className="min-w-0">
-              <h2 id={`${id}-title`} className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-semibold">
+              <h2 id={`${id}-title`} className="flex flex-wrap items-center gap-2 text-base font-semibold text-[#032c26] dark:text-foreground">
                 {title}
                 {hit && <Badge tone={HIT_TONE[hit]}>{SEVERITY_LABEL[hit]}</Badge>}
               </h2>
@@ -369,28 +382,32 @@ function DetailsSection({ m, readOnly }: { m: ClaimModel; readOnly: boolean }) {
   const { eligibility: el, authorization: au, claim: cl } = m.fin;
   return (
     <Section id="claim-details" title="Claim Details" subtitle="Type and sub-type follow the visit class unless you change them.">
-      <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)]">
+        <FieldGroup title="Claim" icon={<IconFileDescription className="size-4" stroke={1.75} />} className="sm:grid-cols-3 lg:grid-cols-1">
         <Field label="Claim Type" required>
-          <Select value={m.type} disabled={readOnly} onChange={(e) => save({ type: e.target.value as ClaimType })}>
+          <Select className={glassField} value={m.type} disabled={readOnly} onChange={(e) => save({ type: e.target.value as ClaimType })}>
             {(Object.keys(CLAIM_TYPE_LABEL) as ClaimType[]).map((t) => <option key={t} value={t}>{CLAIM_TYPE_LABEL[t]}</option>)}
           </Select>
         </Field>
         <Field label="Sub-Type" required>
-          <Select value={m.subType} disabled={readOnly} onChange={(e) => save({ subType: e.target.value as ClaimSubType })}>
+          <Select className={glassField} value={m.subType} disabled={readOnly} onChange={(e) => save({ subType: e.target.value as ClaimSubType })}>
             {(Object.keys(SUBTYPE_LABEL) as ClaimSubType[]).map((t) => <option key={t} value={t}>{SUBTYPE_LABEL[t]}</option>)}
           </Select>
         </Field>
         <Field label="Priority" required>
-          <Select value={m.priority} disabled={readOnly} onChange={(e) => save({ priority: e.target.value as ClaimPriority })}>
+          <Select className={glassField} value={m.priority} disabled={readOnly} onChange={(e) => save({ priority: e.target.value as ClaimPriority })}>
             {(Object.keys(PRIORITY_LABEL) as ClaimPriority[]).map((t) => <option key={t} value={t}>{PRIORITY_LABEL[t]}</option>)}
           </Select>
         </Field>
-        <Field label="Claim Date" required><CommitInput type="date" label="Claim Date" value={m.claimDate} disabled={readOnly} onCommit={(v) => save({ claimDate: v })} /></Field>
-        <Field label="Accounting Date" required hint="The day the claim is booked in the accounts."><CommitInput type="date" label="Accounting Date" value={m.accountingDate} disabled={readOnly} onCommit={(v) => save({ accountingDate: v })} /></Field>
-        <Field label="Service Start" required><CommitInput type="date" label="Service Start" value={m.start} disabled={readOnly} onCommit={(v) => save({ start: v, end: m.end })} /></Field>
-        <Field label="Service End" required><CommitInput type="date" label="Service End" value={m.end} disabled={readOnly} onCommit={(v) => save({ start: m.start, end: v })} /></Field>
+        </FieldGroup>
+        <FieldGroup title="Dates" icon={<IconCalendar className="size-4" stroke={1.75} />} className="sm:grid-cols-2">
+        <Field label="Claim Date" required><CommitInput className={glassField} type="date" label="Claim Date" value={m.claimDate} disabled={readOnly} onCommit={(v) => save({ claimDate: v })} /></Field>
+        <Field label="Accounting Date" required hint="When the claim is booked in the accounts."><CommitInput className={glassField} type="date" label="Accounting Date" value={m.accountingDate} disabled={readOnly} onCommit={(v) => save({ accountingDate: v })} /></Field>
+        <Field label="Service Start" required><CommitInput className={glassField} type="date" label="Service Start" value={m.start} disabled={readOnly} onCommit={(v) => save({ start: v, end: m.end })} /></Field>
+        <Field label="Service End" required><CommitInput className={glassField} type="date" label="Service End" value={m.end} disabled={readOnly} onCommit={(v) => save({ start: m.start, end: v })} /></Field>
+        </FieldGroup>
       </div>
-      <dl className="grid gap-4 border-t border-border p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-2.5 border-t border-border p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Fact label="Payer"><BrandChip>{m.payer}</BrandChip></Fact>
         <Fact label="Eligibility">
           <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -422,7 +439,7 @@ function EncounterSection({ m }: { m: ClaimModel }) {
   const start = e.admitAt ?? e.ed?.arrivalAt;
   return (
     <Section id="claim-encounter" title="Encounter" subtitle="From the visit. Change it in registration or the chart, not here." right={<Button size="sm" variant="ghost" onClick={() => navigate("/chart", { visit: m.visit })}>Open Chart</Button>}>
-      <dl className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-2.5 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Fact label="Encounter Class">{CLASS_LABEL[e.cls]}</Fact>
         <Fact label="Encounter Status">{STATUS_LABEL[e.status] ?? e.status}</Fact>
         <Fact label="Start Date">{start ? fmtDateTime(start) : "Not Recorded"}</Fact>
@@ -459,12 +476,12 @@ function CareTeamSection({ m, readOnly }: { m: ClaimModel; readOnly: boolean }) 
             <tr key={c.doctorId}>
               <Td className="tabular-nums">{c.seq}</Td>
               <Td className="min-w-48">
-                <Select aria-label={`Doctor ${c.seq}`} value={c.doctorId} disabled={readOnly} onChange={(e) => save(team.map((t, j) => (j === i ? { ...t, doctorId: e.target.value } : t)))}>
+                <Select className={glassField} aria-label={`Doctor ${c.seq}`} value={c.doctorId} disabled={readOnly} onChange={(e) => save(team.map((t, j) => (j === i ? { ...t, doctorId: e.target.value } : t)))}>
                   {DOCTORS.filter((d) => d.id === c.doctorId || !team.some((t) => t.doctorId === d.id)).map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}
                 </Select>
               </Td>
               <Td className="min-w-36">
-                <Select aria-label={`Role of doctor ${c.seq}`} value={c.role} disabled={readOnly} onChange={(e) => save(team.map((t, j) => (j === i ? { ...t, role: e.target.value as CareRole } : t)))}>
+                <Select className={glassField} aria-label={`Role of doctor ${c.seq}`} value={c.role} disabled={readOnly} onChange={(e) => save(team.map((t, j) => (j === i ? { ...t, role: e.target.value as CareRole } : t)))}>
                   {(Object.keys(CARE_ROLE_LABEL) as CareRole[]).map((r) => <option key={r} value={r}>{CARE_ROLE_LABEL[r]}</option>)}
                 </Select>
               </Td>
@@ -523,11 +540,11 @@ function SupportSection({ m, readOnly }: { m: ClaimModel; readOnly: boolean }) {
       </Table>
       <div className="grid gap-3 p-4 sm:grid-cols-[220px_1fr_auto] sm:items-end">
         <Field label="Category">
-          <Select value={category} disabled={readOnly} onChange={(e) => setCategory(e.target.value)}>
+          <Select className={glassField} value={category} disabled={readOnly} onChange={(e) => setCategory(e.target.value)}>
             {SUPPORT_CATEGORIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
           </Select>
         </Field>
-        <Field label="Value"><Input value={value} disabled={readOnly} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} /></Field>
+        <Field label="Value"><Input className={glassField} value={value} disabled={readOnly} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} /></Field>
         <Button onClick={add} disabled={readOnly || !value.trim()} className="h-10"><Plus className="size-4" /> Add</Button>
       </div>
     </Section>
@@ -550,13 +567,13 @@ function DiagnosesSection({ m, readOnly }: { m: ClaimModel; readOnly: boolean })
               <Td className="font-mono text-xs">{d.code}</Td>
               <Td className="min-w-48">{d.text}</Td>
               <Td className="min-w-36">
-                <Select aria-label={`Type of ${d.code}`} value={d.type} disabled={readOnly} onChange={(e) => warn(saveDx(m.visit, d.code, { type: e.target.value as DxType }))}>
+                <Select className={glassField} aria-label={`Type of ${d.code}`} value={d.type} disabled={readOnly} onChange={(e) => warn(saveDx(m.visit, d.code, { type: e.target.value as DxType }))}>
                   {(Object.keys(DX_TYPE_LABEL) as DxType[]).map((t) => <option key={t} value={t}>{DX_TYPE_LABEL[t]}</option>)}
                 </Select>
               </Td>
               <Td className="min-w-32">
                 {inpatient ? (
-                  <Select aria-label={`${d.code} present on admission`} value={d.onAdmission} disabled={readOnly} onChange={(e) => warn(saveDx(m.visit, d.code, { onAdmission: e.target.value as OnAdmission }))}>
+                  <Select className={glassField} aria-label={`${d.code} present on admission`} value={d.onAdmission} disabled={readOnly} onChange={(e) => warn(saveDx(m.visit, d.code, { onAdmission: e.target.value as OnAdmission }))}>
                     {(Object.keys(ON_ADMISSION_LABEL) as OnAdmission[]).map((t) => <option key={t} value={t}>{ON_ADMISSION_LABEL[t]}</option>)}
                   </Select>
                 ) : <span className="text-sm text-muted-foreground">Not Applicable</span>}
@@ -575,7 +592,7 @@ function DrgSection({ m }: { m: ClaimModel }) {
   const d = m.drg!;
   return (
     <Section id="claim-drg" title="AR-DRG" subtitle="Inpatient grouping, estimated from the claim diagnoses.">
-      <dl className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-2.5 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Fact label="AR-DRG">{d.code ? <span className="font-mono">{d.code}</span> : "Not Estimated"}</Fact>
         <Fact label="Description">{d.text}</Fact>
         <Fact label="Major Diagnostic Category">{d.mdc || "Not Estimated"}</Fact>
@@ -599,7 +616,7 @@ function Row({ label, value, strong, minus }: { label: string; value: number; st
 
 function MoneyTile({ title, value, edge, valueClass, children }: { title: string; value: number; edge: string; valueClass?: string; children: React.ReactNode }) {
   return (
-    <div className={cn("rounded-xl border border-border border-l-[3px] bg-card px-3.5 py-3", edge)}>
+    <div className={cn("glass-row rounded-xl border-l-[3px] px-3.5 py-3", edge)}>
       <p className="text-xs font-medium text-muted-foreground">{title}</p>
       <p className={cn("mt-1 text-xl font-semibold tracking-tight", valueClass)}><Sar value={value} /></p>
       <dl className="mt-2 border-t border-border/70 pt-1">{children}</dl>
