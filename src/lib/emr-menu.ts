@@ -9,7 +9,7 @@ export type EmrGroup = "General" | Exclude<FormGroup, "General">;
 export type NativeId =
   | "overview" | "complaints" | "vitals" | "diagnosis" | "prescription" | "procedures" | "allergies"
   | "laboratory" | "radiology" | "notes" | "soap" | "documents" | "adt" | "surgery"
-  | "emar" | "follow-up" | "consults";
+  | "emar" | "follow-up" | "consults" | "sick-leave";
 
 export interface EmrItem {
   id: string;
@@ -47,6 +47,7 @@ export const EMR_MENU: EmrItem[] = [
   f("refer-patient", "Refer Patient", "General"),
   n("consults", "Consult Requests"),
   n("follow-up", "Follow-Up"),
+  n("sick-leave", "Sick Leave"),
   n("documents", "Clinical Documents"),
   n("adt", "ADT Messages"),
 

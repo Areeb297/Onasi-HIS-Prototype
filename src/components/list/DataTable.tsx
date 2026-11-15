@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Ellipsis, SearchX, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Download, Ellipsis, EyeOff, MoveHorizontal, SearchX, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button, Td, Th, cn } from "@/components/ui/primitives";
 import { PAGE_SIZES, pageWindow, rangeLabel } from "./list-logic";
@@ -57,7 +57,7 @@ const fromControl = (t: EventTarget | null) =>
   t instanceof Element && !!t.closest("button, a, input, select, textarea, label, [role=menuitem], [role=menu], [data-row-ignore]");
 
 export function DataTable<T>({
-  list, label, onRowClick, rowLabel, actions, inline = 2, selectable, bulk, loading, empty, card, expanded, rowClassName, maxHeight,
+  list, label, onRowClick, rowLabel, actions, inline = 1, selectable, bulk, loading, empty, card, expanded, rowClassName, maxHeight,
 }: {
   list: ListApi<T>;
   /** Names the table for screen readers, for example "OPD visits". */
@@ -93,10 +93,33 @@ export function DataTable<T>({
   const noResults = !noRowsAtAll && list.sorted.length === 0;
   const span = cols.length + (selectable ? 1 : 0) + (actions ? 1 : 0);
   const open = (r: T) => onRowClick?.(r);
+  const gridId = React.useId();
+
+  /** Arrow keys move between cells like a spreadsheet; Home and End go to the first and last cell of the row. */
+  const onGridKey = (e: React.KeyboardEvent<HTMLTableSectionElement>) => {
+    const cell = e.target instanceof HTMLElement && e.target.matches("td[data-cell]") ? e.target : null;
+    if (!cell) return;
+    const row = cell.parentElement as HTMLTableRowElement;
+    const ci = Number(cell.dataset.cell);
+    const rows = [...e.currentTarget.querySelectorAll<HTMLTableRowElement>("tr[data-row]")];
+    const ri = rows.indexOf(row);
+    const cellsOf = (tr: HTMLTableRowElement | undefined) => (tr ? [...tr.querySelectorAll<HTMLElement>("td[data-cell]")] : []);
+    let next: HTMLElement | undefined;
+    if (e.key === "ArrowDown") next = cellsOf(rows[ri + 1])[ci];
+    else if (e.key === "ArrowUp") next = cellsOf(rows[ri - 1])[ci];
+    else if (e.key === "ArrowRight") next = cellsOf(row)[ci + 1];
+    else if (e.key === "ArrowLeft") next = cellsOf(row)[ci - 1];
+    else if (e.key === "Home") next = cellsOf(row)[0];
+    else if (e.key === "End") next = cellsOf(row).at(-1);
+    else return;
+    e.preventDefault();
+    if (next) { cell.tabIndex = -1; next.tabIndex = 0; next.focus(); }
+  };
 
   return (
-    <div data-density={list.density} className="relative">
-      <section aria-label={label} className="glass-panel overflow-hidden rounded-2xl">
+    // Compact rows are about 34px (6px padding around 14px text), comfortable about 46px.
+    <div data-list-density={list.density} className="relative" style={{ ["--row-py" as string]: list.density === "compact" ? "0.375rem" : "0.75rem" }}>
+      <section aria-label={label} className={cn(GRID_VARS, "overflow-hidden rounded-xl border border-[color:var(--grid-line)] bg-[color:var(--grid-bg)] shadow-[0_1px_2px_rgba(16,24,22,0.04),0_8px_24px_-16px_rgba(16,24,22,0.18)]")}>
         {!loading && (noRowsAtAll || noResults) ? (
           noRowsAtAll ? <EmptyBlock spec={empty} /> : (
             <EmptyBlock spec={{
@@ -139,54 +162,66 @@ export function DataTable<T>({
               })}
             </ul>
 
-            {/* Tablet and desktop: the table. The header stays put while the rows scroll. */}
+            {/* Tablet and desktop: a spreadsheet-style grid. Sticky header row and first column, fine cell lines,
+                zebra rows, arrow keys move between cells and Enter opens the row. */}
             <div className="hidden overflow-auto md:block" style={{ maxHeight: maxHeight ?? "max(30rem, calc(100dvh - 12rem))" }}>
-              <table className="w-full border-separate border-spacing-0 text-sm" aria-label={label} aria-busy={loading || undefined}>
+              <table className="w-full border-separate border-spacing-0 text-sm" aria-label={label} aria-busy={loading || undefined}
+                aria-describedby={onRowClick ? `${gridId}-keys` : undefined}>
                 <thead>
                   <tr>
                     {selectable && (
-                      <Th className={cn(HEAD, "w-10 pe-0")}>
+                      <Th className={cn(HEAD, "left-0 z-30 w-10 min-w-10 px-0 text-center")}>
                         <RowCheck ref={head} checked={pageIds.length > 0 && pageSelected === pageIds.length} onChange={list.togglePage} label="Select every row on this page" />
                       </Th>
                     )}
-                    {cols.map((c) => <HeadCell key={c.id} col={c} list={list} />)}
-                    {actions && <Th className={cn(HEAD, "text-right")}><span className="sr-only">Actions</span></Th>}
+                    {cols.map((c, i) => <HeadCell key={c.id} col={c} list={list} pinned={i === 0} left={selectable ? 40 : 0} />)}
+                    {actions && <Th className={cn(HEAD, "w-px text-right")}><span className="sr-only">Actions</span></Th>}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody onKeyDown={onGridKey}>
                   {loading && Array.from({ length: 6 }, (_, i) => (
                     <tr key={i} aria-hidden="true">
                       {Array.from({ length: span }, (_, j) => <Td key={j} className={CELL}><Bar w={j === 0 ? "w-3/4" : j % 2 ? "w-1/2" : "w-2/3"} /></Td>)}
                     </tr>
                   ))}
-                  {!loading && page.rows.map((r) => {
+                  {!loading && page.rows.map((r, ri) => {
                     const id = list.getId(r);
                     const sel = list.selected.has(id);
                     const more = expanded?.(r);
+                    const bg = sel ? SELECTED_BG : ROW_BG;
                     return (
                       <React.Fragment key={id}>
                         <tr
-                          tabIndex={onRowClick ? 0 : undefined}
+                          data-row={ri}
                           aria-selected={selectable ? sel : undefined}
                           onClick={(e) => { if (onRowClick && !fromControl(e.target)) open(r); }}
-                          onKeyDown={(e) => { if (onRowClick && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(r); } }}
-                          className={cn(
-                            "group transition-colors hover:bg-[#39edd5]/[0.07] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-                            onRowClick && "cursor-pointer",
-                            sel && "bg-[#39edd5]/[0.12] hover:bg-[#39edd5]/[0.16] [&>td:first-child]:shadow-[inset_3px_0_0_#032c26] dark:[&>td:first-child]:shadow-[inset_3px_0_0_#39edd5]",
-                            rowClassName?.(r),
-                          )}
+                          className={cn("group", onRowClick && "cursor-pointer", rowClassName?.(r))}
                         >
-                          {selectable && <Td className={cn(CELL, "w-10 pe-0")}><RowCheck checked={sel} onChange={() => list.toggleRow(id)} label={`Select ${name(r)}`} /></Td>}
-                          {cols.map((c) => <Td key={c.id} numeric={c.numeric} className={cn(CELL, c.className)}>{c.cell(r)}</Td>)}
-                          {actions && <Td className={cn(CELL, "w-px whitespace-nowrap text-right")}><RowActionBar actions={actions(r)} inline={inline} name={name(r)} className="justify-end" /></Td>}
+                          {selectable && (
+                            <Td className={cn(CELL, bg, "sticky left-0 z-[5] w-10 min-w-10 px-0 text-center", sel && "shadow-[inset_3px_0_0_#032c26] dark:shadow-[inset_3px_0_0_#39edd5]")}>
+                              <RowCheck checked={sel} onChange={() => list.toggleRow(id)} label={`Select ${name(r)}`} />
+                            </Td>
+                          )}
+                          {cols.map((c, ci) => (
+                            <td key={c.id} tabIndex={ri === 0 && ci === 0 ? 0 : -1} data-cell={ci} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget && onRowClick) { e.preventDefault(); open(r); } }}
+                              className={cn(CELL, bg, "px-3 py-[var(--row-py)] align-middle text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                                c.numeric && "text-right tabular-nums",
+                                ci === 0 && "sticky z-[5] shadow-[1px_0_0_var(--grid-line)]",
+                                ci === 0 && !selectable && sel && "shadow-[inset_3px_0_0_#032c26,1px_0_0_var(--grid-line)]",
+                                c.className)}
+                              style={ci === 0 ? { left: selectable ? 40 : 0 } : undefined}>
+                              {c.cell(r)}
+                            </td>
+                          ))}
+                          {actions && <Td className={cn(CELL, bg, "w-px whitespace-nowrap py-0 text-right")}><RowActionBar actions={actions(r)} inline={inline} name={name(r)} reveal className="justify-end" /></Td>}
                         </tr>
-                        {more && <tr><Td colSpan={span} className={cn(CELL, "bg-muted/30")}>{more}</Td></tr>}
+                        {more && <tr><Td colSpan={span} className={cn(CELL, "bg-muted/40")}>{more}</Td></tr>}
                       </React.Fragment>
                     );
                   })}
                 </tbody>
               </table>
+              {onRowClick && <p id={`${gridId}-keys`} className="sr-only">Use the arrow keys to move between cells. Press Enter to open the row.</p>}
             </div>
             <Pager list={list} />
           </>
@@ -198,25 +233,76 @@ export function DataTable<T>({
   );
 }
 
-const HEAD = "sticky top-0 z-10 border-b border-border bg-[color:var(--glass-solid)] py-2.5 text-[0.75rem] font-semibold text-muted-foreground";
-const CELL = "border-b border-border/60 group-last:border-b-0";
+/* Grid look: crisp white with fine neutral lines, no blur inside the grid. Backgrounds sit on the cells, not the row,
+   so the sticky first column stays opaque while the grid scrolls sideways. */
+const HEAD = "sticky top-0 z-20 h-8 border-b border-r border-[color:var(--grid-line)] bg-[color:var(--grid-head)] px-3 py-0 text-[0.75rem] font-semibold text-muted-foreground last:border-r-0";
+const CELL = "border-b border-r border-[color:var(--grid-line)] last:border-r-0 group-last:border-b-0";
+const ROW_BG = "bg-[color:var(--grid-bg)] group-even:bg-[color:var(--grid-zebra)] group-hover:bg-[color:var(--grid-hover)]";
+const SELECTED_BG = "bg-[color:var(--grid-selected)] group-hover:bg-[color:var(--grid-selected)]";
+/** Grid colours for light and dark. Neutral greys, no green tint; cyan only for hover and selection. */
+const GRID_VARS = "[--grid-bg:#ffffff] [--grid-zebra:#f8f9f9] [--grid-hover:#eefbf9] [--grid-selected:#e2f8f5] [--grid-head:#f3f5f4] [--grid-line:#e3e8e6] dark:[--grid-bg:#0b1c18] dark:[--grid-zebra:#0e211c] dark:[--grid-hover:#11302a] dark:[--grid-selected:#123a33] dark:[--grid-head:#0f241f] dark:[--grid-line:#1f3a33]";
 
-function HeadCell<T>({ col, list }: { col: Column<T>; list: ListApi<T> }) {
+function HeadCell<T>({ col, list, pinned, left }: { col: Column<T>; list: ListApi<T>; pinned: boolean; left: number }) {
   const sortable = col.sortable !== false && !!col.value;
   const on = list.sort?.key === col.id ? list.sort.dir : null;
-  if (!sortable) return <Th numeric={col.numeric} className={cn(HEAD, col.headerClassName)}>{col.header}</Th>;
+  const width = list.widths[col.id];
   const Icon = on === "asc" ? ArrowUp : on === "desc" ? ArrowDown : ArrowUpDown;
   const nextWord = on === "asc" ? "descending" : on === "desc" ? "in the list order" : "ascending";
-  // Same look as Th, written out so the heading can carry aria-sort.
+  const hideable = col.hideable !== false;
+  const thRef = React.useRef<HTMLTableCellElement>(null);
+
+  // Drag the right edge of a heading to make the column wider or narrower. The width is remembered for this list.
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = thRef.current?.getBoundingClientRect().width ?? 120;
+    const move = (ev: PointerEvent) => list.setWidth(col.id, startW + ev.clientX - startX);
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   return (
-    <th scope="col" aria-sort={on === "asc" ? "ascending" : on === "desc" ? "descending" : "none"}
-      className={cn(HEAD, "border-b border-border p-0 whitespace-nowrap", col.numeric ? "text-right" : "text-left", col.headerClassName)}>
-      <button type="button" onClick={() => list.toggleSort(col.id)} title={`Sort ${nextWord}`}
-        className={cn("group/sort inline-flex w-full items-center gap-1.5 px-3 py-2.5 text-[0.75rem] font-semibold whitespace-nowrap hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-          col.numeric && "flex-row-reverse", on && "text-[#032c26] dark:text-foreground")}>
-        {col.header}
-        <Icon aria-hidden="true" className={cn("size-3.5 shrink-0", on ? "text-[#03c1ac]" : "text-muted-foreground/50 opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100")} strokeWidth={2.25} />
-      </button>
+    // Written out rather than Th so the heading can carry aria-sort, a width and the sticky left offset.
+    <th ref={thRef} scope="col" aria-sort={sortable ? (on === "asc" ? "ascending" : on === "desc" ? "descending" : "none") : undefined}
+      className={cn(HEAD, "group/head whitespace-nowrap", col.numeric ? "text-right" : "text-left", pinned && "z-30", col.headerClassName)}
+      style={{ ...(width ? { width, minWidth: width, maxWidth: width } : {}), ...(pinned ? { left } : {}) }}>
+      <div className={cn("flex h-8 items-center gap-1", col.numeric && "flex-row-reverse")}>
+        {sortable ? (
+          <button type="button" onClick={() => list.toggleSort(col.id)} title={`Sort ${nextWord}`}
+            className={cn("inline-flex min-w-0 items-center gap-1.5 truncate rounded-sm font-semibold hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+              col.numeric && "flex-row-reverse", on && "text-[#032c26] dark:text-foreground")}>
+            <span className="truncate">{col.header}</span>
+            <Icon aria-hidden="true" className={cn("size-3.5 shrink-0", on ? "text-[#03c1ac]" : "text-muted-foreground/50 opacity-0 group-hover/head:opacity-100")} strokeWidth={2.25} />
+          </button>
+        ) : <span className="truncate">{col.header}</span>}
+        {(sortable || hideable) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" aria-label={`Column menu, ${col.header}`} title="Column Options"
+                className={cn("ms-auto flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 hover:bg-black/5 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring group-hover/head:opacity-100 data-[state=open]:opacity-100 dark:hover:bg-white/10",
+                  col.numeric && "ms-0 me-auto")}>
+                <ChevronDown className="size-3.5" aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align={col.numeric ? "end" : "start"} className="min-w-44">
+              {sortable && <>
+                <DropdownMenuItem onClick={() => list.setSort({ key: col.id, dir: "asc" })} className="gap-2.5"><ArrowUp />Sort Ascending</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => list.setSort({ key: col.id, dir: "desc" })} className="gap-2.5"><ArrowDown />Sort Descending</DropdownMenuItem>
+                {on && <DropdownMenuItem onClick={() => list.setSort(null)} className="gap-2.5"><X />Clear Sort</DropdownMenuItem>}
+              </>}
+              {width && <DropdownMenuItem onClick={() => list.setWidth(col.id, 0)} className="gap-2.5"><MoveHorizontal />Reset Width</DropdownMenuItem>}
+              {hideable && <>
+                {sortable && <DropdownMenuSeparator />}
+                <DropdownMenuItem onClick={() => list.toggleColumn(col.id)} className="gap-2.5"><EyeOff />Hide Column</DropdownMenuItem>
+              </>}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+      <span role="separator" aria-orientation="vertical" aria-hidden="true" onPointerDown={startResize} onClick={(e) => e.stopPropagation()}
+        className="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none after:absolute after:inset-y-1.5 after:left-1/2 after:w-px after:bg-transparent hover:after:bg-[#03c1ac]" />
     </th>
   );
 }
@@ -241,25 +327,30 @@ function defaultCard<T>(r: T, cols: Column<T>[]): CardSpec {
   };
 }
 
-/** The action buttons of one row: the first ones as buttons, the rest in a More menu. */
-export function RowActionBar({ actions, inline = 2, name, labelled, className }: { actions: RowAction[]; inline?: number; name: string; labelled?: boolean; className?: string }) {
+/**
+ * The action buttons of one row, always on one line: the first ones as buttons, the rest in a More menu (the 21st.dev
+ * data table pattern). With `reveal`, the quiet icon buttons appear on row hover or focus on a desktop with a mouse; on a
+ * touch screen they always show. A labelled next-step button always shows.
+ */
+export function RowActionBar({ actions, inline = 1, name, labelled, reveal, className }: { actions: RowAction[]; inline?: number; name: string; labelled?: boolean; reveal?: boolean; className?: string }) {
   if (!actions.length) return null;
   const shown = actions.slice(0, inline);
   const rest = actions.slice(inline);
+  const quiet = reveal && "[@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 transition-opacity";
   return (
-    <div className={cn("flex flex-wrap items-center gap-1", className)}>
+    <div className={cn("flex flex-nowrap items-center gap-0.5", labelled && "flex-wrap gap-1.5", className)}>
       {shown.map((a) =>
         a.emphasis || labelled ? (
-          <Button key={a.id} size="sm" variant={a.emphasis ? "primary" : "secondary"} className={cn("relative", a.emphasis && BRAND_BUTTON, a.danger && !a.emphasis && "text-destructive")}
+          <Button key={a.id} size="sm" variant={a.emphasis ? "primary" : "secondary"} className={cn("relative", !labelled && "h-7 px-2.5 text-[0.8125rem]", a.emphasis && BRAND_BUTTON, a.danger && !a.emphasis && "text-destructive")}
             disabled={a.disabled} title={a.title ?? a.label} aria-label={`${a.label}, ${name}`} onClick={a.onClick}>
-            <span className="flex [&_svg]:size-4 [&_svg]:!text-current" aria-hidden="true">{a.icon}</span>
+            <span className="flex [&_svg]:size-3.5 [&_svg]:!text-current" aria-hidden="true">{a.icon}</span>
             {a.label}
             {a.dot && <Dot />}
           </Button>
         ) : (
           <button key={a.id} type="button" onClick={a.onClick} disabled={a.disabled} title={a.title ?? a.label} aria-label={`${a.label}, ${name}`}
-            className={cn("relative flex size-8 items-center justify-center rounded-lg text-[#035d53] transition-colors hover:bg-[#39edd5]/15 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40 dark:text-[#39edd5] [&_svg]:size-[1.05rem] [&_svg]:!text-current",
-              a.danger && "text-destructive hover:bg-destructive/10 dark:text-destructive")}>
+            className={cn("relative flex size-7 shrink-0 items-center justify-center rounded-md text-[#035d53] hover:bg-[#39edd5]/15 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40 dark:text-[#39edd5] [&_svg]:size-4 [&_svg]:!text-current",
+              a.danger && "text-destructive hover:bg-destructive/10 dark:text-destructive", quiet)}>
             {a.icon}
             {a.dot && <Dot />}
           </button>
@@ -269,8 +360,8 @@ export function RowActionBar({ actions, inline = 2, name, labelled, className }:
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" aria-label={`More actions, ${name}`} title="More Actions"
-              className="relative flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-muted">
-              <Ellipsis className="size-[1.05rem]" aria-hidden="true" />
+              className={cn("relative flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-muted", labelled && "size-8 border border-border", quiet)}>
+              <Ellipsis className="size-4" aria-hidden="true" />
               {rest.some((a) => a.dot) && <Dot />}
             </button>
           </DropdownMenuTrigger>
@@ -375,4 +466,12 @@ function SelectionBar<T>({ list, bulk }: { list: ListApi<T>; bulk: BulkAction<T>
       </div>
     </div>
   );
+}
+
+/**
+ * A second line in a cell (a sub-department, a condition). Shown in the comfortable density and hidden in compact, so a
+ * compact row stays one line high. Keep anything a user needs to tell rows apart on the first line.
+ */
+export function CellSub({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn("text-xs text-muted-foreground in-data-[list-density=compact]:hidden", className)}>{children}</div>;
 }

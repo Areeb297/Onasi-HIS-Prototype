@@ -2,8 +2,11 @@ import * as React from "react";
 import { IconBarcode, IconCheck, IconScan, IconSend, IconUsers, IconX } from "@tabler/icons-react";
 import { ControlBadge, MessageViewer, PatientStrip, SafetyBanner, VerifyBadge } from "@/components/emr/RxShared";
 import { Dialog } from "@/components/Dialog";
+import { PackChip, PackScanner } from "@/components/pharmacy/RsdParts";
 import { Badge, Button, Field, Input, RequiredNote, Select } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
+import type { Gs1 } from "@/lib/integrations/rsd-gs1";
+import { dispenseProblem, packKey, packOf, packsNeeded, rsdActive, scanProblems, suggestPacks, useRsd } from "@/lib/integrations/rsd-packs";
 import type { Patient } from "@/lib/model";
 import { DOCTORS } from "@/lib/reference-data";
 import { fillOf, getDrug, useRx } from "@/lib/rx";
@@ -89,6 +92,11 @@ export function DispenseDialog({ rx, focusItemId, onClose, queue }: { rx: Prescr
   const [witnessName, setWitnessName] = React.useState("");
   const [witnessNo, setWitnessNo] = React.useState("");
   const [problems, setProblems] = React.useState<string[]>([]);
+  // RSD: the packs scanned for each item (pack keys), and the last answer for each scan field.
+  const rsd = useRsd();
+  const rsdOn = rsdActive();
+  const [packScan, setPackScan] = React.useState<Record<string, string[]>>({});
+  const [packMsg, setPackMsg] = React.useState<Record<string, { ok: boolean; text: string } | null>>({});
 
   const patientOk = !!patient && (same(patientScan, patient.mrn) || same(patientScan, patient.healthId));
   const chosen = items.filter((i) => picked[i.id]);
@@ -111,6 +119,7 @@ export function DispenseDialog({ rx, focusItemId, onClose, queue }: { rx: Prescr
     }),
     secure,
     witness,
+    packs: rsdOn ? Object.fromEntries(chosen.map((i) => [i.id, packScan[i.id] ?? []])) : undefined,
     verification: skip
       ? { patientScan: false, drugScans: [] as string[], skippedReason: skipReason.trim() }
       : { patientScan: patientOk, drugScans: chosen.filter((i) => drugOk(i.id)).map((i) => i.id) },
@@ -119,6 +128,25 @@ export function DispenseDialog({ rx, focusItemId, onClose, queue }: { rx: Prescr
   const plan = React.useMemo(() => planDispense(s, request, true), [s, key]); // eslint-disable-line react-hooks/exhaustive-deps
   const gate = React.useMemo(() => dispenseGate(s, request), [s, key]); // eslint-disable-line react-hooks/exhaustive-deps
   const skipMissing = skip && skipReason.trim().length < 5;
+  const rsdIssues = React.useMemo(
+    () => (rsdOn && chosen.length ? scanProblems(chosen.map((i, n) => ({ itemId: i.id, drugId: i.drugId, quantity: request.lines[n].quantity, lot: request.lines[n].lot })), packScan) : []),
+    [rsdOn, rsd, key, packScan], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const addPack = (itemId: string, drugId: string, g: Gs1) => {
+    const say = (ok: boolean, text: string) => setPackMsg((m) => ({ ...m, [itemId]: { ok, text } }));
+    const k = packKey(g.gtin, g.serial);
+    const p = packOf(g.gtin, g.serial);
+    const bad = dispenseProblem(p, drugId);
+    if (bad) return say(false, bad);
+    if (p && (p.batch !== g.batch || p.expiry !== g.expiry)) return say(false, "The batch or expiry on this pack does not match the RSD record.");
+    if ((packScan[itemId] ?? []).includes(k)) return say(false, "This pack is already scanned.");
+    setPackScan((cur) => ({ ...cur, [itemId]: [...(cur[itemId] ?? []), k] }));
+    // The batch to take stock from is the batch printed on the pack.
+    if (p && batchesFor(getDrug(drugId), s.dispenses).some((b) => b.lot === p.batch)) setLot((cur) => ({ ...cur, [itemId]: p.batch }));
+    say(true, `Pack ${g.serial} accepted for dispensing.`);
+  };
+  const removePack = (itemId: string, k: string) => setPackScan((cur) => ({ ...cur, [itemId]: (cur[itemId] ?? []).filter((x) => x !== k) }));
 
   // Stock messages sit beside the batch. Everything else that is still needed goes in one list above the buttons.
   const stockText: Record<string, string | null> = {};
@@ -132,8 +160,9 @@ export function DispenseDialog({ rx, focusItemId, onClose, queue }: { rx: Prescr
     ...(chosen.length === 0 ? [] : gate.filter((g) => !shownBeside.has(g))),
     ...(chosen.length === 0 ? ["Pick at least one item."] : plan?.problems ?? []),
     ...(skipMissing ? ["Type the reason for skipping the scan."] : []),
+    ...rsdIssues,
   ].filter((x, i, a) => a.indexOf(x) === i);
-  const ready = canDispense && chosen.length > 0 && gate.length === 0 && (plan?.problems.length ?? 1) === 0 && !skipMissing;
+  const ready = canDispense && chosen.length > 0 && gate.length === 0 && (plan?.problems.length ?? 1) === 0 && !skipMissing && rsdIssues.length === 0;
 
   function submit() {
     const res = dispenseChecked(request);
@@ -143,12 +172,14 @@ export function DispenseDialog({ rx, focusItemId, onClose, queue }: { rx: Prescr
       const left = chosen
         .map((i) => ({ d: getDrug(i.drugId), rest: round(fillOf(s, rx, i).remaining - (request.lines.find((l) => l.itemId === i.id)?.quantity ?? 0)) }))
         .filter((x) => x.rest > 0);
+      const sold = (res.rsd ?? []).filter((r) => r.ok).length;
+      const rsdText = sold ? ` RSD: ${rx.usage === "inpatient" ? "Consume" : "Pharmacy Sale"} reported for ${sold} pack${sold === 1 ? "" : "s"}.` : "";
       pushToast({
         tone: "ok",
         text: left.length ? "Part dispensed and sent to nphies" : "Dispense sent to nphies",
-        detail: left.length
+        detail: `${left.length
           ? `Still on the worklist: ${left.map((x) => `${x.d.generic} ${x.rest} ${x.d.unit}`).join(", ")}.`
-          : res.outcome.refId ? `Raqeeb reference id ${res.outcome.refId}` : "Accepted (201).",
+          : res.outcome.refId ? `Raqeeb reference id ${res.outcome.refId}` : "Accepted (201)."}${rsdText}`,
       });
       if (queue) queue.onDone();
       else onClose();
@@ -289,6 +320,31 @@ export function DispenseDialog({ rx, focusItemId, onClose, queue }: { rx: Prescr
                     </Field>
                     {scanned && !drugOk(i.id) && <div className="mt-1 text-xs text-destructive">Wrong drug. Check the pack.</div>}
                   </div>
+                  {rsdOn && on && (
+                    <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="font-semibold">SFDA RSD Packs</span>
+                        <Badge tone={(packScan[i.id] ?? []).length === packsNeeded(q, d) && q > 0 ? "ok" : "warn"}>{(packScan[i.id] ?? []).length} Of {packsNeeded(q, d)} Scanned</Badge>
+                        <span className="text-muted-foreground">Each pack is reported to RSD as sold when you dispense.</span>
+                      </div>
+                      <PackScanner
+                        label="Scan Pack Code"
+                        hint="Scan the 2D code on the pack. Only an accepted pack that is in date can be dispensed."
+                        sample={suggestPacks(i.drugId, 1, undefined, packScan[i.id] ?? [])[0]}
+                        onPack={(g) => addPack(i.id, i.drugId, g)}
+                        message={packMsg[i.id]}
+                      />
+                      {(packScan[i.id] ?? []).length > 0 && (
+                        <ul className="space-y-1">
+                          {(packScan[i.id] ?? []).map((k) => {
+                            const [gt, sn] = k.split("|");
+                            const p = packOf(gt, sn);
+                            return p ? <PackChip key={k} p={p} drugId={i.drugId} onRemove={() => removePack(i.id, k)} /> : null;
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}

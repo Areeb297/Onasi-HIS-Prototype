@@ -1,6 +1,7 @@
 import * as React from "react";
 import { IconCircleX, IconHandStop, IconMessageReply, IconPencil, IconPill, IconPlayerPause, IconPlayerPlay, IconSend, IconShieldCheck, IconShieldExclamation, IconTrash } from "@tabler/icons-react";
 import { ConformancePanel, ControlBadge, ItemStatusBadge, MessageViewer, RxPatientStrip, VerifyBadge, VerifyTrail } from "@/components/emr/RxShared";
+import { fmtDate, fmtDateTime, fmtTime } from "@/lib/format";
 import { answerQuery, verifyStatusOf } from "@/lib/rx-verify";
 import { RxEditor } from "@/components/emr/RxEditor";
 import { Dialog } from "@/components/Dialog";
@@ -200,7 +201,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
     <Card>
       <CardHeader
         title={`${rx.number}`}
-        subtitle={`Visit ${rx.visitNumber} · ${rx.usage[0].toUpperCase()}${rx.usage.slice(1)} · ${new Date(rx.authoredAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}`}
+        subtitle={`Visit ${rx.visitNumber} · ${rx.usage[0].toUpperCase()}${rx.usage.slice(1)} · ${fmtDateTime(rx.authoredAt)}`}
         tag={dev ? `groupIdentifier ${rx.groupId}` : undefined}
         right={
           <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -348,7 +349,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
           {own
             ? "Recorded on the chart only. Nothing is sent to nphies or to the pharmacy."
             : <>
-                {last ? (last.ok ? `Last send accepted at ${new Date(last.at).toLocaleTimeString("en-GB")}.` : `Last send was rejected: ${firstError(last.checks)}`) : "Not sent to nphies yet."}
+                {last ? (last.ok ? `Last send accepted at ${fmtTime(last.at)}.` : `Last send was rejected: ${firstError(last.checks)}`) : "Not sent to nphies yet."}
                 {!m.heightCm || !m.weightKg ? " Height and weight are missing." : ""}
               </>}
         </div>
@@ -440,7 +441,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
-const fmtDay = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const fmtDay = (d: string) => fmtDate(`${d}T00:00:00`);
 /** "From 3 Nov 2026 to 7 Nov 2026". Older items without a start date start on the day the prescription was written. */
 function dateRange(item: RxItem, authoredAt: string): string {
   const d = itemDates(item, authoredAt);

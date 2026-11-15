@@ -5,7 +5,7 @@ import { InvoiceStatusBadge, Sar, useNow, ZatcaTag } from "@/components/invoice/
 import { ReceiptDialog } from "@/components/invoice/ReceiptDialog";
 import { DataTable, ListPage, ListToolbar, inRange, useList, type Column, type FilterDef } from "@/components/list";
 import { KpiStrip, KpiTile } from "@/components/ui/glass";
-import { Switch, cn } from "@/components/ui/primitives";
+import { Badge, Switch, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { fmtDate } from "@/lib/format";
 import { setZatcaFailNext, sendToZatca, syncInvoices, useInvoices, worklist, zatcaClock, type WorklistRow } from "@/lib/invoice";
@@ -59,7 +59,7 @@ export function InvoiceWorklistPage() {
     { id: "number", header: "Invoice", hideable: false, value: (r) => r.view.invoice.number, cell: (r) => <span className="font-mono text-xs whitespace-nowrap">#{r.view.invoice.number}</span> },
     {
       id: "patient", header: "Patient", value: (r) => patientName(r.patient),
-      cell: (r) => <div className="min-w-40"><div className="font-medium">{patientName(r.patient)}</div><div className="font-mono text-xs text-muted-foreground">{r.patient?.mrn}</div></div>,
+      cell: (r) => <span className="flex items-center gap-2 whitespace-nowrap"><span className="font-medium">{patientName(r.patient)}</span><span className="font-mono text-xs text-muted-foreground">{r.patient?.mrn}</span></span>,
     },
     { id: "date", header: "Date", value: (r) => r.view.invoice.createdAt, csv: (r) => fmtDate(r.view.invoice.createdAt), cell: (r) => <span className="whitespace-nowrap">{fmtDate(r.view.invoice.createdAt)}</span> },
     { id: "amount", header: "Amount", numeric: true, value: (r) => r.view.totals.total, cell: (r) => <span className="font-semibold"><Sar value={r.view.totals.total} /></span> },
@@ -68,7 +68,7 @@ export function InvoiceWorklistPage() {
       cell: (r) => { const b = r.view.totals.patientBalance; return <span className={cn("font-semibold", b > 0.004 ? "text-warn" : b < -0.004 ? "text-move" : "text-ok")}><Sar value={b} /></span>; },
     },
     { id: "status", header: "Status", value: (r) => r.view.status, cell: (r) => <InvoiceStatusBadge status={r.view.status} /> },
-    { id: "zatca", header: "ZATCA", value: (r) => zatca(r).status, csv: (r) => zatca(r).text, cell: (r) => <ZatcaTag invoice={r.view.invoice} now={now} compact /> },
+    { id: "zatca", header: "ZATCA", value: (r) => zatca(r).status, csv: (r) => zatca(r).text, cell: (r) => { const z = zatca(r); return <span title={z.text}><Badge tone={z.status === "Reported" ? "ok" : z.status === "Failed" || z.overdue ? "danger" : "warn"}>{z.status === "Reported" ? "Reported" : z.status === "Failed" ? "Failed" : z.overdue ? "Overdue" : "Not Reported"}</Badge></span>; } },
   ];
 
   const list = useList({

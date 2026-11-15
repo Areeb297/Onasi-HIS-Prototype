@@ -1,3 +1,4 @@
+import { setRsdMode } from "./integrations/rsd-test-util";
 import { beforeEach, describe, expect, it } from "vitest";
 import { RX_BOARD_STAGES, rxBoardCanMove, rxBoardStageOf, rxStats } from "@/components/board/rx-board";
 import { DRUG_BY_ID } from "./rx-catalogue";
@@ -43,6 +44,7 @@ function sent(drugId: string, over: Partial<NewItem> = {}) {
 beforeEach(() => {
   switchUser("U4"); // pharmacist
   resetRx(false);
+  setRsdMode("off"); // these tests dispense without RSD packs
   updateEncounter(enc().visitNumber, (e) => {
     e.vitals = { ...(e.vitals ?? { bp: "", pulse: "", temp: "", spo2: "", rr: "", weight: "", at: "" }), weight: "84" };
   }, { touch: false });

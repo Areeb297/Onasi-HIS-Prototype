@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Search } from "lucide-react";
 import { Input, cn } from "@/components/ui/primitives";
+import { fmtDateTime } from "@/lib/format";
 import { looksLikeCode, searchCodes } from "@/lib/chart-entries";
 import type { CodedTerm } from "@/lib/reference-data";
 
@@ -113,7 +114,7 @@ export function CodeSearch<T extends CodedTerm>({
 
 /** Small helpers shared by the chart list sections. */
 export const fmtWhen = (local?: string) =>
-  local ? new Date(local).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Not recorded";
+  fmtDateTime(local) || "Not recorded";
 
 export function Checkbox({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string; disabled?: boolean }) {
   return (

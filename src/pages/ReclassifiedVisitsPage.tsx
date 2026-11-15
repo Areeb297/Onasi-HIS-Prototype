@@ -1,17 +1,16 @@
-import * as React from "react";
-import { CalendarPlus, FolderOpen } from "lucide-react";
-import { Badge, Button, Card, Empty, Field, Input, PageHeader, Table, Td, Th } from "@/components/ui/primitives";
+import { CalendarPlus, FolderOpen, Route } from "lucide-react";
+import { CellSub, DataTable, ListPage, ListToolbar, useList, type Column, type FilterDef, type RowAction } from "@/components/list";
+import { Badge } from "@/components/ui/primitives";
 import { useAdmissionRequests } from "@/lib/admission-requests";
 import { dayLabel, doctorName, useAppointments } from "@/lib/appointments";
 import { useDevMode } from "@/lib/devmode";
+import { fmtDateTime } from "@/lib/format";
 import { SERVICES } from "@/lib/reference-data";
 import { navigate } from "@/lib/router";
 import { hasGlass, useSession } from "@/lib/session";
 import { bedLabel, patientName, useHis } from "@/lib/store";
 import { visitStatus } from "@/pages/WorklistPage";
 import { appointmentLabel, appointmentTone, followUpAfter, isOpenAppointment, reclassifiedVisits, subDepartmentOf } from "@/lib/worklist";
-
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
  * Reclassified To Outpatient: inpatient stays changed to outpatient with A07. These patients usually need a clinic slot.
@@ -23,90 +22,78 @@ export function ReclassifiedVisitsPage() {
   const { requests } = useAdmissionRequests();
   const dev = useDevMode();
   useSession();
-  const [q, setQ] = React.useState("");
 
-  const rows = reclassifiedVisits(state).filter(({ enc }) => {
+  const rows = reclassifiedVisits(state).map(({ enc, at, fromBed }) => {
     const p = state.patients.find((x) => x.id === enc.patientId);
-    return !q || `${patientName(p)} ${p?.mrn} ${enc.visitNumber}`.toLowerCase().includes(q.toLowerCase());
+    const appt = followUpAfter(enc.patientId, at, appointments);
+    return {
+      enc, at, fromBed, p, appt,
+      booked: !!appt && isOpenAppointment(appt),
+      name: p?.confidential && !hasGlass(p.id) ? "Confidential Patient" : patientName(p),
+      dept: SERVICES.find((s) => s.code === enc.service),
+      status: visitStatus(enc),
+    };
+  });
+  type Row = (typeof rows)[number];
+
+  const filters: FilterDef<Row>[] = [
+    { id: "follow", label: "Follow-Up", quick: true, options: [{ value: "booked", label: "Booked" }, { value: "none", label: "Not Booked" }], test: (r, v) => (v === "booked") === r.booked },
+    { id: "dept", label: "Department", quick: true, options: SERVICES.map((s) => ({ value: s.code, label: s.label })), test: (r, v) => r.enc.service === v },
+  ];
+
+  const columns: Column<Row>[] = [
+    { id: "patient", header: "Patient", hideable: false, value: (r) => r.name, cell: (r) => <span className="flex items-center gap-2 whitespace-nowrap"><span className="font-semibold text-[#032c26] dark:text-foreground">{r.name}</span><span className="font-mono text-xs text-muted-foreground">{r.p?.mrn}</span></span> },
+    { id: "visit", header: "Visit", value: (r) => r.enc.visitNumber, cell: (r) => <span className="font-mono text-xs whitespace-nowrap">{r.enc.visitNumber}</span> },
+    { id: "dept", header: "Department", value: (r) => r.dept?.label ?? r.enc.service, cell: (r) => <div><div className="whitespace-nowrap">{r.dept?.label ?? r.enc.service}</div><CellSub>{subDepartmentOf(r.enc, requests, appointments)}</CellSub></div> },
+    { id: "doctor", header: "Doctor", value: (r) => doctorName(r.enc.attending), cell: (r) => <span className="whitespace-nowrap">{doctorName(r.enc.attending)}</span> },
+    { id: "at", header: "Reclassified On", value: (r) => r.at, csv: (r) => fmtDateTime(r.at), cell: (r) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(r.at)}{dev && <span className="ms-1 font-mono text-xs text-muted-foreground">A07</span>}</span> },
+    { id: "bed", header: "Previous Bed", value: (r) => (r.fromBed ? bedLabel(r.fromBed) : ""), cell: (r) => <span className="whitespace-nowrap">{r.fromBed ? bedLabel(r.fromBed) : "None"}</span> },
+    { id: "status", header: "Visit Status", defaultHidden: true, value: (r) => r.status.label, cell: (r) => <Badge tone={r.status.tone}>{r.status.label}</Badge> },
+    {
+      id: "follow", header: "Follow-Up", value: (r) => (r.appt ? appointmentLabel(r.appt) : "Not Booked"),
+      cell: (r) => r.appt
+        ? <span className="whitespace-nowrap" title={`${dayLabel(r.appt.date)}, ${r.appt.start}`}><Badge tone={appointmentTone(r.appt)}>{appointmentLabel(r.appt)}</Badge> <span className="text-xs text-muted-foreground">{dayLabel(r.appt.date)}, {r.appt.start}</span></span>
+        : <Badge tone="warn">Not Booked</Badge>,
+    },
+  ];
+
+  const list = useList({
+    id: "reclassified",
+    title: "Reclassified To Outpatient",
+    rows,
+    columns,
+    getId: (r) => r.enc.visitNumber,
+    filters,
+    initialSort: { key: "at", dir: "desc" },
+    unit: ["visit", "visits"],
+    search: (r) => `${r.name} ${r.p?.mrn ?? ""} ${r.enc.visitNumber}`,
   });
 
+  const actions = (r: Row): RowAction[] => [
+    ...(!r.booked ? [{ id: "book", label: "Book Follow-Up", icon: <CalendarPlus />, emphasis: true, onClick: () => navigate("/appointments") }] : []),
+    { id: "chart", label: "Open Chart", icon: <FolderOpen />, onClick: () => navigate("/chart", { visit: r.enc.visitNumber }) },
+  ];
+
   return (
-    <div>
-      <PageHeader
-        title="Reclassified To Outpatient"
-        subtitle="Inpatient stays changed to outpatient (A07). Book each patient a clinic follow-up. A follow-up after a normal discharge is an ordinary appointment and is not listed here."
-        right={<Badge tone="neutral">{rows.length} total</Badge>}
+    <ListPage title="Reclassified To Outpatient" subtitle="Inpatient stays changed to outpatient. Book each patient a clinic follow-up.">
+      <ListToolbar list={list} placeholder="Name, MRN or visit" />
+      <DataTable
+        list={list}
+        label="Reclassified visits"
+        rowLabel={(r) => r.name}
+        onRowClick={(r) => navigate("/chart", { visit: r.enc.visitNumber })}
+        actions={actions}
+        card={(r) => ({
+          title: r.name,
+          aside: r.booked && r.appt ? <Badge tone={appointmentTone(r.appt)}>{appointmentLabel(r.appt)}</Badge> : <Badge tone="warn">Not Booked</Badge>,
+          lines: [<span key="a">{r.dept?.label ?? r.enc.service}, {doctorName(r.enc.attending)}</span>, <span key="b" className="tabular-nums">Reclassified {fmtDateTime(r.at)}</span>],
+        })}
+        empty={{
+          icon: <Route />,
+          title: "No Reclassified Visits",
+          text: "Inpatient stays changed to outpatient (A07) appear here. A follow-up after a normal discharge is an ordinary appointment and is not listed.",
+        }}
       />
-
-      <Card className="mb-4 px-4 py-3">
-        <Field label="Patient" className="max-w-sm"><Input placeholder="Name, MRN or visit" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
-      </Card>
-
-      <Card>
-        <Table>
-          <thead>
-            <tr>
-              <Th>Patient</Th>
-              <Th>Visit</Th>
-              <Th>Department</Th>
-              <Th>Doctor</Th>
-              <Th>Reclassified On</Th>
-              <Th>Previous Bed</Th>
-              <Th>Visit Status</Th>
-              <Th>Follow-Up</Th>
-              <Th>Actions</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr><Td colSpan={9}><Empty>No visits have been changed from inpatient to outpatient.</Empty></Td></tr>
-            )}
-            {rows.map(({ enc, at, fromBed }) => {
-              const p = state.patients.find((x) => x.id === enc.patientId);
-              const dep = SERVICES.find((s) => s.code === enc.service);
-              const st = visitStatus(enc);
-              const appt = followUpAfter(enc.patientId, at, appointments);
-              const booked = !!appt && isOpenAppointment(appt);
-              const name = p?.confidential && !hasGlass(p.id) ? "Confidential patient" : patientName(p);
-              return (
-                <tr key={enc.visitNumber} className="hover:bg-muted/40">
-                  <Td>
-                    <div className="font-semibold">{name}</div>
-                    <div className="text-xs text-muted-foreground">{p?.mrn}</div>
-                  </Td>
-                  <Td className="whitespace-nowrap font-mono text-xs">{enc.visitNumber}</Td>
-                  <Td>
-                    <div>{dep?.label ?? enc.service}</div>
-                    <div className="text-xs text-muted-foreground">{subDepartmentOf(enc, requests, appointments)}</div>
-                  </Td>
-                  <Td className="whitespace-nowrap">{doctorName(enc.attending)}</Td>
-                  <Td className="whitespace-nowrap">{when(at)}{dev && <span className="ms-1 font-mono text-xs text-muted-foreground">A07</span>}</Td>
-                  <Td className="whitespace-nowrap">{fromBed ? bedLabel(fromBed) : "None"}</Td>
-                  <Td><Badge tone={st.tone}>{st.label}</Badge></Td>
-                  <Td>
-                    {appt ? (
-                      <div className="space-y-0.5">
-                        <Badge tone={appointmentTone(appt)}>{appointmentLabel(appt)}</Badge>
-                        <div className="text-xs text-muted-foreground">{dayLabel(appt.date)}, {appt.start}</div>
-                      </div>
-                    ) : <Badge tone="warn">Not Booked</Badge>}
-                  </Td>
-                  <Td>
-                    <div className="flex flex-wrap gap-2">
-                      {booked ? (
-                        <Badge tone="ok">Appointment Booked</Badge>
-                      ) : (
-                        <Button size="sm" variant="primary" onClick={() => navigate("/appointments")}><CalendarPlus className="size-4" />Book Follow-Up</Button>
-                      )}
-                      <Button size="sm" onClick={() => navigate("/chart", { visit: enc.visitNumber })}><FolderOpen className="size-4" />Open Chart</Button>
-                    </div>
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </Card>
-    </div>
+    </ListPage>
   );
 }

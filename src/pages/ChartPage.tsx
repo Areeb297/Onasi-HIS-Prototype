@@ -8,6 +8,7 @@ import { RowActions, type ActionKey } from "@/components/RowActions";
 import { VisitDischargeProgress, useVisitActions } from "@/components/VisitActions";
 import { CodeBlock } from "@/components/ui/code-block";
 import { NphiesLogo } from "@/components/NphiesLogo";
+import { SickLeaveSection } from "@/components/emr/SickLeaveSection";
 import { ProceduresSection } from "@/components/emr/ProceduresSection";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { Timeline, type TimelineEvent } from "@/components/ui/timeline";
@@ -92,7 +93,7 @@ const NATIVE: Record<NativeId, (p: { enc: Encounter }) => React.ReactElement> = 
   overview: OverviewTab, complaints: ComplaintsSection, vitals: VitalsSection, diagnosis: DiagnosisSection, prescription: PrescriptionSection,
   procedures: ProceduresSection, allergies: AllergySection, laboratory: LabSection, radiology: RadiologySection, notes: ProgressNotesSection,
   soap: SoapSection, documents: ClinicalDocsSection, adt: AdtMessages, surgery: TheatreSection,
-  emar: EmarSection, "follow-up": FollowUpSection, consults: ConsultSection,
+  emar: EmarSection, "follow-up": FollowUpSection, consults: ConsultSection, "sick-leave": SickLeaveSection,
 };
 
 export function ChartPage() {

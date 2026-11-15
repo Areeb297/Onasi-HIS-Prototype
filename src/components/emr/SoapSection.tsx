@@ -4,6 +4,7 @@ import { Dialog } from "@/components/Dialog";
 import { EmptyState, FormField, FormGrid, FormSection, RowMenu, TextArea } from "@/components/emr/entry-ui";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { UseCaseIcon } from "@/components/ai/UseCaseIcon";
+import { fmtDateTime } from "@/lib/format";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
 import { Badge, Button, Card, CardHeader, Empty, Input, Select, cn } from "@/components/ui/primitives";
 import { AI_LABEL } from "@/lib/ai/context";
@@ -39,7 +40,7 @@ const FIELDS: { key: Letter; letter: string; label: string; hint: string }[] = [
 ];
 
 const EMPTY: SoapDraft = { subjective: "", objective: "", assessment: "", plan: "" };
-const stamp = (iso?: string) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+const stamp = (iso?: string) => fmtDateTime(iso);
 
 interface Editing {
   /** Existing note id, or undefined for a new note. */

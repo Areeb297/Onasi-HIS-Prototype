@@ -3,6 +3,7 @@ import { IconPill, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { SafetyBanner, ControlBadge } from "@/components/emr/RxShared";
 import { ErrorSummary, FormField, FormGrid, FormSection, Segmented, WithUnit, YesNo, useValidation, type SegOption } from "@/components/emr/entry-ui";
 import { Button, Card, CardHeader, Input, Select, cn } from "@/components/ui/primitives";
+import { fmtDate as fmtDay } from "@/lib/format";
 import { useDevMode } from "@/lib/devmode";
 import type { Encounter } from "@/lib/model";
 import { visitInsured } from "@/lib/order-fields";
@@ -49,7 +50,7 @@ const USAGE_OPTIONS: SegOption<UsageSetting>[] = [
 ];
 
 const today = () => nowLocal().slice(0, 10);
-const fmtDate = (d: string) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
+const fmtDate = (d: string) => (d ? fmtDay(`${d}T00:00:00`) : "");
 const parseRows = (rows: RowDraft[]): DoseStep[] =>
   rows.map((r) => ({ dose: parseFloat(r.dose) || 0, frequencyId: r.frequencyId, days: parseInt(r.days, 10) || 0, ...(r.time ? { time: r.time } : {}) }));
 

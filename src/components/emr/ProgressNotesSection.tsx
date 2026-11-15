@@ -3,6 +3,7 @@ import { NotebookPen, Pencil, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { ActiveToggle, EmptyState, EntrySheet, FormField, RowMenu, Segmented, TextArea, useValidation } from "@/components/emr/entry-ui";
 import { Badge, Button, Card, CardHeader, Input, Select, cn } from "@/components/ui/primitives";
+import { fmtDateTime } from "@/lib/format";
 import type { Encounter } from "@/lib/model";
 import { addNote, deleteNote, editNote, notesOf, setNoteActive } from "@/lib/progress-notes";
 import { can, useSession } from "@/lib/session";
@@ -15,7 +16,7 @@ import { pushToast } from "@/lib/toast";
  */
 
 const when = (s?: string) =>
-  s ? new Date(s).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  fmtDateTime(s);
 
 const DELETE_REASONS = ["Written on the wrong patient", "Written on the wrong visit", "Duplicate note", "Entered in error", "Other"];
 type Filter = "all" | "active" | "inactive";

@@ -1,11 +1,12 @@
 import { useAgentMonitor } from "@/lib/ai/use-agent-monitor";
 import * as React from "react";
-import { ChevronsUpDown, Lock, Menu, Minus, Plus, Search } from "lucide-react";
+import { ChevronsUpDown, Lock, Menu, Minus, Plus, Search, ShieldOff } from "lucide-react";
 import { EventBadge } from "@/components/badges";
 import { IdleLock } from "@/components/IdleLock";
 import { DisplayMenu } from "@/components/DisplayMenu";
 import { ToastHost } from "@/components/ToastHost";
-import { Button } from "@/components/ui/primitives";
+import { TabPanels, WorkspaceTabs, useWorkspace, wantsNewTab } from "@/components/WorkspaceTabs";
+import { Button, Card, CardHeader } from "@/components/ui/primitives";
 import { AiAssistant } from "@/components/AiAssistant";
 import { FullScreenButton } from "@/components/FullScreenButton";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -18,6 +19,7 @@ import { CompliancePage } from "@/pages/CompliancePage";
 import { EmergencyBoard } from "@/pages/EmergencyBoard";
 import { EncountersPage } from "@/pages/EncountersPage";
 import { AccessPage, AuditPage, ConfidentialPage, RegistrationPage } from "@/pages/GovernancePages";
+import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { InvoicePage } from "@/pages/InvoicePage";
 import { InvoiceWorklistPage } from "@/pages/InvoiceWorklistPage";
 import { LabWorklistPage } from "@/pages/LabWorklistPage";
@@ -62,6 +64,7 @@ import { WorklistPage } from "@/pages/WorklistPage";
 import { canUseDevMode, isDevMode, setDevMode, useDevMode } from "@/lib/devmode";
 import { NAV, type NavGroup, type NavPage } from "@/lib/nav";
 import { navigate, useRoute } from "@/lib/router";
+import { routeAccess } from "@/lib/route-guard";
 import { can, ROLES, switchUser, USERS, lockScreen, useSession } from "@/lib/session";
 import { EVENTS, EVENT_BY_ID, type EventId } from "@/lib/spec";
 import { useHis } from "@/lib/store";
@@ -130,6 +133,11 @@ function NavTree({ path }: { path: string }) {
     .filter((g) => g.pages.length > 0);
 
   const badge = (p: NavPage) => (p.path.startsWith("/event/") ? <EventBadge id={p.id as EventId} /> : p.id === "log" ? <CountBadge>{state.log.length}</CountBadge> : undefined);
+  // A plain click opens the page in the current tab (unless it is pinned); Ctrl+click or a middle click opens a new tab.
+  const opener = (path: string) => ({
+    onClick: (e: React.MouseEvent) => { wantsNewTab(e); navigate(path); },
+    onAuxClick: (e: React.MouseEvent) => { if (e.button === 1) { e.preventDefault(); wantsNewTab(e); navigate(path); } },
+  });
 
   return (
     <SidebarNav>
@@ -162,7 +170,7 @@ function NavTree({ path }: { path: string }) {
           if (g.pages.length === 1 && g.pages[0].label === g.label) {
             const p = g.pages[0];
             return (
-              <SidebarItem key={g.id} icon={icon} active={p.path === path} onClick={() => navigate(p.path)}>
+              <SidebarItem key={g.id} icon={icon} active={p.path === path} {...opener(p.path)}>
                 {p.label}
               </SidebarItem>
             );
@@ -177,7 +185,7 @@ function NavTree({ path }: { path: string }) {
               onOpenChange={(v) => toggle(g.id, v)}
             >
               {g.pages.map((p) => (
-                <SidebarItem key={p.id + p.path} active={p.path === path} onClick={() => navigate(p.path)} badge={badge(p)}>
+                <SidebarItem key={p.id + p.path} active={p.path === path} {...opener(p.path)} badge={badge(p)}>
                   {p.label}
                 </SidebarItem>
               ))}
@@ -215,10 +223,7 @@ function UserFooter() {
           {USERS.map((u) => (
             <DropdownMenuItem
               key={u.id}
-              onClick={() => {
-                switchUser(u.id);
-                navigate("/opd");
-              }}
+              onClick={() => switchUser(u.id) /* each user's own tabs come back */}
             >
               <span className="flex flex-col">
                 <span className="text-sm">{u.name}</span>
@@ -271,13 +276,31 @@ function Palette() {
   );
 }
 
+/** Shown instead of a page the signed-in role may not open (a typed or pasted link). */
+function NoAccess({ label, roles }: { label: string; roles: string[] }) {
+  const { role } = useSession();
+  return (
+    <Card className="mx-auto mt-6 w-full max-w-xl">
+      <CardHeader title="No Access" subtitle={`${label} is not available to your role (${role.label}).`} right={<ShieldOff className="size-5 text-muted-foreground" aria-hidden="true" />} />
+      <div className="space-y-3 p-4 text-sm">
+        <p>{roles.length ? <>Who can use it: <strong>{roles.join(", ")}</strong>.</> : "No demo role can use it."} Ask one of them, or sign in as one of them from the user menu.</p>
+        <Button variant="primary" onClick={() => navigate("/dashboard")}>Back To Dashboard</Button>
+      </div>
+    </Card>
+  );
+}
+
 function Page() {
   const route = useRoute();
   const path = route.path;
+  useSession();
   // The developer tools (ADT event forms, test runner, message log, timelines, segment table) belong to Developer View,
   // which only the System Administrator may use. Anyone else opening them by link goes to the dashboard.
   const devPage = path.startsWith("/event/") || ["/runner", "/log", "/spec", "/encounters"].includes(path);
   if (devPage && !isDevMode()) return <DashboardPage />;
+  // Every other page follows the sidebar: a page the role cannot see there does not open from a link either.
+  const access = devPage ? null : routeAccess(path, can);
+  if (access && !access.allowed) return <NoAccess label={access.label} roles={access.roles} />;
   if (path.startsWith("/event/")) {
     const id = path.replace("/event/", "") as EventId;
     if (EVENT_BY_ID[id]) return <ScenarioPage key={`${id}?${route.params.toString()}`} eventId={id} />;
@@ -330,6 +353,7 @@ function Page() {
     case "/agents": return <AgentsPage />;
     case "/nphies-clinical": return <NphiesClinicalPage />;
     case "/nphies-financial": return <NphiesFinancialPage />;
+    case "/integrations": return <IntegrationsPage />;
     case "/encounters": return <EncountersPage />;
     case "/runner": return <RunnerPage />;
     case "/log": return <LogPage />;
@@ -355,7 +379,9 @@ export default function App() {
   const dev = useDevMode();
   const { role } = useSession();
   const [navOpen, setNavOpen] = React.useState(false);
+  const mainRef = React.useRef<HTMLElement>(null);
   useAgentMonitor();
+  useWorkspace();
   React.useEffect(() => setNavOpen(false), [route.path, route.params]);
 
   return (
@@ -376,7 +402,7 @@ export default function App() {
           </SidebarFooter>
         </Sidebar>
       </div>
-      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <main ref={mainRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
           <div className="mx-auto flex max-w-[1500px] items-center gap-1.5 px-4 py-2.5 text-[0.8125rem] sm:gap-2 sm:px-6">
             <Button size="sm" className="lg:hidden" onClick={() => setNavOpen(true)} aria-label="Open the menu" aria-expanded={navOpen}><Menu className="size-4" /><span className="hidden sm:inline">Menu</span></Button>
@@ -402,12 +428,13 @@ export default function App() {
               ))}
             </div>}
           </div>
+          <WorkspaceTabs />
         </header>
-        <div className="mx-auto flex min-h-[calc(100%-3.25rem)] max-w-[1500px] flex-col px-4 pb-20 pt-5 sm:px-6">
-          <Page />
+        <div id="workspace-panel" role="tabpanel" aria-label="Page" className="mx-auto flex min-h-[calc(100%-5.625rem)] max-w-[1500px] flex-col px-4 pb-20 pt-5 sm:px-6">
+          <TabPanels scroller={mainRef} render={() => <Page />} />
           <div className="h-10 shrink-0" aria-hidden="true" />
           <footer className="mt-auto border-t border-border pt-4 text-xs text-muted-foreground sm:pe-40">
-            &copy; {new Date().getFullYear()} Ebttikar. All rights reserved.
+            &copy; {new Date().getFullYear()} Ebttikar. All rights reserved. <span className="ms-1">Demo data only. Do not enter real patient information.</span>
           </footer>
         </div>
       </main>

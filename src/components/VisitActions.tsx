@@ -4,7 +4,8 @@ import { Dialog } from "@/components/Dialog";
 import { DiagnosisSearch } from "@/components/admission/parts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge, Button, Field, Hl7Tag, Input, RequiredNote, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { Badge, Button, Field, Input, RequiredNote, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { CheckRow, ChoiceSelect, DateTimeInput, FormGrid, ReasonButton, SegmentedControl, isDirty, useUnsavedChangesGuard } from "@/components/forms";
 import {
   changeToOutpatient, checkIn, convertToInpatient, dischargePatient, moveVisit, quickCreate, quickSend, recordLeftWard, sendWithReason,
   setBedOutOfService, setClearance, transferPatient,
@@ -143,25 +144,32 @@ export function PatientStrip({ patient, enc }: { patient: Patient | undefined; e
 
 /** A labelled group of buttons. Field is a <label>, which would pass a click on the gaps to the first button. */
 function Group({ label, hl7, required, hint, children }: { label: string; hl7?: string; required?: boolean; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <span className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium leading-5 text-foreground">
-        <span>
-          {label}
-          {required && (
-            <>
-              <span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span>
-              <span className="sr-only"> (required)</span>
-            </>
-          )}
-        </span>
-        {hl7 && <Hl7Tag>{hl7}</Hl7Tag>}
-      </span>
-      {children}
-      {hint && <span className="text-xs leading-snug text-muted-foreground">{hint}</span>}
-    </div>
-  );
+  const dev = useDevMode();
+  return <Field group label={label} hl7={dev ? hl7 : undefined} required={required} hint={hint}>{children}</Field>;
 }
+
+/**
+ * The body of a long dialog scrolls on its own, so the header and the confirm buttons stay in view.
+ * The Dialog pads its body; this takes the padding over so the scroll bar sits at the edge.
+ */
+function DialogScroll({ children }: { children: React.ReactNode }) {
+  return <div className="-mx-5 -my-4 max-h-[calc(100dvh-15rem)] overflow-y-auto overscroll-contain px-5 py-4 sm:max-h-[calc(100dvh-16rem)]">{children}</div>;
+}
+
+/** Closing a dialog with changes asks first. Returns the close to use for Cancel, Escape and the close button. */
+function useGuardedClose(snapshot: unknown, onClose: () => void) {
+  const [start] = React.useState(snapshot);
+  const { guard, dialog } = useUnsavedChangesGuard(isDirty(start, snapshot), { what: "You have entered details in this window that are not saved." });
+  return { close: () => guard(onClose), guardDialog: dialog };
+}
+
+/** The confirm button: when something is still needed, it is disabled and says what on hover. */
+function ConfirmButton({ problems, onClick, children, variant = "primary" }: { problems: string[]; onClick: () => void; children: React.ReactNode; variant?: "primary" | "danger" }) {
+  const reason = problems.length === 0 ? undefined : problems.length === 1 ? problems[0] : `${problems.length} things are still needed. See the list above the buttons.`;
+  return <ReasonButton variant={variant} reason={reason} onClick={onClick}>{children}</ReasonButton>;
+}
+
+const doctorOptions = () => DOCTORS.map((d) => ({ value: d.id, label: `Dr. ${d.given} ${d.family}` }));
 
 /** Where the patient is now, shown above the new values. */
 function NowStrip({ enc, extra }: { enc: Encounter; extra?: [string, string][] }) {
@@ -196,23 +204,28 @@ function WhatWillHappen({ items }: { items: (string | false | undefined)[] }) {
   const list = items.filter((x): x is string => !!x);
   if (!list.length) return null;
   return (
-    <div className="mt-4 rounded-lg border border-move/40 bg-move/8 px-3 py-2.5" role="note" aria-label="What will happen">
-      <div className="text-sm font-semibold">What will happen</div>
-      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm">
+    <div className="mt-5 rounded-xl border border-[#03C1AC]/50 border-l-4 border-l-[#03C1AC] bg-card px-4 py-3" role="note" aria-label="What will happen">
+      <div className="text-sm font-semibold">What Will Happen</div>
+      <ul className="mt-1 list-disc space-y-0.5 ps-5 text-sm">
         {list.map((t) => <li key={t}>{t}</li>)}
       </ul>
     </div>
   );
 }
 
-/** Problems that stop the confirm button, listed so the user knows what is missing. */
+/** What is still missing before the confirm button can be used: a short checklist, not an alarm. */
 function StillNeeded({ items }: { items: string[] }) {
   if (!items.length) return null;
   return (
-    <div className="mt-3 rounded-lg border border-warn/50 bg-warn/10 px-3 py-2 text-sm" role="status">
-      <div className="flex items-center gap-1.5 font-semibold text-warn"><TriangleAlert className="size-4" aria-hidden="true" /> Still needed</div>
-      <ul className="mt-1 list-disc space-y-0.5 pl-5">
-        {items.map((t) => <li key={t}>{t}</li>)}
+    <div className="mt-5 rounded-xl border border-border bg-card px-4 py-3 text-sm" role="status">
+      <div className="flex items-center gap-1.5 font-semibold text-foreground"><TriangleAlert className="size-4 text-warn" aria-hidden="true" /> To Finish</div>
+      <ul className="mt-1.5 space-y-1">
+        {items.map((t) => (
+          <li key={t} className="flex items-start gap-2">
+            <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-full border-2 border-warn" />
+            <span>{t}</span>
+          </li>
+        ))}
       </ul>
     </div>
   );
@@ -220,17 +233,14 @@ function StillNeeded({ items }: { items: string[] }) {
 
 function ReasonFields({ reasons, reason, setReason, note, setNote, label = "Reason" }: { reasons: string[]; reason: string; setReason: (v: string) => void; note: string; setNote: (v: string) => void; label?: string }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <FormGrid cols={2}>
       <Field label={label} required>
-        <Select value={reason} onChange={(e) => setReason(e.target.value)} aria-label={label}>
-          <option value="">Choose a reason</option>
-          {reasons.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Select>
+        <ChoiceSelect options={reasons} value={reason} onChange={setReason} placeholder="Choose a reason" label={label} />
       </Field>
       <Field label="More Detail" required={reason === "Other"} hint={reason === "Other" ? "Say what the reason is." : "Optional."}>
         <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a few words" />
       </Field>
-    </div>
+    </FormGrid>
   );
 }
 
@@ -262,15 +272,12 @@ function departmentsWith(current: string | undefined) {
 function AdmissionExtrasFields({ value, onChange }: { value: AdmissionExtras; onChange: (v: AdmissionExtras) => void }) {
   const set = <K extends keyof AdmissionExtras>(k: K, v: AdmissionExtras[K]) => onChange({ ...value, [k]: v });
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <FormGrid cols={2}>
       <Field label="Consulting Doctor" hl7="PV1-9">
-        <Select value={value.consulting} onChange={(e) => set("consulting", e.target.value)}>
-          <option value="">None</option>
-          {DOCTORS.map((d) => <option key={d.id} value={d.id}>{doctorName(d.id)}</option>)}
-        </Select>
+        <ChoiceSelect options={doctorOptions()} value={value.consulting} onChange={(v) => set("consulting", v)} emptyLabel="None" label="Consulting Doctor" />
       </Field>
-      <Field label="Expected Days" hint="How many days the stay is expected to last.">
-        <Input type="number" inputMode="numeric" min={1} max={365} value={value.expectedDays} onChange={(e) => set("expectedDays", e.target.value)} />
+      <Field label="Expected Stay" hint="How long the stay is expected to last.">
+        <Input type="number" inputMode="numeric" min={1} max={365} value={value.expectedDays} onChange={(e) => set("expectedDays", e.target.value)} suffix="days" />
       </Field>
       <Field label="Activity Level">
         <Select value={value.activityLevel} onChange={(e) => set("activityLevel", e.target.value)}>
@@ -296,15 +303,21 @@ function AdmissionExtrasFields({ value, onChange }: { value: AdmissionExtras; on
           {RELATIONS.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
       </Field>
-      <Field label="General Notes" className="sm:col-span-2">
-        <Textarea rows={2} className="bg-card" value={value.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything the ward should know" />
+      <Field label="General Notes" className="col-span-full">
+        <Textarea rows={2} value={value.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything the ward should know" />
       </Field>
-    </div>
+    </FormGrid>
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="mb-2 mt-5 text-sm font-semibold text-muted-foreground first:mt-0">{children}</h3>;
+/** A heading with a hairline that starts a group of fields inside a dialog. */
+function SectionTitle({ children, help }: { children: React.ReactNode; help?: string }) {
+  return (
+    <div className="mb-3 mt-6 border-b border-border pb-2 first:mt-0">
+      <h3 className="text-[0.9375rem] font-semibold text-foreground">{children}</h3>
+      {help && <p className="mt-0.5 text-xs text-muted-foreground">{help}</p>}
+    </div>
+  );
 }
 
 /* ---------- Bed picker: admit to a bed, transfer ---------- */
@@ -377,34 +390,40 @@ function BedDialog({ dlg, onClose }: { dlg: BedDlg; onClose: () => void }) {
   }
 
   const effects = ["The planned admission becomes an inpatient stay.", `Bed ${bedLabel(bedId)} becomes occupied.`, reserved && reserved !== bedId && `The reserved bed ${bedLabel(reserved)} becomes free.`];
+  const { close, guardDialog } = useGuardedClose({ bedId, extras }, onClose);
+  const blockers = [...problems, ...(bedId && !ok ? ["Pick a bed that is free."] : [])];
 
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={close}
       wide
       title="Admit Patient"
       subtitle={dev ? "Sends A01. Only a free bed, or the bed reserved for this patient, can be picked." : "Pick a bed, check the details, then confirm."}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
-          <Button variant="primary" disabled={!ok || problems.length > 0} onClick={confirm}>Admit Patient</Button>
+          <Button onClick={close}>Go Back</Button>
+          <ConfirmButton problems={blockers} onClick={confirm}>Admit Patient</ConfirmButton>
         </>
       }
     >
-      <PatientStrip patient={patient} enc={enc} />
-      {enc && <NowStrip enc={enc} extra={enc.status === "preadmit" ? [["Expected Admit Date", niceDate(enc.expectedAdmitAt)], ["Reserved Bed", enc.reservedBedId ? bedLabel(enc.reservedBedId) : "None"]] : undefined} />}
-      <RequiredNote className="mb-2" />
-      <Group label="Bed" hl7="PV1-3" required>
-        <BedGrid infos={bedInfos(state)} who={who} value={bedId} onPick={setBedId} firstWard={WARD_OF[enc?.service ?? ""]} />
-      </Group>
-      <SectionTitle>Admission Details</SectionTitle>
-      <AdmissionExtrasFields value={extras} onChange={setExtras} />
-      {bedId && problems.length === 0 ? (
-        <WhatWillHappen items={[...effects, NPHIES_NOTE.A01, "The admission details are saved in the HIS.", "You can undo this from the message that appears."]} />
-      ) : (
-        <StillNeeded items={problems} />
-      )}
+      <DialogScroll>
+        <PatientStrip patient={patient} enc={enc} />
+        {enc && <NowStrip enc={enc} extra={enc.status === "preadmit" ? [["Expected Admit Date", niceDate(enc.expectedAdmitAt)], ["Reserved Bed", enc.reservedBedId ? bedLabel(enc.reservedBedId) : "None"]] : undefined} />}
+        <RequiredNote className="mb-3" />
+        <SectionTitle help="The department's ward is listed first. Beds that cannot be used say why.">Bed</SectionTitle>
+        <Group label="Bed" hl7="PV1-3" required>
+          <BedGrid infos={bedInfos(state)} who={who} value={bedId} onPick={setBedId} firstWard={WARD_OF[enc?.service ?? ""]} />
+        </Group>
+        <SectionTitle>Admission Details</SectionTitle>
+        <AdmissionExtrasFields value={extras} onChange={setExtras} />
+        {bedId && blockers.length === 0 ? (
+          <WhatWillHappen items={[...effects, NPHIES_NOTE.A01, "The admission details are saved in the HIS.", "You can undo this from the message that appears."]} />
+        ) : (
+          <StillNeeded items={blockers} />
+        )}
+      </DialogScroll>
+      {guardDialog}
     </Dialog>
   );
 }
@@ -420,6 +439,7 @@ export function TransferDialog({ visit, onClose }: { visit: string; onClose: () 
   const [bedId, setBedId] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [note, setNote] = React.useState("");
+  const { close, guardDialog } = useGuardedClose({ service, sub, bedId, reason, note }, onClose);
   if (!enc) return null;
   const patient = state.patients.find((p) => p.id === enc.patientId);
   const who = { visit, patientId: enc.patientId };
@@ -447,15 +467,17 @@ export function TransferDialog({ visit, onClose }: { visit: string; onClose: () 
       subtitle={dev ? "Sends A02. PV1-3 is the new bed and PV1-10 the new department. The reason stays in the HIS and the audit log." : "Choose the new department and bed, say why, then confirm."}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
-          <Button variant="primary" disabled={problems.length > 0} onClick={() => { onClose(); transferPatient(visit, { bedId, service, subDepartment: sub, reason, note }); }}>Transfer Patient</Button>
+          <Button onClick={close}>Go Back</Button>
+          <ConfirmButton problems={problems} onClick={() => { onClose(); transferPatient(visit, { bedId, service, subDepartment: sub, reason, note }); }}>Transfer Patient</ConfirmButton>
         </>
       }
     >
+      <DialogScroll>
       <PatientStrip patient={patient} enc={enc} />
       <NowStrip enc={enc} extra={[["Department", serviceLabel(enc.service)], ...(enc.subDepartment ? [["Sub-Department", enc.subDepartment] as [string, string]] : [])]} />
-      <RequiredNote className="mb-2" />
-      <div className="grid gap-3 sm:grid-cols-2">
+      <RequiredNote className="mb-3" />
+      <SectionTitle>New Department</SectionTitle>
+      <FormGrid cols={2}>
         <Field label="New Department" hl7="PV1-10" required>
           <Select value={service} onChange={(e) => pickService(e.target.value)}>
             {departmentsWith(enc.service).map((d) => <option key={d.code} value={d.code}>{d.label}{d.code === enc.service ? " (current)" : ""}</option>)}
@@ -468,15 +490,13 @@ export function TransferDialog({ visit, onClose }: { visit: string; onClose: () 
             {subs.map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
         </Field>
-      </div>
-      <div className="mt-4">
-        <Group label="New Bed" hl7="PV1-3" required>
-          <BedGrid infos={bedInfos(state)} who={who} value={bedId} onPick={setBedId} firstWard={WARD_OF[service]} />
-        </Group>
-      </div>
-      <div className="mt-4">
-        <ReasonFields reasons={WARD_TRANSFER_REASONS} reason={reason} setReason={setReason} note={note} setNote={setNote} label="Reason For Transfer" />
-      </div>
+      </FormGrid>
+      <SectionTitle help="The new department's ward is listed first.">New Bed</SectionTitle>
+      <Group label="New Bed" hl7="PV1-3" required>
+        <BedGrid infos={bedInfos(state)} who={who} value={bedId} onPick={setBedId} firstWard={WARD_OF[service]} />
+      </Group>
+      <SectionTitle>Reason</SectionTitle>
+      <ReasonFields reasons={WARD_TRANSFER_REASONS} reason={reason} setReason={setReason} note={note} setNote={setNote} label="Reason For Transfer" />
       {problems.length === 0 ? (
         <WhatWillHappen
           items={[
@@ -492,6 +512,8 @@ export function TransferDialog({ visit, onClose }: { visit: string; onClose: () 
       ) : (
         <StillNeeded items={problems} />
       )}
+      </DialogScroll>
+      {guardDialog}
     </Dialog>
   );
 }
@@ -567,6 +589,7 @@ export function ConvertDialog({ visit, onClose }: { visit: string; onClose: () =
   const [reason, setReason] = React.useState("");
   const [activityLevel, setActivityLevel] = React.useState("");
   const [bedId, setBedId] = React.useState("");
+  const { close, guardDialog } = useGuardedClose({ service, sub, admissionType, condition, reason, activityLevel, bedId }, onClose);
   if (!enc) return null;
   const patient = state.patients.find((p) => p.id === enc.patientId);
   const who = { visit, patientId: enc.patientId };
@@ -583,16 +606,17 @@ export function ConvertDialog({ visit, onClose }: { visit: string; onClose: () =
       subtitle={dev ? "Sends A06. PV1-2 becomes I, PV1-3 the bed, PV1-4 the admission type, PV1-10 the department. Condition, activity level and reason stay in the HIS." : "Change this visit to an inpatient stay. Fill in the admission, pick a bed, then confirm."}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
-          <Button variant="primary" disabled={problems.length > 0} onClick={() => { onClose(); convertToInpatient(visit, input); }}>Admit Patient</Button>
+          <Button onClick={close}>Go Back</Button>
+          <ConfirmButton problems={problems} onClick={() => { onClose(); convertToInpatient(visit, input); }}>Admit Patient</ConfirmButton>
         </>
       }
     >
+      <DialogScroll>
       <PatientStrip patient={patient} enc={enc} />
       <NowStrip enc={enc} extra={[["Visit", enc.cls === "E" ? "Emergency" : "Outpatient"]]} />
-      <RequiredNote className="mb-2" />
+      <RequiredNote className="mb-3" />
       <SectionTitle>Patient Admission</SectionTitle>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <FormGrid cols={2}>
         <Field label="Department" hl7="PV1-10" required>
           <Select value={service} onChange={(e) => { setService(e.target.value); setSub(""); setBedId(""); }}>
             {ADMITTING_DEPARTMENTS.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
@@ -615,8 +639,8 @@ export function ConvertDialog({ visit, onClose }: { visit: string; onClose: () =
             {PATIENT_CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
         </Field>
-        <Field label="Date And Time" hl7="PV1-44" required>
-          <Input type="datetime-local" value={at} min={enc.admitAt} max={nowLocal()} onChange={(e) => setAt(e.target.value)} />
+        <Field group label="Date And Time" hl7="PV1-44" required>
+          <DateTimeInput value={at} min={enc.admitAt} max={nowLocal()} onChange={setAt} label="Admission date and time" />
         </Field>
         <Field label="Activity Level">
           <Select value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)}>
@@ -624,11 +648,11 @@ export function ConvertDialog({ visit, onClose }: { visit: string; onClose: () =
             {ACTIVITY_LEVELS.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
         </Field>
-        <Field label="Reason" required className="sm:col-span-2" hint={`Why this patient needs an inpatient bed. At least ${CONVERSION_REASON_MIN} characters.`}>
-          <Textarea rows={2} className="bg-card" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: needs IV antibiotics and oxygen" />
+        <Field label="Reason" required className="col-span-full" hint={`Why this patient needs an inpatient bed. At least ${CONVERSION_REASON_MIN} characters.`}>
+          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: needs IV antibiotics and oxygen" />
         </Field>
-      </div>
-      <SectionTitle>Bed</SectionTitle>
+      </FormGrid>
+      <SectionTitle help="Only beds this patient can take are listed.">Bed</SectionTitle>
       <Group label="Bed" hl7="PV1-3" required>
         <FloorBedPicker value={bedId} onPick={setBedId} who={who} firstWard={WARD_OF[service]} />
       </Group>
@@ -645,6 +669,8 @@ export function ConvertDialog({ visit, onClose }: { visit: string; onClose: () =
       ) : (
         <StillNeeded items={problems} />
       )}
+      </DialogScroll>
+      {guardDialog}
     </Dialog>
   );
 }
@@ -664,6 +690,7 @@ export function OutpatientDialog({ visit, onClose }: { visit: string; onClose: (
   const [doctorId, setDoctorId] = React.useState(enc?.attending ?? "");
   const [visitType, setVisitType] = React.useState<VisitType>("in-person");
   const [instructions, setInstructions] = React.useState("");
+  const { close, guardDialog } = useGuardedClose({ reason, note, withFollowUp, amount, unit, clinic, doctorId, visitType, instructions }, onClose);
   if (!enc) return null;
   const patient = state.patients.find((p) => p.id === enc.patientId);
   const n = Number(amount);
@@ -687,52 +714,43 @@ export function OutpatientDialog({ visit, onClose }: { visit: string; onClose: (
       subtitle={dev ? "Sends A07. The follow-up request is HIS only: it goes to the appointments desk, no message is sent for it." : "The visit stays open as an outpatient visit. You can request the clinic follow-up at the same time."}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
-          <Button variant="primary" disabled={problems.length > 0} onClick={confirm}>Change To Outpatient</Button>
+          <Button onClick={close}>Go Back</Button>
+          <ConfirmButton problems={problems} onClick={confirm}>Change To Outpatient</ConfirmButton>
         </>
       }
     >
+      <DialogScroll>
       <PatientStrip patient={patient} enc={enc} />
       <NowStrip enc={enc} />
-      <RequiredNote className="mb-2" />
+      <RequiredNote className="mb-3" />
+      <SectionTitle>Reason</SectionTitle>
       <ReasonFields reasons={CANCEL_REASONS.A07} reason={reason} setReason={setReason} note={note} setNote={setNote} label="Clinical Reason" />
-      <label className="mt-4 flex items-start gap-2 rounded-lg border border-border px-3 py-2.5 text-sm">
-        <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={withFollowUp} onChange={(e) => setWithFollowUp(e.target.checked)} />
-        <span>
-          <span className="font-medium">Request Outpatient Follow-Up</span>
-          <span className="block text-xs text-muted-foreground">The appointments desk books the clinic visit and tells the patient.</span>
-        </span>
-      </label>
+      <SectionTitle>Follow-Up</SectionTitle>
+      <CheckRow checked={withFollowUp} onChange={setWithFollowUp} hint="The appointments desk books the clinic visit and tells the patient.">Request Outpatient Follow-Up</CheckRow>
       {withFollowUp && (
-        <div className="mt-3 grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-2">
-          <Field label="Follow Up In" required hint={Number.isInteger(n) && n > 0 && n <= 365 ? `To be seen by ${fmtDate(followUpTarget(n, unit))}.` : undefined}>
-            <div className="flex gap-2">
-              <Input type="number" inputMode="numeric" min={1} max={365} value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="How many" className="w-24" />
-              <Select value={unit} onChange={(e) => setUnit(e.target.value as "days" | "weeks")} aria-label="Days or weeks">
-                <option value="days">Days</option>
-                <option value="weeks">Weeks</option>
+        <div className="mt-4">
+          <FormGrid cols={2}>
+            <Field group label="Follow Up In" required hint={Number.isInteger(n) && n > 0 && n <= 365 ? `To be seen by ${fmtDate(followUpTarget(n, unit))}.` : "A whole number, 1 or more."}>
+              <div className="grid grid-cols-[minmax(0,6rem)_auto] gap-2">
+                <Input type="number" inputMode="numeric" min={1} max={365} value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="How many" className="tabular-nums" />
+                <SegmentedControl options={[{ value: "days" as const, label: "Days" }, { value: "weeks" as const, label: "Weeks" }]} value={unit} onChange={setUnit} label="Days or weeks" className="w-auto" />
+              </div>
+            </Field>
+            <Field label="Clinic" required>
+              <ChoiceSelect options={CLINICS} value={clinic} onChange={(v) => v && setClinic(v)} label="Clinic" />
+            </Field>
+            <Field label="Doctor">
+              <ChoiceSelect options={doctorOptions()} value={doctorId} onChange={setDoctorId} emptyLabel="Any doctor in the clinic" label="Doctor" />
+            </Field>
+            <Field label="Visit Type">
+              <Select value={visitType} onChange={(e) => setVisitType(e.target.value as VisitType)}>
+                {(Object.keys(VISIT_TYPE_LABEL) as VisitType[]).map((k) => <option key={k} value={k}>{VISIT_TYPE_LABEL[k]}</option>)}
               </Select>
-            </div>
-          </Field>
-          <Field label="Clinic" required>
-            <Select value={clinic} onChange={(e) => setClinic(e.target.value)}>
-              {CLINICS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
-          </Field>
-          <Field label="Doctor">
-            <Select value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-              <option value="">Any doctor in the clinic</option>
-              {DOCTORS.map((d) => <option key={d.id} value={d.id}>{doctorName(d.id)}</option>)}
-            </Select>
-          </Field>
-          <Field label="Visit Type">
-            <Select value={visitType} onChange={(e) => setVisitType(e.target.value as VisitType)}>
-              {(Object.keys(VISIT_TYPE_LABEL) as VisitType[]).map((k) => <option key={k} value={k}>{VISIT_TYPE_LABEL[k]}</option>)}
-            </Select>
-          </Field>
-          <Field label="Instructions" className="sm:col-span-2">
-            <Textarea rows={2} className="bg-card" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="For example: bring the blood test results" />
-          </Field>
+            </Field>
+            <Field label="Instructions" className="col-span-full">
+              <Textarea rows={2} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="For example: bring the blood test results" />
+            </Field>
+          </FormGrid>
         </div>
       )}
       <WhatWillHappen
@@ -745,6 +763,8 @@ export function OutpatientDialog({ visit, onClose }: { visit: string; onClose: (
         ]}
       />
       <StillNeeded items={problems} />
+      </DialogScroll>
+      {guardDialog}
     </Dialog>
   );
 }
@@ -757,6 +777,7 @@ function ReasonDialog({ dlg, onClose }: { dlg: ReasonDlg; onClose: () => void })
   const enc = state.encounters.find((e) => e.visitNumber === dlg.visit);
   const [reason, setReason] = React.useState("");
   const [note, setNote] = React.useState("");
+  const { close, guardDialog } = useGuardedClose({ reason, note }, onClose);
   if (!enc) return null;
   const patient = state.patients.find((p) => p.id === enc.patientId);
   const inpatient = enc.cls === "I";
@@ -786,26 +807,22 @@ function ReasonDialog({ dlg, onClose }: { dlg: ReasonDlg; onClose: () => void })
       subtitle={dev ? `Sends ${dlg.event}. The reason stays in the HIS and the audit log.` : undefined}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
-          <Button
-            variant="danger"
-            disabled={problems.length > 0}
-            onClick={() => {
-              onClose();
-              sendWithReason(dlg.event, dlg.visit, reason, note);
-            }}
-          >
+          <Button onClick={close}>Go Back</Button>
+          <ConfirmButton variant="danger" problems={problems} onClick={() => { onClose(); sendWithReason(dlg.event, dlg.visit, reason, note); }}>
             {title}
-          </Button>
+          </ConfirmButton>
         </>
       }
     >
+      <DialogScroll>
       <PatientStrip patient={patient} enc={enc} />
       <NowStrip enc={enc} extra={enc.status === "preadmit" ? [["Expected Admit Date", niceDate(enc.expectedAdmitAt)], ["Reserved Bed", enc.reservedBedId ? bedLabel(enc.reservedBedId) : "None"]] : undefined} />
-      <RequiredNote className="mb-2" />
+      <RequiredNote className="mb-3" />
       <ReasonFields reasons={CANCEL_REASONS[dlg.event]} reason={reason} setReason={setReason} note={note} setNote={setNote} />
       <WhatWillHappen items={[...effects, NPHIES_NOTE[dlg.event], "The reason is saved in the audit log."]} />
       <StillNeeded items={problems} />
+      </DialogScroll>
+      {guardDialog}
     </Dialog>
   );
 }
@@ -932,10 +949,13 @@ function OutcomeFields({ outcome, setOutcome, transfer, setTransfer, death, setD
                 role="radio"
                 aria-checked={on}
                 onClick={() => setOutcome(o.id)}
-                className={cn("rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", on ? "border-admit bg-admit/12" : "border-border hover:bg-muted")}
+                className={cn(
+                  "rounded-xl border-2 bg-card px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                  on ? "border-[#032C26] dark:border-[#39EDD5]" : "border-border hover:border-foreground/30",
+                )}
               >
-                <span className="flex items-center gap-1.5 text-sm font-medium">
-                  {on && <Check className="size-4 text-admit" aria-hidden="true" />}
+                <span className="flex items-center gap-1.5 text-sm font-semibold">
+                  {on && <Check className="size-4 text-[#035D53] dark:text-[#39EDD5]" aria-hidden="true" />}
                   {o.label}
                 </span>
                 <span className="block text-xs text-muted-foreground">{o.hint}</span>
@@ -947,7 +967,9 @@ function OutcomeFields({ outcome, setOutcome, transfer, setTransfer, death, setD
       </Group>
 
       {outcome === "transfer" && (
-        <div className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 text-sm font-semibold">Transfer To Another Hospital</div>
+        <FormGrid cols={2}>
           <Field label="Receiving Hospital" required>
             <Input value={transfer.hospital} onChange={(e) => setTransfer({ ...transfer, hospital: e.target.value })} placeholder="Hospital name" />
           </Field>
@@ -966,32 +988,32 @@ function OutcomeFields({ outcome, setOutcome, transfer, setTransfer, death, setD
               {TRANSPORT_MODES.map((r) => <option key={r} value={r}>{r}</option>)}
             </Select>
           </Field>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <input type="checkbox" className="size-4 accent-primary" checked={transfer.consent} onChange={(e) => setTransfer({ ...transfer, consent: e.target.checked })} />
-            <span>The patient or family agreed to the transfer<span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span><span className="sr-only"> (required)</span></span>
-          </label>
+          <Field group label="Agreement" required className="col-span-full">
+            <CheckRow checked={transfer.consent} onChange={(v) => setTransfer({ ...transfer, consent: v })}>The patient or family agreed to the transfer</CheckRow>
+          </Field>
           {dev && (
-            <p className="text-xs text-muted-foreground sm:col-span-2">
+            <p className="col-span-full text-xs text-muted-foreground">
               Developer note: the transfer request is recorded in the HIS and not sent. There is no Ihalati integration.
             </p>
           )}
+        </FormGrid>
         </div>
       )}
 
       {outcome === "died" && (
-        <div className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-2">
-          <Field label="Date And Time Of Death" required>
-            <Input type="datetime-local" value={death.at} max={nowLocal()} onChange={(e) => setDeath({ ...death, at: e.target.value })} />
-          </Field>
-          <Field label="Certifying Doctor" required>
-            <Select value={death.certifiedBy} onChange={(e) => setDeath({ ...death, certifiedBy: e.target.value })}>
-              <option value="">Choose a doctor</option>
-              {DOCTORS.map((d) => <option key={d.id} value={d.id}>Dr. {d.given} {d.family}</option>)}
-            </Select>
-          </Field>
-          <Field label="Cause Of Death" required className="sm:col-span-2">
-            <Input value={death.cause} onChange={(e) => setDeath({ ...death, cause: e.target.value })} placeholder="Cause as written by the certifying doctor" />
-          </Field>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-3 text-sm font-semibold">Death Details</div>
+          <FormGrid cols={2}>
+            <Field group label="Date And Time Of Death" required>
+              <DateTimeInput value={death.at} max={nowLocal()} onChange={(v) => setDeath({ ...death, at: v })} label="Date and time of death" />
+            </Field>
+            <Field label="Certifying Doctor" required>
+              <ChoiceSelect options={doctorOptions()} value={death.certifiedBy} onChange={(v) => setDeath({ ...death, certifiedBy: v })} placeholder="Choose a doctor" label="Certifying Doctor" />
+            </Field>
+            <Field label="Cause Of Death" required className="col-span-full">
+              <Input value={death.cause} onChange={(e) => setDeath({ ...death, cause: e.target.value })} placeholder="Cause as written by the certifying doctor" />
+            </Field>
+          </FormGrid>
         </div>
       )}
     </>
@@ -1003,19 +1025,16 @@ function ConditionAndTime({ outcome, condition, setCondition, at, setAt, admitAt
   outcome: DischargeOutcome | ""; condition: string; setCondition: (v: string) => void; at: string; setAt: (v: string) => void; admitAt?: string;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <FormGrid cols={2}>
       {outcome !== "died" && (
         <Field label="Condition On Discharge" required>
-          <Select value={condition} onChange={(e) => setCondition(e.target.value)}>
-            <option value="">Choose a condition</option>
-            {DISCHARGE_CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </Select>
+          <ChoiceSelect options={DISCHARGE_CONDITIONS} value={condition} onChange={setCondition} placeholder="Choose a condition" label="Condition On Discharge" />
         </Field>
       )}
-      <Field label="Discharge Date And Time" hl7="PV1-45" required>
-        <Input type="datetime-local" value={at} min={admitAt} max={nowLocal()} onChange={(e) => setAt(e.target.value)} />
+      <Field group label="Discharge Date And Time" hl7="PV1-45" required>
+        <DateTimeInput value={at} min={admitAt} max={nowLocal()} onChange={setAt} label="Discharge date and time" />
       </Field>
-    </div>
+    </FormGrid>
   );
 }
 
@@ -1042,9 +1061,13 @@ function FinalDiagnosis({ coded, picked, toggle }: { coded: Dx[]; picked: Dx[]; 
               type="button"
               onClick={() => toggle(d)}
               aria-pressed={on}
-              className={cn("rounded-lg border px-3 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", on ? "border-admit bg-admit/12 text-admit" : "border-border hover:bg-muted")}
+              className={cn(
+                "inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                on ? "border-[#03C1AC] bg-[#39EDD5]/16 font-medium text-[#035D53] dark:text-[#39EDD5]" : "border-input bg-card hover:border-foreground/45 hover:bg-muted",
+              )}
             >
-              <span className="font-mono font-semibold">{d.code}</span> {d.text}
+              {on && <Check className="size-3.5 shrink-0" aria-hidden="true" />}
+              <span className="font-mono text-xs font-semibold">{d.code}</span> {d.text}
             </button>
           );
         })}
@@ -1057,7 +1080,7 @@ function FinalDiagnosis({ coded, picked, toggle }: { coded: Dx[]; picked: Dx[]; 
 function AttendantFields({ value, onChange }: { value: DischargeAttendant; onChange: (v: DischargeAttendant) => void }) {
   const set = <K extends keyof DischargeAttendant>(k: K, v: DischargeAttendant[K]) => onChange({ ...value, [k]: v });
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <FormGrid cols={2}>
       <Field label="Attendant Name">
         <Input value={value.name} onChange={(e) => set("name", e.target.value)} placeholder="Full name" autoComplete="off" />
       </Field>
@@ -1076,10 +1099,10 @@ function AttendantFields({ value, onChange }: { value: DischargeAttendant; onCha
           {ATTENDANT_ID_TYPES.map((r) => <option key={r} value={r}>{r}</option>)}
         </Select>
       </Field>
-      <Field label="ID Number" className="sm:col-span-2" hint="National ID, Iqama or passport number of the attendant.">
-        <Input value={value.idNumber} onChange={(e) => set("idNumber", e.target.value)} inputMode={value.idType === "Passport" ? "text" : "numeric"} autoComplete="off" />
+      <Field label="ID Number" className="col-span-full" hint="National ID, Iqama or passport number of the attendant.">
+        <Input value={value.idNumber} onChange={(e) => set("idNumber", e.target.value)} inputMode={value.idType === "Passport" ? "text" : "numeric"} autoComplete="off" className="font-mono" />
       </Field>
-    </div>
+    </FormGrid>
   );
 }
 
@@ -1102,30 +1125,27 @@ function ApprovalsFields({ value, onChange, defaultDoctor }: { value: DischargeA
       {value.length === 0 && <p className="mt-2 rounded-lg border border-dashed border-border px-3 py-3 text-center text-xs text-muted-foreground">No approvals added yet.</p>}
       <div className="mt-2 space-y-2">
         {value.map((a, i) => (
-          <div key={i} className="rounded-lg border border-border p-3" role="group" aria-label={`Approval ${i + 1}`}>
+          <div key={i} className="rounded-xl border border-border bg-card p-4" role="group" aria-label={`Approval ${i + 1}`}>
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground">Approval {i + 1}</span>
-              <Button size="sm" variant="ghost" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove approval ${i + 1}`}><Trash2 className="size-4" /></Button>
+              <span className="text-sm font-semibold">Approval {i + 1}</span>
+              <Button size="sm" variant="ghost" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove approval ${i + 1}`}><Trash2 className="size-4" />Remove</Button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <FormGrid cols={2}>
               <Field label="Approving Doctor" required>
-                <Select value={a.doctor} onChange={(e) => set(i, { doctor: e.target.value })}>
-                  <option value="">Choose a doctor</option>
-                  {DOCTORS.map((d) => <option key={d.id} value={d.id}>{doctorName(d.id)}</option>)}
-                </Select>
+                <ChoiceSelect options={doctorOptions()} value={a.doctor} onChange={(v) => set(i, { doctor: v })} placeholder="Choose a doctor" label="Approving Doctor" />
               </Field>
               <Field label="Doctor Role" required>
                 <Select value={a.role} onChange={(e) => set(i, { role: e.target.value })}>
                   {APPROVAL_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </Select>
               </Field>
-              <Field label="Approval Date And Time" required>
-                <Input type="datetime-local" value={a.at} max={nowLocal()} onChange={(e) => set(i, { at: e.target.value })} />
+              <Field group label="Approval Date And Time" required>
+                <DateTimeInput value={a.at} max={nowLocal()} onChange={(v) => set(i, { at: v })} label="Approval date and time" />
               </Field>
               <Field label="Remarks">
                 <Input value={a.remarks} onChange={(e) => set(i, { remarks: e.target.value })} placeholder="Optional note" />
               </Field>
-            </div>
+            </FormGrid>
           </div>
         ))}
       </div>
@@ -1166,6 +1186,10 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
   const [ambulance, setAmbulance] = React.useState(false);
   const [approvals, setApprovals] = React.useState<DischargeApproval[]>([]);
   const [tab, setTab] = React.useState<TabId>("disposition");
+  const { close, guardDialog } = useGuardedClose(
+    { outcome, picked, transfer, death: { ...death, at: "" }, override, overrideReason, condition, attendant, summary, instructions, educatedBy, ambulance, approvals },
+    onClose,
+  );
   if (!enc) return null;
   const patient = state.patients.find((p) => p.id === enc.patientId);
   const inpatient = enc.cls === "I";
@@ -1200,21 +1224,18 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
 
   const clearanceBlock = clearances && (
     <div>
-      <div className="text-sm font-medium">Discharge Clearances</div>
-      <div className="mt-1.5"><ClearanceChips enc={enc} /></div>
+      <SectionTitle help="All four are needed before an inpatient can go home.">Discharge Clearances</SectionTitle>
+      <ClearanceChips enc={enc} />
       {missing.length > 0 && (
-        <div className="mt-2 rounded-lg border border-warn/50 bg-warn/10 px-3 py-2.5 text-sm">
-          <div className="flex items-center gap-1.5 font-semibold text-warn"><TriangleAlert className="size-4" aria-hidden="true" /> Discharge is blocked</div>
+        <div className="mt-3 rounded-xl border border-warn/50 border-l-4 border-l-warn bg-card px-4 py-3 text-sm">
+          <div className="flex items-center gap-1.5 font-semibold text-warn"><TriangleAlert className="size-4" aria-hidden="true" /> Discharge Is Blocked</div>
           <p className="mt-1">Still waiting for:</p>
-          <ul className="list-disc pl-5">
+          <ul className="list-disc ps-5">
             {clearanceList(enc).filter((c) => !c.done).map((c) => <li key={c.key}>{c.label} clearance, given by the {c.who.toLowerCase()}</li>)}
           </ul>
-          <label className="mt-2 flex items-center gap-2">
-            <input type="checkbox" className="size-4 accent-primary" checked={override} onChange={(e) => setOverride(e.target.checked)} />
-            <span>Discharge without these clearances</span>
-          </label>
+          <CheckRow className="mt-3" tone="warn" checked={override} onChange={setOverride} hint="Only when the patient must leave now.">Discharge without these clearances</CheckRow>
           {override && (
-            <Field label="Reason For Override" required className="mt-2" hint="Your name, the missing clearances and this reason are written to the audit log.">
+            <Field label="Reason For Override" required className="mt-3" hint={`Your name, the missing clearances and this reason are written to the audit log. At least ${OVERRIDE_MIN} characters.`}>
               <Input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Why the patient must be discharged now" />
             </Field>
           )}
@@ -1227,97 +1248,115 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
   const conditionFields = <ConditionAndTime outcome={outcome} condition={condition} setCondition={setCondition} at={at} setAt={setAt} admitAt={enc.admitAt} />;
   const setSum = <K extends keyof DischargeSummary>(k: K, v: string) => setSummary((s) => ({ ...s, [k]: v }));
 
+  const tabDone: Partial<Record<TabId, boolean>> = {
+    disposition: first.length === 0,
+    clinical: !!(summary.reasonForAdmission || summary.course || summary.findings),
+    followup: approvalIssues.length === 0 && !!(instructions || educatedBy),
+  };
+  const tabIndex = TAB_IDS.indexOf(tab);
+
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={close}
       wide
       title="Discharge Patient"
-      subtitle={dev ? "Sends A03. The outcome sets PV1-36 and the discharge time PV1-45. A03 needs at least one diagnosis (DG1). Everything else is kept in the HIS." : inpatient ? "Fill in each tab, check what will happen, then confirm." : "Choose the outcome first, then check what will happen."}
+      subtitle={dev ? "Sends A03. The outcome sets PV1-36 and the discharge time PV1-45. A03 needs at least one diagnosis (DG1). Everything else is kept in the HIS." : inpatient ? "Work through the four tabs, check what will happen, then confirm." : "Choose the outcome first, then check what will happen."}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
-          <Button variant="primary" disabled={problems.length > 0} onClick={confirm}>Discharge Patient</Button>
+          <Button onClick={close}>Go Back</Button>
+          <ConfirmButton problems={problems} onClick={confirm}>Discharge Patient</ConfirmButton>
         </>
       }
     >
+      <DialogScroll>
       <PatientStrip patient={patient} enc={enc} />
       <NowStrip enc={enc} />
-      <RequiredNote className="mb-2" />
+      <RequiredNote className="mb-3" />
 
       {!inpatient ? (
-        <div className="space-y-4">
-          {outcomeFields}
+        <div>
+          <SectionTitle>Outcome</SectionTitle>
+          <div className="space-y-4">{outcomeFields}</div>
+          <SectionTitle>Discharge</SectionTitle>
           {conditionFields}
-          <FinalDiagnosis coded={coded} picked={picked} toggle={toggle} />
-          <Field label="Discharge Instructions" hint="Optional. What the patient should do at home and when to come back.">
-            <Textarea rows={2} className="bg-card" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="For example: rest, drink fluids, come back if the fever lasts more than three days" />
+          <div className="mt-5"><FinalDiagnosis coded={coded} picked={picked} toggle={toggle} /></div>
+          <Field label="Discharge Instructions" className="mt-5" hint="Optional. What the patient should do at home and when to come back.">
+            <Textarea rows={2} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="For example: rest, drink fluids, come back if the fever lasts more than three days" />
           </Field>
         </div>
       ) : (
         <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-          <TabsList className="h-auto w-full flex-wrap justify-start gap-1" aria-label="Discharge sections">
-            {TAB_IDS.map((id) => (
-              <TabsTrigger key={id} value={id} className="h-8 flex-none px-2.5 text-xs sm:text-sm">
-                {TAB_LABEL[id]}
-                {!!tabIssues[id] && <span className="rounded-full bg-warn/20 px-1.5 text-xs font-semibold text-warn" aria-label={`${tabIssues[id]} still needed`}>{tabIssues[id]}</span>}
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-4" aria-label="Discharge sections">
+            {TAB_IDS.map((id, i) => (
+              <TabsTrigger key={id} value={id} className="h-auto min-h-9 justify-start gap-1.5 whitespace-normal rounded-lg px-2.5 py-1.5 text-left text-xs leading-snug sm:text-[0.8125rem]">
+                <span className={cn(
+                  "flex size-5 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold tabular-nums",
+                  tabIssues[id] ? "bg-warn/20 text-warn" : tabDone[id] ? "bg-[#39EDD5]/25 text-[#035D53] dark:text-[#39EDD5]" : "bg-card text-muted-foreground",
+                )}>
+                  {tabIssues[id] ? tabIssues[id] : tabDone[id] ? <Check className="size-3" aria-hidden="true" /> : i + 1}
+                </span>
+                <span className="min-w-0">{TAB_LABEL[id]}</span>
+                {!!tabIssues[id] && <span className="sr-only">, {tabIssues[id]} still needed</span>}
               </TabsTrigger>
             ))}
           </TabsList>
 
-          <TabsContent value="disposition" className="space-y-4 pt-2">
-            {outcomeFields}
+          <TabsContent value="disposition" className="pt-3">
+            <SectionTitle>Outcome</SectionTitle>
+            <div className="space-y-4">{outcomeFields}</div>
+            <SectionTitle>Discharge</SectionTitle>
             {conditionFields}
-            <FinalDiagnosis coded={coded} picked={picked} toggle={toggle} />
-            <div>
-              <SectionTitle>Patient Attendant</SectionTitle>
-              <AttendantFields value={attendant} onChange={setAttendant} />
-            </div>
+            <div className="mt-5"><FinalDiagnosis coded={coded} picked={picked} toggle={toggle} /></div>
+            <SectionTitle help="The person who takes the patient home. Optional.">Patient Attendant</SectionTitle>
+            <AttendantFields value={attendant} onChange={setAttendant} />
             {clearanceBlock}
           </TabsContent>
 
-          <TabsContent value="clinical" className="space-y-3 pt-2">
-            <p className="text-xs text-muted-foreground">Filled from the chart where it can be. Edit before you discharge.</p>
-            <Field label="Reason For Admission">
-              <Textarea rows={2} className="bg-card" value={summary.reasonForAdmission} onChange={(e) => setSum("reasonForAdmission", e.target.value)} placeholder="The presenting complaints at admission" />
-            </Field>
-            <Field label="Admitting Diagnosis">
-              <Textarea rows={2} className="bg-card" value={summary.admittingDiagnosis} onChange={(e) => setSum("admittingDiagnosis", e.target.value)} placeholder="The diagnosis recorded at admission" />
-            </Field>
-            <Field label="Procedures Done">
-              <Textarea rows={2} className="bg-card" value={summary.procedures} onChange={(e) => setSum("procedures", e.target.value)} placeholder="Surgical or diagnostic procedures during the stay" />
-            </Field>
-            <Field label="Key Results And Findings">
-              <Textarea rows={2} className="bg-card" value={summary.findings} onChange={(e) => setSum("findings", e.target.value)} placeholder="Important lab and imaging results" />
-            </Field>
-            <Field label="Hospital Course">
-              <Textarea rows={3} className="bg-card" value={summary.course} onChange={(e) => setSum("course", e.target.value)} placeholder="How the stay went and the treatment given" />
-            </Field>
+          <TabsContent value="clinical" className="pt-3">
+            <SectionTitle help="Filled from the chart where it can be. Edit before you discharge.">Clinical Summary</SectionTitle>
+            <div className="space-y-5">
+              <Field label="Reason For Admission">
+                <Textarea rows={2} value={summary.reasonForAdmission} onChange={(e) => setSum("reasonForAdmission", e.target.value)} placeholder="The presenting complaints at admission" />
+              </Field>
+              <Field label="Admitting Diagnosis">
+                <Textarea rows={2} value={summary.admittingDiagnosis} onChange={(e) => setSum("admittingDiagnosis", e.target.value)} placeholder="The diagnosis recorded at admission" />
+              </Field>
+              <Field label="Procedures Done">
+                <Textarea rows={2} value={summary.procedures} onChange={(e) => setSum("procedures", e.target.value)} placeholder="Surgical or diagnostic procedures during the stay" />
+              </Field>
+              <Field label="Key Results And Findings">
+                <Textarea rows={2} value={summary.findings} onChange={(e) => setSum("findings", e.target.value)} placeholder="Important lab and imaging results" />
+              </Field>
+              <Field label="Hospital Course">
+                <Textarea rows={3} value={summary.course} onChange={(e) => setSum("course", e.target.value)} placeholder="How the stay went and the treatment given" />
+              </Field>
+            </div>
           </TabsContent>
 
-          <TabsContent value="diagnostics" className="pt-2">
+          <TabsContent value="diagnostics" className="pt-3">
             <DiagnosticsTab visit={visit} />
           </TabsContent>
 
-          <TabsContent value="followup" className="space-y-4 pt-2">
-            <Field label="Discharge Instructions" hint="Next visits, activities to avoid and warning signs.">
-              <Textarea rows={3} className="bg-card" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="For example: no heavy lifting for two weeks, come back if the wound is red or the fever returns" />
-            </Field>
-            <Field label="Education Given By" hint="The staff member who explained the instructions to the patient or attendant.">
-              <Select value={educatedBy} onChange={(e) => setEducatedBy(e.target.value)}>
-                <option value="">Choose a staff member</option>
-                {EDUCATORS.map((n) => <option key={n} value={n}>{n}</option>)}
-              </Select>
-            </Field>
-            <label className="flex items-start gap-2 rounded-lg border border-border px-3 py-2.5 text-sm">
-              <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={ambulance} onChange={(e) => setAmbulance(e.target.checked)} />
-              <span>
-                <span className="font-medium">Request Ambulance Transport</span>
-                <span className="block text-xs text-muted-foreground">Tick when the patient needs assisted transport to go home.</span>
-              </span>
-            </label>
+          <TabsContent value="followup" className="pt-3">
+            <SectionTitle>Instructions</SectionTitle>
+            <div className="space-y-5">
+              <Field label="Discharge Instructions" hint="Next visits, activities to avoid and warning signs.">
+                <Textarea rows={3} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="For example: no heavy lifting for two weeks, come back if the wound is red or the fever returns" />
+              </Field>
+              <Field label="Education Given By" hint="The staff member who explained the instructions to the patient or attendant.">
+                <ChoiceSelect options={EDUCATORS} value={educatedBy} onChange={setEducatedBy} placeholder="Choose a staff member" label="Education Given By" />
+              </Field>
+              <CheckRow checked={ambulance} onChange={setAmbulance} hint="Tick when the patient needs assisted transport to go home.">Request Ambulance Transport</CheckRow>
+            </div>
+            <SectionTitle>Approvals</SectionTitle>
             <ApprovalsFields value={approvals} onChange={setApprovals} defaultDoctor={enc.attending} />
           </TabsContent>
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+            {tabIndex > 0 ? <Button size="sm" onClick={() => setTab(TAB_IDS[tabIndex - 1])}>← Back: {TAB_LABEL[TAB_IDS[tabIndex - 1]]}</Button> : <span />}
+            {tabIndex < TAB_IDS.length - 1 && <Button size="sm" onClick={() => setTab(TAB_IDS[tabIndex + 1])}>Next: {TAB_LABEL[TAB_IDS[tabIndex + 1]]} →</Button>}
+          </div>
         </Tabs>
       )}
 
@@ -1337,6 +1376,8 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
         />
       )}
       <StillNeeded items={problems} />
+      </DialogScroll>
+      {guardDialog}
     </Dialog>
   );
 }
@@ -1406,9 +1447,9 @@ function ClearancesDialog({ dlg, onClose }: { dlg: ClearanceDlg; onClose: () => 
                 {!allowed && <div className="text-xs text-muted-foreground">Only a {c.who.toLowerCase()} can {c.done ? "withdraw" : "give"} this.</div>}
               </div>
               {open && (
-                <Button size="sm" variant={c.done ? "secondary" : "primary"} disabled={!allowed} onClick={() => setClearance(enc.visitNumber, c.key, !c.done)}>
+                <ReasonButton size="sm" variant={c.done ? "secondary" : "primary"} reason={allowed ? undefined : `Only a ${c.who.toLowerCase()} can ${c.done ? "withdraw" : "give"} this clearance.`} onClick={() => setClearance(enc.visitNumber, c.key, !c.done)}>
                   {c.done ? `Withdraw ${c.label} Clearance` : `Give ${c.label} Clearance`}
-                </Button>
+                </ReasonButton>
               )}
             </li>
           );
@@ -1447,24 +1488,19 @@ function LeftWardDialog({ dlg, onClose }: { dlg: LeftDlg; onClose: () => void })
       footer={
         <>
           <Button onClick={onClose}>Go Back</Button>
-          <Button
-            variant="primary"
-            disabled={!!problem}
-            onClick={() => {
-              onClose();
-              recordLeftWard(dlg.visit, at);
-            }}
-          >
+          <ConfirmButton problems={problem ? [problem] : []} onClick={() => { onClose(); recordLeftWard(dlg.visit, at); }}>
             Record Patient Left
-          </Button>
+          </ConfirmButton>
         </>
       }
     >
       <PatientStrip patient={patient} enc={enc} />
       <NowStrip enc={enc} extra={[["Discharged", niceDate(ordered)], ["Outcome", enc.discharge ? outcomeDef(enc.discharge.outcome).label : "None"]]} />
-      <Field label="Time The Patient Left" required>
-        <Input type="datetime-local" value={at} min={ordered} max={nowLocal()} onChange={(e) => setAt(e.target.value)} />
-      </Field>
+      <FormGrid cols={2}>
+        <Field group label="Time The Patient Left" required>
+          <DateTimeInput value={at} min={ordered} max={nowLocal()} onChange={setAt} label="Time the patient left" />
+        </Field>
+      </FormGrid>
       <WhatWillHappen
         items={[
           bedId && `Bed ${bedLabel(bedId)} goes to cleaning. It is free after someone marks it ready.`,
@@ -1493,16 +1529,9 @@ function BedServiceDialog({ dlg, onClose }: { dlg: BedServiceDlg; onClose: () =>
       footer={
         <>
           <Button onClick={onClose}>Go Back</Button>
-          <Button
-            variant="danger"
-            disabled={!!problem}
-            onClick={() => {
-              onClose();
-              setBedOutOfService(dlg.bedId, reason, note);
-            }}
-          >
+          <ConfirmButton variant="danger" problems={problem ? [problem] : []} onClick={() => { onClose(); setBedOutOfService(dlg.bedId, reason, note); }}>
             Take Out Of Service
-          </Button>
+          </ConfirmButton>
         </>
       }
     >
@@ -1659,68 +1688,52 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
     );
   });
 
+  const stillNeeded = [!patientId && "Choose the patient.", needBed && !bedId && "Choose a bed.", !bedOk && "The chosen bed is not available. Choose another bed.", dlg.type === "A05" && !expected && "Enter the expected admit date.", ...extraIssues].filter((x): x is string => !!x);
+  const { close, guardDialog } = useGuardedClose({ patientId, attending, service, reason, bedId, admitClass, method, extras, dx }, onClose);
+
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={close}
       wide
       title={titles[dlg.type]}
       subtitle={dev ? subs[dlg.type] : undefined}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
-          <Button variant="primary" disabled={!ready} onClick={submit}>
+          <Button onClick={close}>Go Back</Button>
+          <ConfirmButton problems={ready ? [] : stillNeeded.length ? stillNeeded : ["Check the details above."]} onClick={submit}>
             {titles[dlg.type]}
-          </Button>
+          </ConfirmButton>
         </>
       }
     >
+      <DialogScroll>
       <PatientStrip patient={patient} />
       {pre && <NowStrip enc={pre} extra={[["Expected Admit Date", niceDate(pre.expectedAdmitAt)], ["Reserved Bed", pre.reservedBedId ? bedLabel(pre.reservedBedId) : "None"]]} />}
-      <RequiredNote className="mb-2" />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Patient" hl7="PID-3" required className="sm:col-span-2">
-          <div className="flex gap-2">
-            <Select value={patientId} onChange={(e) => pickPatient(e.target.value)} aria-label="Patient">
-              <option value="">Select a patient</option>
-              {state.patients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {patientName(p)} ({p.mrn})
-                </option>
-              ))}
-            </Select>
-            <Button onClick={onNewPatient} title="Register a new patient">
+      <RequiredNote className="mb-3" />
+      <FormGrid cols={2}>
+        <Field group label="Patient" hl7="PID-3" required className="col-span-full" hint="Type a name or file number to search.">
+          <div className="flex flex-wrap gap-2">
+            <div className="min-w-0 flex-1 basis-56">
+              <ChoiceSelect options={state.patients.map((p) => ({ value: p.id, label: `${patientName(p)} (${p.mrn})` }))} value={patientId} onChange={pickPatient} placeholder="Select a patient" label="Patient" />
+            </div>
+            <Button className="h-10" onClick={onNewPatient} title="Register a new patient">
               <UserPlus className="size-4" />
               New Patient
             </Button>
           </div>
         </Field>
         <Field label="Doctor" hl7="PV1-7" required>
-          <Select value={attending} onChange={(e) => setAttending(e.target.value)}>
-            {DOCTORS.map((d) => (
-              <option key={d.id} value={d.id}>
-                Dr. {d.given} {d.family}
-              </option>
-            ))}
-          </Select>
+          <ChoiceSelect options={doctorOptions()} value={attending} onChange={(v) => v && setAttending(v)} label="Doctor" />
         </Field>
         {dlg.type === "A04" && (
           <Field label="Department" hl7="PV1-10" required>
-            <Select value={service} onChange={(e) => setService(e.target.value)}>
-              {SERVICES.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.label}
-                </option>
-              ))}
-            </Select>
+            <ChoiceSelect options={SERVICES.map((s) => ({ value: s.code, label: s.label }))} value={service} onChange={(v) => v && setService(v)} label="Department" />
           </Field>
         )}
         {dlg.type !== "A04" && (
-          <Field label="Patient Class" hl7="PV1-2" required>
-            <Select value={admitClass} onChange={(e) => setAdmitClass(e.target.value as "I" | "O")} aria-label="Patient class">
-              <option value="I">Inpatient</option>
-              <option value="O">Outpatient</option>
-            </Select>
+          <Field group label="Patient Class" hl7="PV1-2" required>
+            <SegmentedControl options={[{ value: "I" as const, label: "Inpatient" }, { value: "O" as const, label: "Outpatient" }]} value={admitClass} onChange={setAdmitClass} label="Patient class" />
           </Field>
         )}
         <Field label="Admission Method" hl7="PV1-4" required>
@@ -1749,28 +1762,28 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
           </Field>
         )}
         {dlg.type === "A05" && (
-          <Field label="Expected Admit Date" hl7="PV2-8" required>
-            <Input type="datetime-local" value={expected} onChange={(e) => setExpected(e.target.value)} />
+          <Field group label="Expected Admit Date" hl7="PV2-8" required>
+            <DateTimeInput value={expected} onChange={setExpected} label="Expected admit date" />
           </Field>
         )}
-        <Field label="Reason for Visit" hl7="PV2-12" className="sm:col-span-2">
+        <Field label="Reason For Visit" hl7="PV2-12" className="col-span-full">
           <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Type a reason, or tap one below" />
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {COMPLAINT_SAMPLES.map((c) => (
-              <button key={c.code} type="button" onClick={() => setReason(c.text)} className="rounded-md bg-muted px-2 py-1 text-xs hover:bg-accent">
-                {c.text}
-              </button>
-            ))}
-          </div>
         </Field>
+        <div className="col-span-full -mt-3 flex flex-wrap gap-1.5">
+          {COMPLAINT_SAMPLES.map((c) => (
+            <button key={c.code} type="button" onClick={() => setReason(c.text)} className="rounded-full border border-border bg-card px-2.5 py-1 text-xs hover:border-foreground/45 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {c.text}
+            </button>
+          ))}
+        </div>
         {admit && (
-          <div className="sm:col-span-2">
+          <div className="col-span-full">
             <Group label="Admitting Diagnosis" hl7="DG1" hint={pre?.dx.length ? `The pre-admission already has ${pre.dx.map((d) => d.code).join(", ")}. A new code is added to it.` : "Optional. ICD-10-AM. It goes in the message."}>
               <DiagnosisSearch value={dx} onChange={setDx} />
             </Group>
           </div>
         )}
-      </div>
+      </FormGrid>
       {admit && (
         <>
           <SectionTitle>Admission Details</SectionTitle>
@@ -1778,7 +1791,9 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
         </>
       )}
       {patientId && <WhatWillHappen items={[...effects, admit && dx && `The admitting diagnosis ${dx.code} is sent in the message.`, NPHIES_NOTE[dlg.type], admit && "The admission details are saved in the HIS.", "You can undo this from the message that appears."]} />}
-      <StillNeeded items={[!patientId && "Choose the patient.", needBed && !bedId && "Choose a bed.", !bedOk && "The chosen bed is not available. Choose another bed.", ...extraIssues].filter((x): x is string => !!x)} />
+      <StillNeeded items={stillNeeded} />
+      </DialogScroll>
+      {guardDialog}
     </Dialog>
   );
 }
@@ -1826,6 +1841,7 @@ export function MoveVisitDialog({ visit, onClose }: { visit: string; onClose: ()
   const [note, setNote] = React.useState("");
   const [review, setReview] = React.useState(false);
   const listId = React.useId();
+  const { close, guardDialog } = useGuardedClose({ toId, reason, note }, onClose);
   if (!enc) return null;
   const from = state.patients.find((p) => p.id === enc.patientId);
   const to = state.patients.find((p) => p.id === toId);
@@ -1853,7 +1869,7 @@ export function MoveVisitDialog({ visit, onClose }: { visit: string; onClose: ()
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={close}
       wide
       title="Move Visit"
       subtitle={dev ? "Sends A45 (ADT_A45). PID is the correct patient; MRG carries the wrong patient's identifiers; PV1 the visit. Audited." : "Use this when the visit was opened on the wrong patient. The visit and everything in it moves to the right file."}
@@ -1861,16 +1877,17 @@ export function MoveVisitDialog({ visit, onClose }: { visit: string; onClose: ()
         review ? (
           <>
             <Button onClick={() => setReview(false)}>Back To Edit</Button>
-            <Button variant="danger" disabled={problems.length > 0} onClick={() => { onClose(); moveVisit(visit, toId, reason, note); }}>Move Visit</Button>
+            <ConfirmButton variant="danger" problems={problems} onClick={() => { onClose(); moveVisit(visit, toId, reason, note); }}>Move Visit</ConfirmButton>
           </>
         ) : (
           <>
-            <Button onClick={onClose}>Go Back</Button>
-            <Button variant="primary" disabled={problems.length > 0} onClick={() => setReview(true)}>Review Move</Button>
+            <Button onClick={close}>Go Back</Button>
+            <ConfirmButton problems={problems} onClick={() => setReview(true)}>Review Move</ConfirmButton>
           </>
         )
       }
     >
+      <DialogScroll>
       <div className="mb-4 rounded-lg border border-border px-3 py-2.5 text-sm" role="group" aria-label="Visit">
         <div className="text-xs font-semibold text-muted-foreground">Visit</div>
         <div className="mt-0.5 font-medium">
@@ -1956,6 +1973,8 @@ export function MoveVisitDialog({ visit, onClose }: { visit: string; onClose: ()
       ) : (
         <StillNeeded items={problems} />
       )}
+      </DialogScroll>
+      {guardDialog}
     </Dialog>
   );
 }

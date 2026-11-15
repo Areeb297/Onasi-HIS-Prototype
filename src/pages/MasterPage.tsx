@@ -30,8 +30,15 @@ function Cell({ c, v }: { c: MasterColumn; v: Row[string] | undefined }) {
       return <span className="font-mono text-xs whitespace-nowrap">{String(v)}</span>;
     case "date":
       return <span className="whitespace-nowrap">{fmtDate(String(v)) || String(v)}</span>;
+    case "number": {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return <>{String(v)}</>;
+      // Money gets two decimals; counts get thousands separators.
+      const money = /price|sar|amount|fee|cost|tariff|charge|balance/i.test(`${c.key} ${c.label}`);
+      return <>{n.toLocaleString("en-US", money ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumFractionDigits: 2 })}</>;
+    }
     default:
-      return <>{String(v)}</>;
+      return <span className="inline-block max-w-72 truncate align-bottom" title={String(v)}>{String(v)}</span>;
   }
 }
 
@@ -95,7 +102,7 @@ function MasterList({ def, dev }: { def: MasterDef; dev: boolean }) {
       const v = r[c.key];
       return c.type === "number" && v !== "" && v !== undefined ? Number(v) : (v as string | boolean | undefined);
     },
-    className: cn(n === 0 && "font-medium", c.type === "mono" && "whitespace-nowrap"),
+    className: cn("whitespace-nowrap", n === 0 && "font-medium"),
   }));
   const list = useList({
     id: `master:${def.id}`,
@@ -111,8 +118,8 @@ function MasterList({ def, dev }: { def: MasterDef; dev: boolean }) {
   const actions = ({ r, i }: { r: Row; i: number }): RowAction[] =>
     editable ? [
       { id: "edit", label: "Edit", icon: <Pencil />, onClick: () => setEdit({ index: i, row: r }) },
-      { id: "delete", label: "Delete", icon: <Trash2 />, danger: true, onClick: () => setRemoving([i]) },
       { id: "copy", label: "Duplicate", icon: <CopyPlus />, onClick: () => { const key = keyColumn(def); setEdit({ index: null, row: key ? { ...r, [key.key]: "" } : { ...r } }); } },
+      { id: "delete", label: "Delete", icon: <Trash2 />, danger: true, separate: true, onClick: () => setRemoving([i]) },
     ] : [];
 
   const [first, second, third] = listed;

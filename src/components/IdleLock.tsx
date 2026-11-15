@@ -37,7 +37,7 @@ export function IdleLock() {
         <p className="mt-1 text-sm text-muted-foreground">The screen locked after {idleMinutes} minutes without activity. Patient information is hidden.</p>
         <p className="mt-3 text-sm">Signed in as <strong>{user.name}</strong></p>
         <Button variant="primary" className="mt-4 w-full" onClick={unlockScreen}>Unlock</Button>
-        <p className="mt-2 text-xs text-muted-foreground">Demo only. A real system asks for your password or single sign-on.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Demo data only. Everything here stays in this browser. Do not enter real patient information.</p>
       </div>
     </div>
   );

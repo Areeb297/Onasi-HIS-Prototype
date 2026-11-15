@@ -160,11 +160,11 @@ export function Segmented<V extends string>({
   full?: boolean;
 }) {
   if (!options.some((o) => o.disabled || o.title)) {
-    return <SegmentedControl label={label} value={value} options={options.map((o) => ({ value: o.value, label: o.label }))} onChange={onChange} disabled={disabled} className={cn(full && "sm:w-full [&>button]:sm:flex-1", className)} />;
+    return <SegmentedControl label={label} value={value} options={options.map((o) => ({ value: o.value, label: o.label }))} onChange={onChange} disabled={disabled} className={cn(full ? "sm:w-full [&>button]:sm:flex-1" : "sm:self-start", className)} />;
   }
   // Same look as the shared control, with single options that can be switched off.
   return (
-    <div role="radiogroup" aria-label={label} className={cn("inline-flex w-full max-w-full rounded-lg border border-input bg-card p-0.5 shadow-xs dark:bg-background", full ? "sm:w-full" : "sm:w-auto", disabled && "opacity-60", className)}>
+    <div role="radiogroup" aria-label={label} className={cn("inline-flex w-full max-w-full rounded-lg border border-input bg-card p-0.5 shadow-xs dark:bg-background", full ? "sm:w-full" : "sm:w-auto sm:self-start", disabled && "opacity-60", className)}>
       {options.map((o) => {
         const on = o.value === value;
         return (

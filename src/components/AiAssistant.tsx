@@ -10,12 +10,12 @@ import { OutputCard } from "@/components/ai/OutputCard";
 import { cn } from "@/components/ui/primitives";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
-import { runCds } from "@/lib/ai/cds";
 import { fullName } from "@/lib/ai/context";
 import { helpText, ruleEngine, type AiOutput, type UseCaseId } from "@/lib/ai/engine";
 import { onOpenAssistant } from "@/lib/ai/launcher";
 import { auditSuggest, buildContext, visitFromHash } from "@/lib/ai/live";
 import { audit } from "@/lib/audit";
+import { chartChecks, checkCounts } from "@/lib/chart-review";
 import { useDevMode } from "@/lib/devmode";
 import type { Encounter, Patient } from "@/lib/model";
 import { useRoute } from "@/lib/router";
@@ -65,7 +65,8 @@ export function AiAssistant() {
   // Number of safety checks waiting on the open chart. Shown on the launcher.
   const checks = React.useMemo(() => {
     if (!enc || !patient || restricted) return 0;
-    return runCds(buildContext(enc, patient)).filter((f) => f.level !== "info").length;
+    // The same list and count as Needs Attention on the chart overview, so the two numbers agree.
+    return checkCounts(chartChecks(enc, patient)).toAct;
   }, [enc, patient, restricted]);
 
   React.useEffect(() => {

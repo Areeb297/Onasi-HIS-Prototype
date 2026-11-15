@@ -3,6 +3,7 @@ import { AlertTriangle, Check, MessageSquarePlus, PenLine, Stethoscope, XCircle 
 import { Dialog } from "@/components/Dialog";
 import { EmptyState, EntrySheet, ErrorSummary, FormField, FormGrid, RowMenu, Segmented, TextArea, useValidation } from "@/components/emr/entry-ui";
 import { Badge, Button, Card, CardHeader, Input, RequiredNote, Select } from "@/components/ui/primitives";
+import { fmtShort } from "@/lib/format";
 import {
   CONSULT_LABEL, SPECIALTIES, URGENCY_LABEL, acceptConsult, answerConsult, chartFindings, closeConsult, consultTimes, consultsOf, minutesText, requestConsult,
   useCareRequests, type Consult, type ConsultStatus, type Urgency,
@@ -15,7 +16,7 @@ import { pushToast } from "@/lib/toast";
 
 const STATUS_TONE: Record<ConsultStatus, "warn" | "info" | "ok" | "neutral"> = { requested: "warn", accepted: "info", seen: "ok", closed: "neutral" };
 const URGENCY_TONE: Record<Urgency, "neutral" | "warn" | "danger"> = { routine: "neutral", urgent: "warn", emergency: "danger" };
-const dateTime = (t: string) => new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const dateTime = (t: string) => fmtShort(t);
 
 function useNow(everyMs = 30_000): number {
   const [now, setNow] = React.useState(() => Date.now());

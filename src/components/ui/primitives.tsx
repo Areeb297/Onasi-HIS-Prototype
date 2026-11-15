@@ -68,7 +68,7 @@ export const inputBase =
 /** The outline of an input that carries a unit, drawn on a wrapper so the unit sits inside the box. */
 const groupBase =
   "flex h-[var(--field-h,2.25rem)] w-full min-w-0 items-center rounded-lg border border-input bg-card text-sm text-foreground shadow-xs transition-[border-color,box-shadow] dark:bg-background " +
-  "hover:border-foreground/45 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring " +
+  "hover:border-foreground/45 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-[color:var(--ring)] " +
   "has-[input[aria-invalid=true]]:border-destructive has-[input:disabled]:border-border has-[input:disabled]:bg-muted has-[input:disabled]:shadow-none";
 
 type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "prefix"> & {
@@ -86,7 +86,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className
       {prefix !== undefined && <span className="shrink-0 ps-3 text-sm text-muted-foreground" aria-hidden="true">{prefix}</span>}
       <input
         ref={ref}
-        className="h-full w-full min-w-0 flex-1 rounded-lg bg-transparent px-3 text-inherit outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed disabled:text-foreground/85 dark:[color-scheme:dark]"
+        className={cn(
+          // The outline is drawn on the box around the input and its unit, so the input itself has none (the ! beats the global :focus-visible rule).
+          "h-full w-full min-w-0 flex-1 rounded-lg bg-transparent px-3 text-inherit outline-none! placeholder:text-muted-foreground/80 disabled:cursor-not-allowed disabled:text-foreground/85 dark:[color-scheme:dark]",
+          // No spin buttons next to a unit: they would sit between the number and the unit.
+          "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+          prefix !== undefined && "ps-2",
+        )}
         {...props}
         {...aria}
       />

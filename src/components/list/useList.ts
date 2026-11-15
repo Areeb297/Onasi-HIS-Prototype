@@ -1,7 +1,8 @@
 import * as React from "react";
 import { downloadText } from "@/components/ui/code-block";
 import { audit } from "@/lib/audit";
-import { usePrefs, type Density } from "@/lib/prefs";
+import type { Density } from "@/lib/prefs";
+import { useSession } from "@/lib/session";
 import {
   activeFilters, applyFilters, csvFileName, matchesQuery, nextSort, paginate, setFilter as setFilterValue, sortRows, toCsv, toggleAll,
   type CellValue, type FilterDef, type FilterValues, type PageInfo, type SortState,
@@ -46,11 +47,29 @@ export interface ListOptions<T> {
 
 interface Saved {
   pageSize?: number;
-  density?: Density;
   hidden?: string[];
+  widths?: Record<string, number>;
 }
 
 const storeKey = (id: string) => `onasi-list-v1:${id}`;
+/** Row density is one choice per user, for every list. Compact is the default. */
+const densityKey = (user: string) => `onasi-list-density-v1:${user}`;
+function loadDensity(user: string): Density {
+  try {
+    return localStorage.getItem(densityKey(user)) === "comfortable" ? "comfortable" : "compact";
+  } catch {
+    return "compact";
+  }
+}
+const densityListeners = new Set<() => void>();
+function saveDensity(user: string, d: Density) {
+  try {
+    localStorage.setItem(densityKey(user), d);
+  } catch {
+    /* storage can be blocked */
+  }
+  densityListeners.forEach((l) => l());
+}
 function load(id: string): Saved {
   try {
     const raw = localStorage.getItem(storeKey(id));
@@ -83,9 +102,13 @@ export interface ListApi<T> extends ListOptions<T> {
   setPageSize: (n: number) => void;
   sort: SortState | null;
   toggleSort: (key: string) => void;
+  setSort: (s: SortState | null) => void;
   density: Density;
   setDensity: (d: Density) => void;
   hidden: Set<string>;
+  /** Column widths the user dragged, in pixels. */
+  widths: Record<string, number>;
+  setWidth: (id: string, px: number) => void;
   toggleColumn: (id: string) => void;
   visibleColumns: Column<T>[];
   selected: Set<string>;
@@ -100,15 +123,20 @@ export interface ListApi<T> extends ListOptions<T> {
 
 /** State and derived rows for a list: search, filters, sort, paging, density, columns, selection and export. */
 export function useList<T>(opts: ListOptions<T>): ListApi<T> {
-  const prefs = usePrefs();
+  const user = useSession().user.id;
   const saved = React.useMemo(() => load(opts.id), [opts.id]);
+  const density = React.useSyncExternalStore(
+    (cb) => { densityListeners.add(cb); return () => { densityListeners.delete(cb); }; },
+    () => loadDensity(user),
+    () => "compact" as Density,
+  );
   const [query, setQueryState] = React.useState("");
   const [filterValues, setFilterValues] = React.useState<FilterValues>(opts.initialFilters ?? {});
   const [sort, setSort] = React.useState<SortState | null>(opts.initialSort ?? null);
   const [pageNo, setPage] = React.useState(1);
   const [pageSize, setPageSizeState] = React.useState<number>(saved.pageSize ?? opts.pageSize ?? 25);
-  const [density, setDensityState] = React.useState<Density>(saved.density ?? prefs.density);
   const [hidden, setHidden] = React.useState<Set<string>>(() => new Set(saved.hidden ?? opts.columns.filter((c) => c.defaultHidden).map((c) => c.id)));
+  const [widths, setWidths] = React.useState<Record<string, number>>(saved.widths ?? {});
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
 
   const defs = opts.filters ?? [];
@@ -137,8 +165,9 @@ export function useList<T>(opts: ListOptions<T>): ListApi<T> {
     setPageSize: (n) => { setPageSizeState(n); setPage(1); save(opts.id, { pageSize: n }); },
     sort,
     toggleSort: (key) => { setSort((s) => nextSort(s, key)); setPage(1); },
+    setSort: (next) => { setSort(next); setPage(1); },
     density,
-    setDensity: (d) => { setDensityState(d); save(opts.id, { density: d }); },
+    setDensity: (d) => saveDensity(user, d),
     hidden,
     toggleColumn: (id) => setHidden((h) => {
       const n = new Set(h);
@@ -146,6 +175,8 @@ export function useList<T>(opts: ListOptions<T>): ListApi<T> {
       save(opts.id, { hidden: [...n] });
       return n;
     }),
+    widths,
+    setWidth: (id, px) => setWidths((w) => { const n = { ...w, [id]: Math.round(Math.min(640, Math.max(64, px))) }; if (!px) delete n[id]; save(opts.id, { widths: n }); return n; }),
     visibleColumns,
     selected: new Set([...selected].filter((id) => ids.has(id))),
     toggleRow: (id) => setSelected((s) => {

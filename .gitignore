@@ -7,3 +7,7 @@ dist
 coverage
 .DS_Store
 Thumbs.db
+
+# Private documents: keep out of the public repository
+onasi-journeys.html
+*.docx

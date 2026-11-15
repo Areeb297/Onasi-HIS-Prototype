@@ -3,6 +3,7 @@ import { CalendarCheck, CalendarClock, CalendarPlus, CalendarX, CheckCircle2 } f
 import { Dialog } from "@/components/Dialog";
 import { EmptyState, EntryList, EntryRow, EntrySheet, ErrorSummary, FormField, FormGrid, RowMenu, Segmented, TextArea, useValidation } from "@/components/emr/entry-ui";
 import { Badge, Button, Card, CardHeader, Input, RequiredNote, Select } from "@/components/ui/primitives";
+import { fmtDate, fmtDateTime, fmtWeekday } from "@/lib/format";
 import {
   CLINICS, FOLLOW_UP_LABEL, VISIT_TYPE_LABEL, bookFollowUp, cancelFollowUp, completeFollowUp, followUpTarget, followUpTitle, followUpsOf, orderFollowUp,
   useCareRequests, type FollowUp, type FollowUpStatus, type VisitType,
@@ -16,8 +17,8 @@ import { pushToast } from "@/lib/toast";
 /** The chart "Follow-Up" tab: the doctor orders a return visit; the appointments desk books it. */
 
 const TONE: Record<FollowUpStatus, "warn" | "info" | "ok" | "neutral"> = { requested: "warn", booked: "info", done: "ok", cancelled: "neutral" };
-const dateTime = (t: string) => new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-const dateOnly = (ymd: string) => new Date(`${ymd}T00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+const dateTime = (t: string) => fmtDateTime(t);
+const dateOnly = (ymd: string) => `${fmtWeekday(`${ymd}T00:00`)}, ${fmtDate(`${ymd}T00:00`)}`;
 const doctorName = (id: string) => {
   const d = DOCTORS.find((x) => x.id === id);
   return d ? `Dr. ${d.given} ${d.family}` : "Any doctor in the clinic";

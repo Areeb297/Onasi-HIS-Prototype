@@ -5,13 +5,14 @@ import { ActionLegend, actionsFor, type ActionDef, type ActionKey } from "@/comp
 import { PatientFlagBadges } from "@/components/PatientBanner";
 import { DischargeProgress, useVisitActions } from "@/components/VisitActions";
 import {
-  DataTable, ListPage, ListToolbar, StatFilters, applyFilters, inRange, joinRange, matchesQuery, useList, type Column, type FilterDef, type RowAction,
+  CellSub, DataTable, ListPage, ListToolbar, StatFilters, applyFilters, inRange, joinRange, matchesQuery, useList, type Column, type FilterDef, type RowAction,
 } from "@/components/list";
-import { fmtDateTime } from "@/components/list/format";
+import { fmtDateTime, fmtShort } from "@/lib/format";
 import { Badge, cn } from "@/components/ui/primitives";
 import { SUB_DEPARTMENTS, canRequestAdmission, useAdmissionRequests } from "@/lib/admission-requests";
 import { useAppointments } from "@/lib/appointments";
 import { heldBedOf } from "@/lib/beds";
+import { clearanceList } from "@/lib/discharge";
 import { coveragesOf, useCoverages } from "@/lib/coverage";
 import { useDevMode } from "@/lib/devmode";
 import { can, hasGlass, useSession } from "@/lib/session";
@@ -57,6 +58,20 @@ function suggested(enc: Encounter, list: ActionDef[]): ActionDef | undefined {
 /** Corrections and cancellations sit apart at the end of the menu. Only the cancellations are red. */
 const DANGER: ActionKey[] = ["A11", "A38"];
 const LAST: ActionKey[] = ["A45", ...DANGER];
+
+/** The four discharge clearances as one short pill: how many are given, with each one in the tooltip. Opens the clearances. */
+function ClearanceCell({ enc, onOpen }: { enc: Encounter; onOpen: () => void }) {
+  const list = clearanceList(enc);
+  const done = list.filter((c) => c.done).length;
+  const tip = list.map((c) => `${c.label}: ${c.done ? `given by ${c.done.by}` : `waiting for the ${c.who.toLowerCase()}`}`).join(". ");
+  return (
+    <button type="button" onClick={onOpen} title={tip} aria-label={`Discharge clearances, ${done} of ${list.length} given. Open to give or withdraw.`}
+      className="inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 whitespace-nowrap hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+      <span className="flex gap-0.5" aria-hidden="true">{list.map((c) => <span key={c.key} className={cn("h-2 w-3 rounded-sm", c.done ? "bg-[#03c1ac]" : "bg-muted-foreground/25")} />)}</span>
+      <Badge tone={done === list.length ? "ok" : "neutral"}>{done} of {list.length} Cleared</Badge>
+    </button>
+  );
+}
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
   Arrived: <IconUserCheck stroke={1.75} />, "Checked In": <IconStethoscope stroke={1.75} />, Admitted: <IconBed stroke={1.75} />,
@@ -111,26 +126,24 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
       cell: (r) => {
         const allergic = r.e.allergies.length > 0;
         return (
-          <div className="flex min-w-48 items-center gap-2.5">
-            <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", allergic ? "bg-destructive/12 text-destructive" : "bg-ok/10 text-ok")}
+          <div className="flex min-w-56 items-center gap-2">
+            <span className={cn("flex size-6 shrink-0 items-center justify-center rounded-full", allergic ? "bg-destructive/12 text-destructive" : "bg-ok/10 text-ok")}
               title={allergic ? `Allergies: ${r.e.allergies.map((a) => a.text).join(", ")}` : "No allergies recorded"} role="img" aria-label={allergic ? "Has allergies" : "No allergies recorded"}>
-              {allergic ? <IconShieldExclamation className="size-4" stroke={1.75} /> : <IconShieldCheck className="size-4" stroke={1.75} />}
+              {allergic ? <IconShieldExclamation className="size-3.5" stroke={1.75} /> : <IconShieldCheck className="size-3.5" stroke={1.75} />}
             </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="font-semibold text-[#032c26] dark:text-foreground">{r.name}</span>
-                <PatientFlagBadges patient={r.p} />
-              </div>
-              <div className="text-xs text-muted-foreground">
-                <span className="font-mono">{r.p?.mrn}</span>, {r.p ? age(r.p.dob) : "?"} y, {r.p?.sex === "M" ? "Male" : "Female"}
-                {dev && <span className="ms-2 font-mono">{r.e.visitNumber}</span>}
-              </div>
-            </div>
+            <span className="font-semibold whitespace-nowrap text-[#032c26] dark:text-foreground">{r.name}</span>
+            <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">{r.p?.mrn}</span>
+            {dev && <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">{r.e.visitNumber}</span>}
+            <PatientFlagBadges patient={r.p} className="flex-nowrap" />
           </div>
         );
       },
     },
-    { id: "date", header: ipd ? "Admit Date" : "Date", value: (r) => dateOf(r.e), csv: (r) => fmtDateTime(dateOf(r.e)), cell: (r) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(dateOf(r.e)) || "None"}</span> },
+    {
+      id: "age", header: "Age", value: (r) => (r.p ? age(r.p.dob) : undefined), csv: (r) => (r.p ? `${age(r.p.dob)} y, ${r.p.sex === "M" ? "Male" : "Female"}` : ""),
+      cell: (r) => <span className="whitespace-nowrap tabular-nums" title={r.p?.sex === "M" ? "Male" : "Female"}>{r.p ? `${age(r.p.dob)} ${r.p.sex === "M" ? "M" : "F"}` : "None"}</span>,
+    },
+    { id: "date", header: ipd ? "Admit Date" : "Date", value: (r) => dateOf(r.e), csv: (r) => fmtDateTime(dateOf(r.e)), cell: (r) => <span className="whitespace-nowrap tabular-nums" title={fmtDateTime(dateOf(r.e))}>{fmtShort(dateOf(r.e)) || "None"}</span> },
     ipd ? {
       id: "bed", header: "Ward And Bed",
       value: (r) => (r.e.status === "active" ? bedLabel(r.e.bedId) : heldBedOf(r.e) ? bedLabel(heldBedOf(r.e)) : r.e.reservedBedId ? bedLabel(r.e.reservedBedId) : ""),
@@ -140,18 +153,18 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
         : <span className="text-muted-foreground">{r.e.status === "preadmit" ? "Not Assigned" : "None"}</span>,
     } : {
       id: "dept", header: "Department", value: (r) => r.dept?.label ?? r.e.service,
-      cell: (r) => <div className="min-w-32"><div>{r.dept?.label ?? r.e.service}</div>{r.sub && r.sub !== r.dept?.label && <div className="text-xs text-muted-foreground">{r.sub}</div>}</div>,
+      cell: (r) => <div className="min-w-32"><div className="whitespace-nowrap">{r.dept?.label ?? r.e.service}</div>{r.sub && r.sub !== r.dept?.label && <CellSub>{r.sub}</CellSub>}</div>,
     },
     {
       id: "doctor", header: "Doctor", value: (r) => (r.doctor ? `${r.doctor.given} ${r.doctor.family}` : ""),
-      cell: (r) => <div><div className="whitespace-nowrap">{r.doctor ? `Dr. ${r.doctor.given} ${r.doctor.family}` : "None"}</div>{ipd && r.sub && <div className="text-xs text-muted-foreground">{r.sub}</div>}</div>,
+      cell: (r) => <div><div className="whitespace-nowrap">{r.doctor ? `Dr. ${r.doctor.given} ${r.doctor.family}` : "None"}</div>{ipd && r.sub && <CellSub>{r.sub}</CellSub>}</div>,
     },
     {
       id: "elig", header: "Eligibility", value: (r) => r.elig.label, csv: (r) => `${r.elig.label}${r.elig.label !== "Cash" ? `, ${r.elig.payer}` : ""}`,
       cell: (r) => <span title={`${r.elig.payer}. ${r.elig.basis}`}><Badge tone={r.elig.tone}>{r.elig.label}</Badge></span>,
     },
     ...(mode === "opd" ? [{
-      id: "appt", header: "Appointment", value: (r: Row) => (r.appt ? appointmentLabel(r.appt) : ""),
+      id: "appt", header: "Appointment", defaultHidden: true, value: (r: Row) => (r.appt ? appointmentLabel(r.appt) : ""),
       cell: (r: Row) => (r.appt ? <span className="whitespace-nowrap">{appointmentLabel(r.appt)}</span> : <span className="text-muted-foreground">Walk-In</span>),
     }] : []),
     {
@@ -163,7 +176,12 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
         </span>
       ),
     },
-    ...(ipd ? [{ id: "discharge", header: "Discharge", cell: (r: Row) => <DischargeProgress enc={r.e} onClearances={openClearances} onLeftWard={openLeftWard} /> }] : []),
+    ...(ipd ? [{
+      id: "discharge", header: "Discharge",
+      value: (r: Row) => (r.e.status === "active" ? clearanceList(r.e).filter((c) => c.done).length : undefined),
+      csv: (r: Row) => (r.e.status === "active" ? `${clearanceList(r.e).filter((c) => c.done).length} of ${clearanceList(r.e).length} clearances` : ""),
+      cell: (r: Row) => r.e.status === "active" ? <ClearanceCell enc={r.e} onOpen={() => openClearances(r.e.visitNumber)} /> : <DischargeProgress enc={r.e} onClearances={openClearances} onLeftWard={openLeftWard} />,
+    }] : []),
   ];
 
   const list = useList({

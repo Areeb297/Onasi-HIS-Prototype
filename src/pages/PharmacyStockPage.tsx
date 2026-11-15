@@ -2,6 +2,7 @@ import * as React from "react";
 import { IconAlertTriangle, IconCalendarDue, IconDeviceFloppy, IconPackage, IconPill, IconSend, IconTrash } from "@tabler/icons-react";
 import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Sar } from "@/components/invoice/InvoiceParts";
+import { RsdDispatches, linesOfDispatch } from "@/components/pharmacy/RsdDispatches";
 import { Problems, StockLinesEditor, blankLine, toInputs, type LineDraft } from "@/components/pharmacy/StockLinesEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
@@ -9,6 +10,7 @@ import {
   DEFAULT_LOCATION, EXPIRY_WATCH_DAYS, LOCATIONS, REORDER_PACKS, SUPPLIERS, deleteDraftReceipt, expiryText, expiryWatch, isoDay, lowStock, postReceipt,
   receiptValue, saveOpeningStock, saveReceipt, stockOnHand, useStock, type ReceiptStatus, type StockRow,
 } from "@/lib/pharmacy-stock";
+import type { Dispatch } from "@/lib/integrations/rsd-packs";
 import { navigate, useRoute } from "@/lib/router";
 import { useRx } from "@/lib/rx";
 import { fmtExpiry } from "@/lib/rx-stock";
@@ -256,6 +258,16 @@ function ReceiptTab({ today }: { today: Date }) {
   const [problems, setProblems] = React.useState<string[]>([]);
   const allowed = mayEdit();
 
+  // An accepted RSD dispatch fills in the receipt: supplier, order reference and one line per medicine and batch.
+  const fromDispatch = (d: Dispatch) => {
+    setSupplier(d.supplier);
+    setInvoiceNo(d.poRef);
+    const add = linesOfDispatch(d).map((l) => ({ ...blankLine(), drugId: l.drugId, lot: l.lot, expiry: l.expiry, quantity: String(l.quantity) }));
+    setLines((cur) => [...cur.filter((x) => x.drugId || x.lot || x.quantity), ...add]);
+    setProblems([]);
+    pushToast({ tone: "ok", text: "Dispatch added to the receipt below", detail: "Check the unit cost, then post the receipt to add the stock." });
+  };
+
   const reset = () => { setSupplier(""); setInvoiceNo(""); setNotes(""); setLines([blankLine()]); setProblems([]); };
   const save = (status: ReceiptStatus) => {
     const r = saveReceipt({ supplier, invoiceNo, location, date, notes, lines: toInputs(lines) }, status, rx.dispenses, today);
@@ -280,6 +292,7 @@ function ReceiptTab({ today }: { today: Date }) {
 
   return (
     <div className="space-y-4">
+      <RsdDispatches allowed={allowed} onAccepted={fromDispatch} />
       <Card>
         <CardHeader title="New Goods Receipt" subtitle="Medicine received from a supplier. Posting the receipt adds each line as a batch in the receiving location." />
         <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">

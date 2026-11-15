@@ -8,7 +8,9 @@ import { ConformancePanel, ControlBadge, ItemStatusBadge, MessageViewer, RxPatie
 import { VerifyDialog } from "@/components/emr/VerifyDialog";
 import { Dialog } from "@/components/Dialog";
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { PackStatusBadge } from "@/components/pharmacy/RsdParts";
 import { useDevMode } from "@/lib/devmode";
+import { packsOfLine, rsdActive, useRsd } from "@/lib/integrations/rsd-packs";
 import type { Encounter, Patient } from "@/lib/model";
 import { DOCTORS } from "@/lib/reference-data";
 import { fillOf, getDrug, useRx } from "@/lib/rx";
@@ -462,7 +464,12 @@ function LineDialog({ action, onClose }: { action: { mode: "cancel" | "update"; 
     const res = changeDispenseLine(d.id, line.id, mode, mode === "update" ? { quantity: parseFloat(qty), lot: lot || undefined, expiry: expiry || undefined } : {});
     if (!res.outcome) return setProblems(res.problems);
     if (res.outcome.ok) {
-      pushToast({ tone: "ok", text: mode === "cancel" ? "Dispense cancelled and sent to nphies" : "Dispense updated and sent to nphies" });
+      const back = (res.rsd ?? []).filter((r) => r.ok).length;
+      pushToast({
+        tone: "ok",
+        text: mode === "cancel" ? "Dispense cancelled and sent to nphies" : "Dispense updated and sent to nphies",
+        detail: back ? `RSD: sale cancelled for ${back} pack${back === 1 ? "" : "s"}. They are back on the shelf.` : undefined,
+      });
       onClose();
     } else {
       pushToast({ tone: "danger", text: "nphies rejected the change", detail: res.outcome.record.checks.find((c) => c.level === "error")?.text });
@@ -572,6 +579,7 @@ function DispensedSection({ onLine, onOpenRx }: { onLine: (a: { mode: "cancel" |
                 <Td className="text-xs tabular-nums">
                   <div className="font-medium">{r.line.quantity} {r.drug.unit}</div>
                   <div className="text-muted-foreground">Batch {r.line.lot ?? "not recorded"}{r.line.expiry && `, expires ${fmtExpiry(r.line.expiry)}`}</div>
+                  <RsdLinePacks number={r.dispense.number} lineId={r.line.id} />
                   {cancelled && <div className="text-ok">{r.line.lot ? `Returned to batch${batch ? `, ${batch.onHand} ${r.drug.unit} on hand now` : ""}` : "Returned to stock"}</div>}
                 </Td>
                 <Td><Badge tone={cancelled ? "neutral" : "ok"}>{cancelled ? "Cancelled" : "Completed"}</Badge></Td>
@@ -602,3 +610,20 @@ function DispensedSection({ onLine, onOpenRx }: { onLine: (a: { mode: "cancel" |
 }
 
 const dispensedCount = (s: ReturnType<typeof useRx>): number => dispensedRows(s).length;
+
+/** The RSD packs behind a dispensed line: serial numbers and where each one stands. */
+function RsdLinePacks({ number, lineId }: { number: string; lineId: string }) {
+  const state = useRsd();
+  if (!rsdActive()) return null;
+  const packs = packsOfLine(number, lineId, state);
+  if (!packs.length) return null;
+  return (
+    <div className="mt-1 space-y-0.5">
+      {packs.map((p) => (
+        <div key={`${p.gtin}${p.serial}`} className="flex flex-wrap items-center gap-1.5">
+          <span className="text-muted-foreground">RSD</span><span className="font-mono">{p.serial}</span><PackStatusBadge status={p.status} />
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -67,7 +67,7 @@ function whereOf(e: Encounter | undefined): Where {
 
 function EligibilityPill({ answer, insured }: { answer?: EligibilityAnswer; insured: boolean }) {
   if (!insured) return <span className="text-muted-foreground">Cash</span>;
-  if (!answer) return <Badge tone="warn">Not Checked</Badge>;
+  if (!answer) return <span className="text-muted-foreground">Not Checked</span>;
   const warn = answer.eligible && answer.kind !== "covered";
   return (
     <span title={`${answer.title}. ${answer.text} Checked ${fmtDate(answer.at)}.`}>
@@ -125,13 +125,13 @@ export function PatientsPage() {
       id: "patient", header: "Patient", hideable: false, value: (r) => listName(r.p, r.opened),
       cell: (r) => (
         <div className="min-w-44">
-          <div className="flex flex-wrap items-center gap-1.5 font-medium text-foreground">
+          <div className="flex items-center gap-1.5 font-medium whitespace-nowrap text-foreground">
             {listName(r.p, r.opened)}
             {r.p.confidential && <Badge tone="warn">Confidential</Badge>}
             {r.p.extra?.newborn && <Badge tone="info">Newborn</Badge>}
             <PatientFlagBadges patient={r.p} />
           </div>
-          {!r.hidden && <PatientNameAr patient={r.p} className="text-start text-xs leading-tight" />}
+          {!r.hidden && <PatientNameAr patient={r.p} className="text-start text-xs leading-tight in-data-[list-density=compact]:hidden" />}
         </div>
       ),
     },

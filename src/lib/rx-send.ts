@@ -1,3 +1,4 @@
+import { reportCancel, reportSale, rsdActive, scanProblems, type CallResult, type PackScans } from "./integrations/rsd-packs";
 import { audit } from "./audit";
 import {
   buildDispenseBundle, buildPrescriptionBundle, uuid, type DispenseIn, type FhirBundle, type ItemIn, type PatientIn, type PractitionerIn,
@@ -232,6 +233,8 @@ export interface DispenseRequest {
   verification: Dispense["verification"];
   /** Kept on the dispense record. Not part of the message. */
   witness?: Dispense["witness"];
+  /** RSD: the packs scanned for each item (pack keys, GTIN|serial). Needed while the RSD integration is on. */
+  packs?: PackScans;
 }
 
 export interface DispensePlan {
@@ -343,12 +346,17 @@ function sendDispenseBundle(
 }
 
 /** Dispense one or more items of a prescription. Nothing is kept if the response is an error. */
-export function sendDispense(req: DispenseRequest): { outcome: SendOutcome | null; problems: string[] } {
+export function sendDispense(req: DispenseRequest): { outcome: SendOutcome | null; problems: string[]; rsd?: CallResult[] } {
   const s = getRx();
   const plan = planDispense(s, req, false);
   if (!plan) return { outcome: null, problems: ["Prescription not found."] };
   if (plan.problems.length) return { outcome: null, problems: plan.problems };
   const rx = s.prescriptions.find((p) => p.id === req.rxId) as Prescription;
+  // RSD: every pack must be scanned, accepted, in date and not sold before anything is sent.
+  if (rsdActive()) {
+    const bad = scanProblems(plan.dispense.lines.map((l) => ({ itemId: l.itemId, drugId: l.drugId, quantity: l.quantity, lot: l.lot })), req.packs ?? {});
+    if (bad.length) return { outcome: null, problems: bad };
+  }
   const types = plan.dispense.lines.map((l) => l.type);
   const controlled = plan.dispense.lines.every((l) => isControlled(getDrug(l.drugId).controlClass));
   const steps = dispenseSteps("dispense", controlled, types);
@@ -365,7 +373,11 @@ export function sendDispense(req: DispenseRequest): { outcome: SendOutcome | nul
   }
   setRx(next);
   audit("send-fhir", `Dispense ${plan.dispense.number}`, { patient: rx.patientId, detail: `Visit ${rx.visitNumber}. HTTP ${sent.rec.http}${sent.rec.refId ? `. Reference ${sent.rec.refId}` : ""}` });
-  return { outcome: { ok: sent.ok, record: sent.rec, refId: sent.rec.refId }, problems: [] };
+  // RSD: report the sale (Consume for an inpatient) of each pack, once the dispense is kept.
+  const rsd = sent.ok
+    ? reportSale({ dispenseNumber: plan.dispense.number, lines: plan.dispense.lines.map((l) => ({ itemId: l.itemId, lineId: l.id, drugId: l.drugId })), scans: req.packs ?? {}, inpatient: rx.usage === "inpatient" })
+    : [];
+  return { outcome: { ok: sent.ok, record: sent.rec, refId: sent.rec.refId }, problems: [], rsd };
 }
 
 /**
@@ -374,7 +386,7 @@ export function sendDispense(req: DispenseRequest): { outcome: SendOutcome | nul
  */
 export function changeDispenseLine(
   dispenseId: string, lineId: string, action: "cancel" | "update", patch: { quantity?: number; lot?: string; expiry?: string } = {},
-): { outcome: SendOutcome | null; problems: string[] } {
+): { outcome: SendOutcome | null; problems: string[]; rsd?: CallResult[] } {
   const s = getRx();
   const d = s.dispenses.find((x) => x.id === dispenseId);
   const rx = d && s.prescriptions.find((p) => p.id === d.rxId);
@@ -415,6 +427,8 @@ export function changeDispenseLine(
   }
   setRx(next);
   audit("send-fhir", `Dispense ${d.number}`, { patient: rx.patientId, detail: `Visit ${rx.visitNumber}. ${action}. HTTP ${sent.rec.http}` });
-  return { outcome: { ok: sent.ok, record: sent.rec, refId: sent.rec.refId }, problems: [] };
+  // RSD: a cancelled line cancels the sale of its packs, and they go back on the shelf.
+  const rsd = sent.ok && action === "cancel" ? reportCancel(d.number, line.id) : [];
+  return { outcome: { ok: sent.ok, record: sent.rec, refId: sent.rec.refId }, problems: [], rsd };
 }
 

@@ -1,9 +1,10 @@
 import * as React from "react";
-import { Download, Lock, Search } from "lucide-react";
+import { FolderOpen, History, Lock, ShieldAlert, Trash2 } from "lucide-react";
 import { RegistrationForm } from "@/components/RegistrationForm";
-import { downloadText } from "@/components/ui/code-block";
+import { DataTable, ListPage, ListToolbar, inRange, useList, type Column, type FilterDef } from "@/components/list";
+import { fmtDateTime } from "@/lib/format";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select, Table, Td, Th } from "@/components/ui/primitives";
-import { audit, clearAudit, useAudit, type AuditAction } from "@/lib/audit";
+import { clearAudit, useAudit, type AuditAction, type AuditEntry } from "@/lib/audit";
 import { navigate, useRoute } from "@/lib/router";
 import { PERMISSION_LABELS } from "@/lib/permission-labels";
 import { ROLES, can, hasGlass, setIdleMinutes, useSession, type Permission } from "@/lib/session";
@@ -17,60 +18,56 @@ const actionTone: Partial<Record<AuditAction, "ok" | "warn" | "danger" | "info" 
 /** Audit trail: who did what, when, to which patient. */
 export function AuditPage() {
   const entries = useAudit();
-  const [action, setAction] = React.useState("");
-  const [q, setQ] = React.useState("");
-  const rows = [...entries].reverse().filter((e) => (!action || e.action === action) && (!q || `${e.user} ${e.target} ${e.patient ?? ""} ${e.detail ?? ""}`.toLowerCase().includes(q.toLowerCase())));
+  useSession();
+  const rows = [...entries].reverse();
   const actions = [...new Set(entries.map((e) => e.action))].sort();
+  const users = [...new Set(entries.map((e) => e.user))].sort();
 
-  function exportCsv() {
-    audit("export", "Audit trail", { detail: `${rows.length} rows` });
-    const head = "time,user,role,action,target,patient,detail";
-    const body = rows.map((e) => [e.at, e.user, e.role, e.action, e.target, e.patient ?? "", e.detail ?? ""].map((x) => `"${String(x).replace(/"/g, '""')}"`).join(","));
-    downloadText("audit_trail.csv", [head, ...body].join("\n"));
-  }
+  const filters: FilterDef<AuditEntry>[] = [
+    { id: "action", label: "Action", quick: true, options: actions.map((a) => ({ value: a, label: a })), test: (e, v) => e.action === v },
+    { id: "user", label: "User", quick: true, options: users.map((u) => ({ value: u, label: u })), test: (e, v) => e.user === v },
+    { id: "date", label: "Date", kind: "dateRange", test: (e, v) => inRange(e.at.slice(0, 10), v) },
+  ];
+  const columns: Column<AuditEntry>[] = [
+    { id: "at", header: "Time", hideable: false, value: (e) => e.at, csv: (e) => e.at, cell: (e) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(e.at)}</span> },
+    { id: "user", header: "User", value: (e) => e.user, cell: (e) => <span className="whitespace-nowrap font-medium">{e.user}</span> },
+    { id: "role", header: "Role", value: (e) => e.role, cell: (e) => <span className="whitespace-nowrap text-muted-foreground">{e.role}</span> },
+    { id: "action", header: "Action", value: (e) => e.action, cell: (e) => <Badge tone={actionTone[e.action] ?? "ok"}>{e.action}</Badge> },
+    { id: "target", header: "Target", value: (e) => e.target, cell: (e) => <span className="block max-w-64 truncate" title={e.target}>{e.target}</span> },
+    { id: "patient", header: "Patient", value: (e) => e.patient ?? "", cell: (e) => <span className="font-mono text-xs whitespace-nowrap">{e.patient ?? "None"}</span> },
+    { id: "detail", header: "Detail", value: (e) => e.detail ?? "", cell: (e) => <span className="block max-w-80 truncate text-muted-foreground" title={e.detail}>{e.detail ?? ""}</span> },
+  ];
+  const list = useList({
+    id: "audit",
+    title: "Audit Trail",
+    rows,
+    columns,
+    getId: (e) => String(e.id),
+    filters,
+    initialSort: { key: "at", dir: "desc" },
+    pageSize: 50,
+    unit: ["entry", "entries"],
+    search: (e) => `${e.user} ${e.role} ${e.action} ${e.target} ${e.patient ?? ""} ${e.detail ?? ""}`,
+  });
 
   return (
-    <div>
-      <PageHeader
-        title="Audit Trail"
-        subtitle="Every view, change, send, denial, break-the-glass and AI action. In a real system this lives on the server and cannot be edited."
-        right={
-          <div className="flex gap-2">
-            <Button onClick={exportCsv} disabled={rows.length === 0}><Download className="size-4" />Export CSV</Button>
-            <Button variant="danger" disabled={!can("admin")} title={can("admin") ? undefined : "Only an administrator can clear the demo audit data"} onClick={() => confirm("Clear the demo audit data?") && clearAudit()}>Clear Demo Data</Button>
-          </div>
-        }
+    <ListPage
+      title="Audit Trail"
+      subtitle="Every view, change, send, denial, break-the-glass and AI action."
+      more={[can("admin") && { label: "Clear Demo Data", icon: <Trash2 className="size-4" />, danger: true, onClick: () => { if (confirm("Clear the demo audit data?")) clearAudit(); } }]}
+    >
+      <ListToolbar list={list} placeholder="User, patient or detail" />
+      <DataTable
+        list={list}
+        label="Audit entries"
+        rowLabel={(e) => `${e.action} by ${e.user}`}
+        card={(e) => ({
+          title: <span className="flex items-center gap-2">{e.user}<Badge tone={actionTone[e.action] ?? "ok"}>{e.action}</Badge></span>,
+          lines: [<span key="a">{e.target}{e.patient ? `, ${e.patient}` : ""}</span>, <span key="b" className="tabular-nums">{fmtDateTime(e.at)}</span>],
+        })}
+        empty={{ icon: <History />, title: "No Audit Entries Yet", text: "Every chart opened and every message sent is recorded here. In a real system this lives on the server and cannot be edited." }}
       />
-      <div className="mb-3 flex flex-wrap gap-2">
-        <div className="relative w-64">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-          <Input className="pl-8" placeholder="Search user, patient or detail" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search audit" />
-        </div>
-        <Select className="w-48" value={action} onChange={(e) => setAction(e.target.value)} aria-label="Action">
-          <option value="">All Actions</option>
-          {actions.map((a) => <option key={a}>{a}</option>)}
-        </Select>
-        <span className="self-center text-xs text-muted-foreground">{rows.length} of {entries.length} entries</span>
-      </div>
-      <Card>
-        <Table>
-          <thead><tr><Th>Time</Th><Th>User</Th><Th>Action</Th><Th>Target</Th><Th>Patient</Th><Th>Detail</Th></tr></thead>
-          <tbody>
-            {rows.length === 0 && <tr><Td colSpan={6}><Empty>No audit entries yet. Open a chart or send a message.</Empty></Td></tr>}
-            {rows.slice(0, 300).map((e) => (
-              <tr key={e.id} className="hover:bg-muted/40">
-                <Td className="whitespace-nowrap font-mono text-xs text-muted-foreground">{new Date(e.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "medium" })}</Td>
-                <Td><div className="font-medium">{e.user}</div><div className="text-xs text-muted-foreground">{e.role}</div></Td>
-                <Td><Badge tone={actionTone[e.action] ?? "ok"}>{e.action}</Badge></Td>
-                <Td>{e.target}</Td>
-                <Td>{e.patient ?? "None"}</Td>
-                <Td className="max-w-[320px] truncate text-muted-foreground"><span title={e.detail}>{e.detail ?? ""}</span></Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      </Card>
-    </div>
+    </ListPage>
   );
 }
 
@@ -114,32 +111,47 @@ export function ConfidentialPage() {
   const state = useHis();
   useSession();
   const entries = useAudit();
-  const list = state.patients.filter((p) => p.confidential && !p.mergedInto);
+  const rows = state.patients.filter((p) => p.confidential && !p.mergedInto).map((p) => ({
+    p,
+    last: [...entries].reverse().find((e) => e.action === "break-glass" && e.patient === p.id),
+    enc: [...state.encounters].reverse().find((e) => e.patientId === p.id && e.status !== "cancelled"),
+    open: hasGlass(p.id),
+  }));
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    { id: "patient", header: "Patient", hideable: false, value: (r) => patientName(r.p), cell: (r) => <span className="flex items-center gap-2 whitespace-nowrap"><span className="font-semibold text-[#032c26] dark:text-foreground">{patientName(r.p)}</span><span className="font-mono text-xs text-muted-foreground">{r.p.mrn}</span></span> },
+    { id: "hid", header: "Health ID", value: (r) => r.p.healthId, cell: (r) => <span className="font-mono text-xs whitespace-nowrap">{r.p.healthId}</span> },
+    { id: "access", header: "Your Access", value: (r) => (r.open ? "Open" : "Restricted"), cell: (r) => (r.open ? <Badge tone="warn">Open For 30 Min</Badge> : <Badge tone="danger"><Lock className="size-3" />Restricted</Badge>) },
+    { id: "last", header: "Last Break-The-Glass", value: (r) => r.last?.at ?? "", csv: (r) => (r.last ? `${r.last.user}, ${fmtDateTime(r.last.at)}. ${r.last.detail ?? ""}` : "Never"),
+      cell: (r) => (r.last ? <span className="block max-w-96 truncate" title={r.last.detail}>{r.last.user}, <span className="tabular-nums">{fmtDateTime(r.last.at)}</span>{r.last.detail ? `. ${r.last.detail}` : ""}</span> : <span className="text-muted-foreground">Never</span>) },
+  ];
+  const list = useList({
+    id: "confidential",
+    title: "Confidential Patients",
+    rows,
+    columns,
+    getId: (r) => r.p.id,
+    unit: ["patient", "patients"],
+    search: (r) => `${patientName(r.p)} ${r.p.mrn} ${r.p.healthId}`,
+  });
+  const openChart = (r: Row) => r.enc && navigate("/chart", { visit: r.enc.visitNumber });
   return (
-    <div>
-      <PageHeader title="Confidential Patient" subtitle="Restricted records. Opening a chart needs a reason (break-the-glass). Every access is audited." />
-      <Card>
-        <Table>
-          <thead><tr><Th>Patient</Th><Th>Health ID</Th><Th>Your access</Th><Th>Last break-the-glass</Th><Th /></tr></thead>
-          <tbody>
-            {list.length === 0 && <tr><Td colSpan={5}><Empty>No confidential patients.</Empty></Td></tr>}
-            {list.map((p) => {
-              const last = [...entries].reverse().find((e) => e.action === "break-glass" && e.patient === p.id);
-              const enc = [...state.encounters].reverse().find((e) => e.patientId === p.id && e.status !== "cancelled");
-              return (
-                <tr key={p.id}>
-                  <Td className="font-medium">{patientName(p)}</Td>
-                  <Td className="font-mono text-xs">{p.healthId}</Td>
-                  <Td>{hasGlass(p.id) ? <Badge tone="warn">Open for 30 min</Badge> : <Badge tone="danger"><Lock className="size-3" />Restricted</Badge>}</Td>
-                  <Td className="text-xs text-muted-foreground">{last ? `${last.user}, ${new Date(last.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}. ${last.detail ?? ""}` : "Never"}</Td>
-                  <Td className="text-right">{enc && <Button size="sm" onClick={() => navigate("/chart", { visit: enc.visitNumber })}>Open Chart</Button>}</Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </Card>
-    </div>
+    <ListPage title="Confidential Patients" subtitle="Opening a chart needs a reason (break-the-glass). Every access is audited.">
+      <ListToolbar list={list} placeholder="Name, MRN or Health ID" />
+      <DataTable
+        list={list}
+        label="Confidential patients"
+        rowLabel={(r) => patientName(r.p)}
+        onRowClick={(r) => openChart(r)}
+        actions={(r) => (r.enc ? [{ id: "chart", label: "Open Chart", icon: <FolderOpen />, onClick: () => openChart(r) }] : [])}
+        card={(r) => ({
+          title: patientName(r.p),
+          aside: r.open ? <Badge tone="warn">Open</Badge> : <Badge tone="danger">Restricted</Badge>,
+          lines: [<span key="a" className="font-mono text-xs">{r.p.mrn}</span>, <span key="b">{r.last ? `Last opened by ${r.last.user}, ${fmtDateTime(r.last.at)}` : "Never opened with break-the-glass"}</span>],
+        })}
+        empty={{ icon: <ShieldAlert />, title: "No Confidential Patients", text: "A patient file marked confidential at registration appears here. Opening its chart needs a reason, and every access is audited." }}
+      />
+    </ListPage>
   );
 }
 
@@ -177,7 +189,7 @@ export function RegistrationPage() {
                 <Td className="font-medium">{m.patientName}</Td>
                 <Td className="font-mono text-xs">{m.visitNumber}</Td>
                 <Td><Badge tone="admit" className="font-mono">A04</Badge> <span className="text-xs text-muted-foreground">{m.controlId}</span></Td>
-                <Td className="text-xs text-muted-foreground">{new Date(m.sentAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</Td>
+                <Td className="text-xs text-muted-foreground">{fmtDateTime(m.sentAt)}</Td>
               </tr>
             ))}
           </tbody>

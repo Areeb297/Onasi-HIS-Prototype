@@ -1,3 +1,4 @@
+import type { CallResult } from "./integrations/rsd-packs";
 import { audit } from "./audit";
 import { fillOf, getDrug, getRx, setRx } from "./rx";
 import { FREQ_BY_ID, ROUTE_LABEL } from "./rx-catalogue";
@@ -351,7 +352,7 @@ export function dispenseGate(s: RxState, req: DispenseRequest, dispenser: { id: 
 }
 
 /** Dispense through the hospital rules. Use this from the screens instead of sendDispense. */
-export function dispenseChecked(req: DispenseRequest): { outcome: SendOutcome | null; problems: string[] } {
+export function dispenseChecked(req: DispenseRequest): { outcome: SendOutcome | null; problems: string[]; rsd?: CallResult[] } {
   const problems = dispenseGate(getRx(), req);
   if (problems.length) return { outcome: null, problems };
   const witness = req.witness ? { name: req.witness.name.trim(), staffNo: req.witness.staffNo.trim() } : undefined;

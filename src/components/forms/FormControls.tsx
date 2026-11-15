@@ -328,7 +328,7 @@ export function DateTimeInput({ value, onChange, min, max, label, disabled }: { 
   const now = () => { const x = new Date(); return `${p2(x.getHours())}:${p2(x.getMinutes())}`; };
   const today = () => { const x = new Date(); return `${x.getFullYear()}-${p2(x.getMonth() + 1)}-${p2(x.getDate())}`; };
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(6.5rem,0.6fr)] gap-2">
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(8rem,0.7fr)] gap-2">
       <Input
         type="date"
         value={d}

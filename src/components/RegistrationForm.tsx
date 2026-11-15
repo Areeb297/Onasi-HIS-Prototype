@@ -1,10 +1,17 @@
 import * as React from "react";
-import { Baby, BedDouble, CircleAlert, CircleCheck, CreditCard, IdCard, Printer, Search, ShieldAlert, Siren, Stethoscope, TriangleAlert, Upload, UserPlus } from "lucide-react";
+import { Baby, BedDouble, CircleAlert, CircleCheck, CreditCard, Fingerprint, IdCard, Printer, Search, ShieldAlert, Siren, Stethoscope, TriangleAlert, Upload, UserPlus } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { ErQuickRegistration } from "@/components/ErQuickRegistration";
 import { PatientFlagBadges, PatientNameAr } from "@/components/PatientBanner";
 import { WristbandDialog } from "@/components/Wristband";
 import { Badge, Button, Card, Field, Input, RequiredNote, Select, cn } from "@/components/ui/primitives";
+import {
+  AttentionLink, CheckRow, ChoiceSelect, ErrorSummary, FormActions, FormGrid, FormSection, ReasonButton, SegmentedControl, Stepper, focusField, isDirty, useFormErrors, useUnsavedChangesGuard,
+  type Errors,
+} from "@/components/forms";
+import { fmtDate } from "@/lib/format";
+import { YakeenLookup } from "@/components/integrations/YakeenLookup";
+import type { YakeenIdentity } from "@/lib/integrations/yakeen";
 import { quickCreate, type Outcome } from "@/lib/actions";
 import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
@@ -48,16 +55,12 @@ const AFTER: Record<VisitChoice, { path: string; en: string; ar: string }> = {
   none: { path: "/patients", en: "Go To Patient List", ar: "قائمة المرضى" },
 };
 
-/** Section card: a heading row at the start of the card, a divider, then the fields. */
-function Sec({ title, children, name }: { title: string; children: React.ReactNode; name?: string }) {
+/** Section card with a title, an optional one-line help, and the fields. `name` lets a jump land on the section. */
+function Sec({ title, help, children, name, filled, total, attention }: { title: string; help?: string; children: React.ReactNode; name?: string; filled?: number; total?: number; attention?: number }) {
   return (
-    <Card className="mt-6 shadow-xs">
-      <header className="flex items-center gap-2.5 border-b border-border px-4 py-3 sm:px-5">
-        <span aria-hidden="true" className="h-4 w-1 shrink-0 rounded-full bg-primary" />
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-      </header>
-      <div data-field={name} className="px-4 py-5 sm:px-5">{children}</div>
-    </Card>
+    <div data-field={name} className="min-w-0">
+      <FormSection title={title} help={help} filled={filled} total={total} attention={attention}>{children}</FormSection>
+    </div>
   );
 }
 
@@ -71,21 +74,22 @@ function Group({ title, children, className }: { title: string; children: React.
   );
 }
 
-const Grid = ({ children, cols = 4 }: { children: React.ReactNode; cols?: 2 | 3 | 4 }) => (
-  <div className={cn("grid gap-x-4 gap-y-5", cols === 4 && "sm:grid-cols-2 lg:grid-cols-4", cols === 3 && "sm:grid-cols-3", cols === 2 && "sm:grid-cols-2")}>{children}</div>
-);
+const Grid = ({ children, cols = 3 }: { children: React.ReactNode; cols?: 2 | 3 | 4 }) => <FormGrid cols={cols}>{children}</FormGrid>;
 
-/** A form field that can show its problem right under the input. `name` lets the summary at the top jump to it. */
-function FF({ name, error, children, ...field }: { name?: RegField; error?: string } & React.ComponentProps<typeof Field>) {
-  return (
-    <div data-field={name} className="min-w-0">
-      <Field {...field}>
-        {children}
-        {error && <span role="alert" className="text-xs font-medium leading-snug text-destructive">{error}</span>}
-      </Field>
-    </div>
-  );
+/** A form field that shows its problem in place of the help text. `name` lets the error summary jump to it. */
+function FF({ name, error, ...field }: { name?: RegField; error?: string } & React.ComponentProps<typeof Field>) {
+  return <Field name={name} error={error} {...field} />;
 }
+
+type StepId = "identity" | "contact" | "coverage" | "visit";
+
+/** Which step each checked field is on, so a problem can take the clerk to the right step. */
+const STEP_OF: Partial<Record<RegField, StepId>> = {
+  idNumber: "identity", healthId: "identity", first: "identity", family: "identity", dob: "identity", title: "identity", nickName: "identity", parentId: "identity",
+  mobile: "contact", email: "contact", shortCode: "contact", addressLine1: "contact",
+  consent: "visit", bedId: "visit", admissionType: "visit", patientCondition: "visit", expectedStay: "visit", dnrDoctor: "visit", dnrDate: "visit", language: "visit",
+};
+const stepOf = (f: string): StepId => STEP_OF[f as RegField] ?? "identity";
 
 /** A header option such as Confidential Patient: a checkbox shown as a pill. */
 function Toggle({ checked, onChange, icon, label, hint, tone }: { checked: boolean; onChange: (v: boolean) => void; icon: React.ReactNode; label: string; hint?: string; tone: "warn" | "info" }) {
@@ -143,14 +147,22 @@ function CardUpload({ title, value, onChange, t }: { title: string; value: CardF
 }
 
 /** The payer answer in a box: green when covered, amber for a warning, red when the visit is not covered. */
-function CoverageBox({ outcome, ar, children }: { outcome: CoverageOutcome; ar: boolean; children?: React.ReactNode }) {
+function CoverageBox({ outcome, ar, children, large }: { outcome: CoverageOutcome; ar: boolean; children?: React.ReactNode; large?: boolean }) {
+  const tone = outcome.blocking ? "text-destructive" : outcome.warning ? "text-warn" : "text-ok";
   return (
-    <div role="status" className={cn("mt-3 max-w-xl rounded-lg border px-3 py-2.5 text-sm", outcome.blocking ? "border-destructive/50 bg-destructive/10" : outcome.warning ? "border-warn/50 bg-warn/10" : "border-ok/40 bg-ok/10")}>
-      <div className="flex items-center gap-2 font-semibold">
-        {outcome.blocking || outcome.warning ? <TriangleAlert className="size-4 shrink-0" /> : <CircleCheck className="size-4 shrink-0" />}
+    <div
+      role="status"
+      className={cn(
+        "rounded-xl border border-l-4 bg-card text-sm",
+        large ? "px-4 py-3.5" : "mt-3 max-w-xl px-3 py-2.5",
+        outcome.blocking ? "border-destructive/40 border-l-destructive" : outcome.warning ? "border-warn/40 border-l-warn" : "border-ok/40 border-l-ok",
+      )}
+    >
+      <div className={cn("flex items-center gap-2 font-semibold", large && "text-base", tone)}>
+        {outcome.blocking || outcome.warning ? <TriangleAlert className={cn("shrink-0", large ? "size-5" : "size-4")} aria-hidden="true" /> : <CircleCheck className={cn("shrink-0", large ? "size-5" : "size-4")} aria-hidden="true" />}
         {ar ? outcome.titleAr : outcome.title}
       </div>
-      <p className="mt-1">{ar ? outcome.textAr : outcome.text}</p>
+      <p className="mt-1 text-foreground">{ar ? outcome.textAr : outcome.text}</p>
       {children}
     </div>
   );
@@ -279,8 +291,9 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   const [insFile, setInsFile] = React.useState<CardFile | null>(null);
   const [consent, setConsent] = React.useState(false);
   // Saving
-  const [showErrors, setShowErrors] = React.useState(false);
-  const [failedSaves, setFailedSaves] = React.useState(0);
+  const [step, setStep] = React.useState<StepId>("identity");
+  const [yakeenOpen, setYakeenOpen] = React.useState(false);
+  const [yakeenAt, setYakeenAt] = React.useState<string | null>(null);
   const [dups, setDups] = React.useState<DuplicateMatch[] | null>(null);
   const [dupReason, setDupReason] = React.useState("");
   const [coverageAsk, setCoverageAsk] = React.useState<CoverageOutcome | null>(null);
@@ -293,13 +306,6 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   const files = React.useRef<(CardFile | null)[]>([]);
   files.current = [idFile, insFile];
   React.useEffect(() => () => { for (const f of files.current) if (f?.url) URL.revokeObjectURL(f.url); }, []);
-
-  // After a save that found problems, bring the list of problems into view.
-  React.useEffect(() => {
-    if (!failedSaves) return;
-    summary.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-    summary.current?.focus({ preventScroll: true });
-  }, [failedSaves]);
 
   const beds = freeBeds(state);
   const title = titleChoice ?? defaultTitle(sex, marital, newborn);
@@ -405,7 +411,30 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   function chooseUnknown(on: boolean) {
     if (on) chooseVisit("E");
     setUnknown(on);
-    setShowErrors(false);
+    fe.reset();
+  }
+
+  /**
+   * Fills the form from the national identity service (Yakeen): the English and Arabic names, the date of birth, the sex,
+   * the nationality, the national address and the ID expiry. The clerk can still change any of them.
+   */
+  function applyYakeen(p: YakeenIdentity) {
+    if (p.idNumber !== idNumber) { clearCoverage(); setIdCard(null); }
+    setIdNumber(p.idNumber);
+    setIdType(p.idType === "iqama" ? "Iqama" : "National ID");
+    setFirst(p.nameEn[0]); setSecond(p.nameEn[1]); setThird(p.nameEn[2]); setFamily(p.nameEn[3]);
+    setFirstAr(p.nameAr[0]); setSecondAr(p.nameAr[1]); setThirdAr(p.nameAr[2]); setFamilyAr(p.nameAr[3]);
+    setDob(p.dob); setSex(p.sex); setNationality(p.nationality); setIdExpiry(p.idExpiry);
+    const a = p.address;
+    setShortCode(a.shortAddress.toUpperCase());
+    setAddress1([`${a.buildingNumber} ${a.street}`.trim(), a.district].filter(Boolean).join(", "));
+    setAddress2(`${a.postalCode}, additional number ${a.additionalNumber}`);
+    const reg = SAUDI_REGIONS.find((r) => r.cities.includes(a.city));
+    if (reg) { setRegion(reg.region); setCity(a.city); }
+    setYakeenOpen(false);
+    setYakeenAt(new Date().toISOString());
+    audit("view", "Yakeen identity check at registration", { detail: `${p.idType === "iqama" ? "Iqama" : "National ID"} ${p.idNumber.slice(0, 3)}*******: details used` });
+    pushToast({ tone: "ok", text: t("Details filled from Yakeen", "تم تعبئة البيانات من يقين"), detail: t("Check them with the patient before you save.", "راجعها مع المريض قبل الحفظ.") });
   }
 
   function retrieveIdentityCard() {
@@ -422,19 +451,48 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
     idNumber, healthId, first, family, dob, mobile, email, shortCode, consent, visit, bedId, dnr, dnrDoctor, dnrDate, interpreter, language, today,
     addressLine1: address1, title, confidential, nickName, newborn, parentId, unknown: isUnknown, admissionType, patientCondition, expectedStay,
   });
-  const errs: Partial<Record<RegField, string>> = {};
-  for (const p of problems) {
-    // The short address is checked while typing. The other fields wait for the first save.
-    if ((showErrors || p.field === "shortCode") && !errs[p.field]) errs[p.field] = ar ? p.messageAr : p.message;
-  }
+  const allErrors: Errors = {};
+  for (const p of problems) if (!allErrors[p.field]) allErrors[p.field] = ar ? p.messageAr : p.message;
+  const order = problems.map((p) => p.field);
+  // Errors show after the clerk changes a field and leaves it, or after Save. Save takes the clerk to the first one.
+  const fe = useFormErrors(allErrors, order, { reveal: (k) => setStep(stepOf(k)) });
+  const errs = fe.shown as Partial<Record<RegField, string>>;
+  const shownCount = Object.keys(errs).length;
   const warnings: string[] = [];
   if (idExpiry && isExpired(idExpiry)) warnings.push(t("The ID has expired.", "الهوية منتهية."));
 
   function goTo(name: string) {
-    const el = document.querySelector<HTMLElement>(`[data-field="${name}"]`);
-    el?.scrollIntoView({ block: "center", behavior: "smooth" });
-    el?.querySelector<HTMLElement>("input:not([type=file]), select, textarea, button")?.focus({ preventScroll: true });
+    if (name === "coverage") setStep("coverage");
+    else setStep(stepOf(name));
+    requestAnimationFrame(() => focusField(name));
   }
+
+  // Unsaved changes: anything typed, picked or ticked since the form opened.
+  const snapshot = {
+    visit, attending, referring, service, reason, arrival, ctas, bedId, admissionType, patientCondition, expectedStay, activityLevel, admissionSpecialty,
+    confidential, nickName, newborn, parentId, unknown, approxAge, titleChoice, first, second, third, family, firstAr, secondAr, thirdAr, familyAr,
+    payType, nationality, sex, marital, religion, blood, social, dob, birthPlace, occupation, employeeNo, idType, idNumber, issuer, idIssue, idExpiry, copyNo,
+    addressType, region, city, address1, address2, shortCode, homePhone, mobile, countryCode, areaCode, otherPhone, relName, relPhone, email,
+    dnr, dnrDoctor, dnrDate, interpreter, language, fallRisk, isolation, healthId, consent, idFile: idFile?.name, insFile: insFile?.name,
+  };
+  const [startSnap] = React.useState(snapshot);
+  const { dialog: leaveDialog } = useUnsavedChangesGuard(!saved && isDirty(startSnap, snapshot), { what: t("The registration is not saved.", "التسجيل غير محفوظ.") });
+
+  /** The steps and how far each one is. The coverage step shows the payer's answer, so it stays in view on every step. */
+  const stepFields = (s: StepId) => Object.keys(allErrors).filter((k) => stepOf(k) === s);
+  const steps: { id: StepId; label: string; note?: React.ReactNode; attention: number; done: boolean }[] = [
+    { id: "identity", label: t("Identity", "الهوية"), note: [first, family].filter(Boolean).join(" ") || (isUnknown ? t("Unknown patient", "مريض مجهول") : t("Name, ID, Health ID", "الاسم والهوية")), attention: countShown("identity"), done: stepFields("identity").length === 0 && !!(first || isUnknown) },
+    { id: "contact", label: t("Contact And Address", "الاتصال والعنوان"), note: mobile || t("Mobile and address", "الجوال والعنوان"), attention: countShown("contact"), done: stepFields("contact").length === 0 && !!(mobile || isUnknown) },
+    {
+      id: "coverage", label: t("Coverage", "التغطية"),
+      note: outcome ? <span className={cn("font-medium", outcome.blocking ? "text-destructive" : outcome.warning ? "text-warn" : "text-ok")}>{ar ? outcome.titleAr : outcome.title}</span> : payType === "Cash" ? t("Cash", "نقدي") : t("Not checked yet", "لم يتم التحقق"),
+      attention: needsChoice && fe.submitted ? 1 : 0, done: payType === "Cash" ? !needsChoice : !!outcome && !outcome.blocking,
+    },
+    { id: "visit", label: t("Visit", "الزيارة"), note: visit === "none" ? t("No visit now", "بدون زيارة") : (ar ? VISITS.find((v) => v.id === visit)?.ar : VISITS.find((v) => v.id === visit)?.en), attention: countShown("visit"), done: stepFields("visit").length === 0 && (consent || isUnknown) },
+  ];
+  function countShown(s: StepId) { return Object.keys(errs).filter((k) => stepOf(k) === s).length; }
+  const stepIndex = steps.findIndex((s) => s.id === step);
+  const goStep = (s: StepId) => { setStep(s); requestAnimationFrame(() => document.getElementById("reg-steps")?.scrollIntoView({ block: "start", behavior: "smooth" })); };
 
   function createVisit(patientId: string): Outcome {
     if (visit === "I") {
@@ -459,8 +517,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
 
   /** Save in steps: form checks, then the duplicate check, then the coverage choice, then the patient file and the visit. */
   function trySave(p: Pending = {}, opts: { cash?: boolean } = {}) {
-    setShowErrors(true);
-    if (problems.length) { setFailedSaves((x) => x + 1); return; }
+    if (!fe.attempt()) return;
     // Nothing is known about an unknown patient: no duplicate check, and emergency care does not wait for the payer.
     if (isUnknown) { commit(p, null, null); return; }
 
@@ -543,6 +600,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
     }
     setDups(null); setCoverageAsk(null);
     setSaved({ patientId, visitNumber, visit: visitFailed ? "none" : visit, existing: !!p.existingId, visitFailed });
+    window.scrollTo({ top: 0 });
   }
 
   const tag = (s: string) => (dev ? s : undefined);
@@ -600,441 +658,500 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
 
   /* ---------- the form ---------- */
 
+  const nationalityOpts = [
+    ...(!NATIONALITIES.some((x) => x.code === nationality) ? [{ value: nationality, label: countryLabel(nationality) || nationality }] : []),
+    ...NATIONALITIES.map((x) => ({ value: x.code, label: x.label })),
+  ];
+  const doctorOpts = DOCTORS.map((d) => ({ value: d.id, label: `Dr. ${d.given} ${d.family}` }));
+  const nameFilled = [first, family, dob].filter(Boolean).length;
+  const contactFilled = [mobile, address1, region, city, shortCode, email].filter(Boolean).length;
+
   return (
-    <div dir={ar ? "rtl" : "ltr"} className="pb-2">
-      {/* Language switch and ID lookup */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-start gap-2">
-          <FF name="idNumber" error={errs.idNumber} required={!isUnknown && !newborn} label={t("ID (Iqama) Number", "رقم الهوية")} hl7={tag("PID-3 via registry")}>
-            <Input className="w-full font-mono sm:w-56" value={idNumber} onChange={(e) => onIdChange(e.target.value)} placeholder={t("10 digits", "10 أرقام")} inputMode="numeric" aria-label="ID number" aria-invalid={!!errs.idNumber} dir="ltr" />
-          </FF>
-          <Button className="mt-[1.625rem] h-10" onClick={() => lookup()} disabled={idNumber.length !== 10}><Search className="size-4" />{t("Look Up Patient", "بحث عن المريض")}</Button>
-          <span className="mt-[1.625rem] flex min-h-10 items-center">
-            {found === "found" && <Badge tone="ok" className="whitespace-normal leading-tight">{t("Found in the national registry (simulated)", "تم العثور عليه في السجل الوطني (محاكاة)")}</Badge>}
-            {found === "none" && <Badge tone="warn" className="whitespace-normal leading-tight">{t("Not found. Enter the details by hand.", "غير موجود. أدخل البيانات يدويا")}</Badge>}
-          </span>
-        </div>
-        <div role="group" aria-label="Language" className="flex rounded-lg border border-border bg-muted p-0.5">
+    <div dir={ar ? "rtl" : "ltr"} className="pb-2" {...fe.bind}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <RequiredNote />
+        <div role="group" aria-label="Language" className="flex rounded-lg border border-border bg-card p-0.5 shadow-xs">
           {(["en", "ar"] as const).map((l) => (
-            <button key={l} type="button" onClick={() => setLang(l)} aria-pressed={lang === l} className={cn("rounded-md px-3 py-1.5 text-sm font-medium", lang === l ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+            <button key={l} type="button" onClick={() => setLang(l)} aria-pressed={lang === l} className={cn("rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", lang === l ? "bg-[#032C26] text-white dark:bg-[#39EDD5] dark:text-[#032C26]" : "text-muted-foreground hover:text-foreground")}>
               {l === "en" ? "English" : "العربية"}
             </button>
           ))}
         </div>
       </div>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        {t("Try these test IDs: ", "جرب هذه الأرقام: ")}
-        {REGISTRY.map((r) => (
-          <button key={r.idNumber} type="button" onClick={() => onIdChange(r.idNumber)} className="me-2 font-mono text-move underline">{r.idNumber}</button>
-        ))}
-      </p>
-      <div role="group" aria-label={t("Profile Options", "خيارات الملف")} className="mt-4 flex flex-wrap gap-2">
-        <Toggle checked={isUnknown} onChange={chooseUnknown} icon={<CircleAlert className="size-4" />} tone="warn"
-          label={t("Unknown / Unconscious", "مجهول / فاقد الوعي")} hint={t("Emergency only", "للطوارئ فقط")} />
-        <Toggle checked={confidential} onChange={(v) => setConfidential(v)} icon={<ShieldAlert className="size-4" />} tone="warn" label={t("Confidential Patient", "مريض سري")} />
-        <Toggle checked={newborn} onChange={(v) => setNewborn(v)} icon={<Baby className="size-4" />} tone="info" label={t("Newborn", "مولود")} />
+
+      <div id="reg-steps" className="mt-3 scroll-mt-4 rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] px-4 pt-3 pb-2 shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)]">
+        <Stepper steps={steps} current={step} onSelect={(s) => setStep(s as StepId)} label={t("Registration steps", "خطوات التسجيل")} />
       </div>
-      {isUnknown && (
-        <div role="status" className="mt-3 rounded-lg border border-warn/50 bg-warn/10 px-4 py-3 text-sm">
-          <p className="font-semibold">{t("Unconscious Mode: only the title and the sex are required.", "وضع فاقد الوعي: اللقب والجنس فقط مطلوبان.")}</p>
-          <p className="mt-0.5">{t("The name is saved as Unknown Patient and a test Health ID is given. Complete the details when the patient can be identified.", "يحفظ الاسم كمريض مجهول ويعطى رقم هوية صحية تجريبي. أكمل البيانات عند التعرف على المريض.")}</p>
-          <Field className="mt-3 max-w-48" label={t("Approximate Age (Years)", "العمر التقريبي")} hint={t("Used for the date of birth when it is not known.", "يستخدم لتاريخ الميلاد عند عدم معرفته.")}>
-            <Input type="number" min={0} max={120} value={approxAge} onChange={(e) => setApproxAge(e.target.value)} />
-          </Field>
-        </div>
-      )}
-      {newborn && (
-        <div className="mt-3 max-w-md">
-          <FF name="parentId" error={errs.parentId} required={!isUnknown} label={t("Parent", "ولي الأمر")} hint={t("Pick the mother or father from the patients on file. A newborn may have no ID number yet.", "اختر الأم أو الأب من المرضى المسجلين. قد لا يكون للمولود رقم هوية بعد.")}>
-            <Select value={parentId} onChange={(e) => setParentId(e.target.value)} aria-invalid={!!errs.parentId}>
-              <option value="">{t("Select", "اختر")}</option>
-              {parents.map((x) => <option key={x.id} value={x.id}>{listName(x)}, {x.mrn}</option>)}
-            </Select>
-          </FF>
-        </div>
-      )}
-      <RequiredNote className="mt-3" />
 
-      {showErrors && problems.length > 0 && (
-        <div ref={summary} tabIndex={-1} role="alert" className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <p className="flex items-center gap-2 text-sm font-semibold"><TriangleAlert className="size-4 shrink-0" />{t(problems.length === 1 ? "Fix 1 thing before you save" : `Fix ${problems.length} things before you save`, `أكمل ${problems.length} من الحقول قبل الحفظ`)}</p>
-          <ul className="mt-1.5 list-disc space-y-0.5 ps-6 text-sm">
-            {problems.map((p) => (
-              <li key={p.field}><button type="button" className="text-start underline" onClick={() => goTo(p.field)}>{ar ? p.messageAr : p.message}</button></li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <ErrorSummary
+        ref={summary}
+        className="mt-4"
+        items={order.filter((k, i) => errs[k] && order.indexOf(k) === i).map((k) => ({ key: k, text: errs[k]! }))}
+        onJump={fe.go}
+      />
 
-      <Sec title={t("Visit", "الزيارة")}>
-        <div role="radiogroup" aria-label={t("What is the patient here for?", "ما سبب حضور المريض؟")}>
-          <div className="mb-3 text-sm font-medium">{t("What is the patient here for?", "ما سبب حضور المريض؟")}</div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {VISITS.map((v) => (
-              <button key={v.id} type="button" role="radio" aria-checked={visit === v.id} onClick={() => chooseVisit(v.id)}
-                className={cn("flex min-h-24 items-start gap-3 rounded-xl border-2 p-4 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", visit === v.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/60")}>
-                <span className={cn("mt-0.5 shrink-0", visit === v.id ? "text-primary" : "text-muted-foreground")}>{v.icon}</span>
-                <span className="min-w-0">
-                  <span className="block text-base font-semibold">{ar ? v.ar : v.en}</span>
-                  <span className="block text-sm text-muted-foreground">{ar ? v.hintAr : v.hintEn}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-          <button type="button" role="radio" aria-checked={visit === "none"} onClick={() => chooseVisit("none")}
-            className={cn("mt-3 flex w-full items-center gap-3 rounded-xl border-2 px-4 py-2.5 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", visit === "none" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/60")}>
-            <UserPlus className={cn("size-5 shrink-0", visit === "none" ? "text-primary" : "text-muted-foreground")} />
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold">{t("No Visit Now", "بدون زيارة الآن")}</span>
-              <span className="block text-sm text-muted-foreground">{t("Register the patient only. Start a visit later.", "تسجيل المريض فقط. ابدأ الزيارة لاحقا.")}</span>
-            </span>
-          </button>
-        </div>
-
-        {visit !== "none" && (
-          <Group title={visit === "O" ? t("Outpatient Visit", "زيارة العيادات الخارجية") : visit === "I" ? t("Inpatient Admission", "التنويم") : t("Emergency Visit", "زيارة طوارئ")} className="mt-5 border-t border-border pt-5">
-            <Grid>
-              <Field label={visit === "I" ? t("Admitting Doctor", "الطبيب المنوم") : t("Doctor", "الطبيب")} hl7={tag(visit === "I" ? "PV1-7, PV1-17" : "PV1-7")}>
-                <Select value={attending} onChange={(e) => setAttending(e.target.value)}>{doctorOptions}</Select>
-              </Field>
-              {visit !== "E" && (
-                <Field label={visit === "O" ? t("Clinic", "العيادة") : t("Department", "القسم")} hl7={tag("PV1-10")}>
-                  <Select value={service} onChange={(e) => setService(e.target.value)}>{SERVICES.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}</Select>
-                </Field>
-              )}
-              {visit === "I" && (
-                <FF name="bedId" error={errs.bedId} required label={t("Bed", "السرير")} hl7={tag("PV1-3")} hint={beds.length ? undefined : t("No bed is free. Free a bed first.", "لا يوجد سرير شاغر.")}>
-                  <Select value={bedId} onChange={(e) => setBedId(e.target.value)} aria-invalid={!!errs.bedId}>
-                    <option value="">{t("Select", "اختر")}</option>
-                    {beds.map((b) => <option key={b.id} value={b.id}>{b.wardName}, {bedLabel(b.id)}</option>)}
-                  </Select>
+      <div className="mt-4 space-y-4">
+        {/* ---------- Step 1: Identity ---------- */}
+        {step === "identity" && (
+          <>
+            <Sec title={t("Find The Patient", "البحث عن المريض")} help={t("Type the 10 digit ID. The national registry fills in what it knows.", "أدخل رقم الهوية المكون من 10 أرقام. يملأ السجل الوطني البيانات المعروفة.")}>
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+                <FF name="idNumber" error={errs.idNumber} required={!isUnknown && !newborn} label={t("ID (Iqama) Number", "رقم الهوية")} hl7={tag("PID-3 via registry")} className="w-full sm:w-64">
+                  <Input className="font-mono tracking-wider" value={idNumber} onChange={(e) => onIdChange(e.target.value)} placeholder={t("10 digits", "10 أرقام")} inputMode="numeric" dir="ltr" />
                 </FF>
-              )}
-              {visit === "I" && (
-                <>
-                  <FF name="admissionType" error={errs.admissionType} required label={t("Admission Type", "نوع التنويم")} hl7={tag("PV1-4")}>
-                    <Select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} aria-invalid={!!errs.admissionType}>
-                      <option value="">{t("Select", "اختر")}</option>
-                      {ADMISSION_TYPES.map((a) => <option key={a.label} value={a.label}>{a.label}</option>)}
-                    </Select>
-                  </FF>
-                  <FF name="patientCondition" error={errs.patientCondition} required label={t("Patient Condition", "حالة المريض")} hl7={hisOnly}>
-                    <Select value={patientCondition} onChange={(e) => setPatientCondition(e.target.value)} aria-invalid={!!errs.patientCondition}>
-                      <option value="">{t("Select", "اختر")}</option>
-                      {PATIENT_CONDITIONS.map((x) => <option key={x}>{x}</option>)}
-                    </Select>
-                  </FF>
-                  <FF name="expectedStay" error={errs.expectedStay} label={t("Expected Stay (Days)", "مدة الإقامة المتوقعة (أيام)")} hl7={hisOnly}>
-                    <Input type="number" min={1} max={365} step={1} value={expectedStay} onChange={(e) => setExpectedStay(e.target.value)} placeholder={t("For example 3", "مثال 3")} aria-invalid={!!errs.expectedStay} />
-                  </FF>
-                  <Field label={t("Activity Level", "مستوى النشاط")} hl7={hisOnly}>
-                    <Select value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)}><option value="">{t("Select", "اختر")}</option>{ACTIVITY_LEVELS.map((x) => <option key={x}>{x}</option>)}</Select>
-                  </Field>
-                  <Field label={t("Admission Specialty", "تخصص التنويم")} hl7={hisOnly}>
-                    <Select value={admissionSpecialty} onChange={(e) => setAdmissionSpecialty(e.target.value)}><option value="">{t("Select", "اختر")}</option>{ADMISSION_SPECIALTIES.map((x) => <option key={x}>{x}</option>)}</Select>
-                  </Field>
-                </>
-              )}
-              {visit === "E" && (
-                <Field label={t("Arrival Mode", "وسيلة الوصول")} hl7={tag("ZPV1-18")}>
-                  <Select value={arrival} onChange={(e) => setArrival(e.target.value as EdData["arrivalMode"])}>{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>
-                </Field>
-              )}
-              {visit === "E" && !canSetTriage() && (
-                <Field label={t("Triage Level (CTAS)", "مستوى الفرز")}>
-                  <p className="rounded-md border border-border bg-muted px-3 py-2 text-sm">{t("The triage nurse sets the level.", "يحدد ممرض الفرز المستوى.")}</p>
-                </Field>
-              )}
-              {visit === "E" && canSetTriage() && (
-                <Field label={t("Triage Level (CTAS)", "مستوى الفرز")} hl7={tag("ZPV1-22")} hint={ctas ? ctasInfo(ctas).description : t("Leave it for the triage nurse, or choose it now if it is clear.", "اتركه لممرض الفرز أو اختره الآن.")}>
-                  <Select value={ctas ?? ""} onChange={(e) => setCtas(e.target.value ? (Number(e.target.value) as CtasLevel) : undefined)}>
-                    <option value="">{t("Decide At Triage", "يحدد عند الفرز")}</option>
-                    {CTAS.map((c) => <option key={c.level} value={c.level}>CTAS {c.level}, {c.label} ({c.targetMin === 0 ? "doctor now" : `doctor within ${c.targetMin} min`})</option>)}
-                  </Select>
-                </Field>
-              )}
-              <Field label={t("Referring Doctor", "الطبيب المحول")} hl7={tag("PV1-8")}>
-                <Select value={referring} onChange={(e) => setReferring(e.target.value)}><option value="">{t("None", "لا يوجد")}</option>{doctorOptions}</Select>
-              </Field>
-              <Field label={visit === "I" ? t("Reason for Admission", "سبب التنويم") : t("Reason for Visit", "سبب الزيارة")} hl7={tag("PV2-12")}><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
-            </Grid>
-            <div className="mt-4 flex flex-wrap gap-2">{COMPLAINT_SAMPLES.map((c) => <button key={c.code} type="button" onClick={() => setReason(c.text)} className="rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent">{c.text}</button>)}</div>
-            {dev && <p className="mt-3 text-xs text-muted-foreground">{visit === "I" ? "Saving sends ADT A01 with patient class I." : `Saving sends ADT A04 with patient class ${visit}.`} Registering with no visit sends nothing: NPHIES has no message for a patient file alone.</p>}
-          </Group>
-        )}
-      </Sec>
-
-      <Sec title={t("Patient Name", "إسم المريض")}>
-        <Grid>
-          <FF name="title" error={errs.title} required={isUnknown} label={t("Title", "اللقب")} hl7={hisOnly} hint={titleChoice === null ? t("Filled from the sex and marital status.", "يملأ من الجنس والحالة الاجتماعية.") : undefined}>
-            <Select value={title} onChange={(e) => setTitleChoice(e.target.value)} aria-invalid={!!errs.title}>
-              <option value="">{t("Select", "اختر")}</option>
-              {TITLES.map((x) => <option key={x}>{x}</option>)}
-            </Select>
-          </FF>
-          {confidential && (
-            <FF name="nickName" error={errs.nickName} required label={t("Nick Name (Confidential ID)", "الاسم المستعار")} hl7={hisOnly} hint={t("Shown on lists instead of the name.", "يظهر في القوائم بدل الاسم.")}>
-              <Input value={nickName} onChange={(e) => setNickName(e.target.value)} placeholder={t("Pseudonym or alias", "اسم مستعار")} aria-invalid={!!errs.nickName} />
-            </FF>
-          )}
-        </Grid>
-        {isUnknown && <p className="mt-3 text-sm text-muted-foreground">{t("Leave the name empty to save it as Unknown Patient.", "اترك الاسم فارغا ليحفظ كمريض مجهول.")}</p>}
-        <Group title={t("Name (English)", "الإسم بالإنجليزية")} className="mt-5 border-t border-border pt-5">
-          <Grid>
-            <FF name="first" error={errs.first} required={!isUnknown} label="First" hl7={tag("PID-5.2")}><Input value={first} onChange={(e) => setFirst(e.target.value)} dir="ltr" aria-invalid={!!errs.first} /></FF>
-            <Field label="Father" hl7={tag("PID-5.3")}><Input value={second} onChange={(e) => setSecond(e.target.value)} dir="ltr" /></Field>
-            <Field label="Grandfather" hl7={tag("PID-5.3")}><Input value={third} onChange={(e) => setThird(e.target.value)} dir="ltr" /></Field>
-            <FF name="family" error={errs.family} required={!isUnknown} label="Family" hl7={tag("PID-5.1")}><Input value={family} onChange={(e) => setFamily(e.target.value)} dir="ltr" aria-invalid={!!errs.family} /></FF>
-          </Grid>
-        </Group>
-        <Group title={t("Name (Arabic)", "الإسم بالعربي")} className="mt-5 border-t border-border pt-5">
-          <div dir="rtl">
-            <Grid>
-              <Field label={t("First (Arabic)", "الأول")} hl7={hisOnly}><Input value={firstAr} onChange={(e) => setFirstAr(e.target.value)} dir="rtl" lang="ar" /></Field>
-              <Field label={t("Father (Arabic)", "الأب")} hl7={hisOnly}><Input value={secondAr} onChange={(e) => setSecondAr(e.target.value)} dir="rtl" lang="ar" /></Field>
-              <Field label={t("Grandfather (Arabic)", "الجد")} hl7={hisOnly}><Input value={thirdAr} onChange={(e) => setThirdAr(e.target.value)} dir="rtl" lang="ar" /></Field>
-              <Field label={t("Family (Arabic)", "لقب العائلة")} hl7={hisOnly}><Input value={familyAr} onChange={(e) => setFamilyAr(e.target.value)} dir="rtl" lang="ar" /></Field>
-            </Grid>
-          </div>
-          {dev && <p className="mt-3 text-xs text-muted-foreground">Assumption: the NPHIES ADT pages do not say how to send an Arabic name, so it stays in the HIS and PID-5 carries the English name.</p>}
-        </Group>
-      </Sec>
-
-      <Sec title={t("File Information", "بيانات ملف")}>
-        <Grid>
-          <Field label={t("Main File No.", "الملف الرئيسي")} hl7={hisOnly}><Input value={`MF-${1000 + n}`} disabled /></Field>
-          <Field label={t("File Number", "رقم الملف")} hl7={tag("PID-3 (MRN not sent)")}><Input value={`MRN${String(100 + n).padStart(7, "0")}`} disabled /></Field>
-          <Field label={t("Registration No.", "رقم التسجيل")} hl7={hisOnly}><Input value={`REG-${today.slice(0, 4)}-${1000 + n}`} disabled /></Field>
-          <Field label={t("Payment Type", "طريقة الدفع")} hl7={tag("Financial")}>
-            <Select value={payType} onChange={(e) => changePayType(e.target.value as "Cash" | "Insurance")}>
-              <option value="Cash">{t("Cash", "نقدي")}</option>
-              <option value="Insurance">{t("Insurance", "تأمين")}</option>
-            </Select>
-          </Field>
-          <Field label={t("Registration Date", "ت.التسجيل")} hl7={tag("PV1-44")}><Input type="date" value={regDate} onChange={(e) => setRegDate(e.target.value)} /></Field>
-          <Field label={t("Registration Date (Hijri)", "التاريخ الهجري")}><Input value={hijri(regDate)} disabled dir="ltr" /></Field>
-        </Grid>
-      </Sec>
-
-      <Sec title={t("Demographic Details", "بيانات تفصيلية")}>
-        <Grid>
-          <FF name="dob" error={errs.dob} required={!isUnknown} label={t("Date of Birth", "ت الميلاد")} hl7={tag("PID-7")}><Input type="date" value={dob} max={today} onChange={(e) => setDob(e.target.value)} aria-invalid={!!errs.dob} /></FF>
-          <Field label={t("Date of Birth (Hijri)", "تاريخ الميلاد الهجري")} hint={t("Filled from the date of birth.", "يملأ من تاريخ الميلاد.")}><Input value={hijri(dob)} disabled dir="ltr" /></Field>
-          <Field label={t("Age", "العمر")} hint={t("Worked out from the date of birth.", "يحسب من تاريخ الميلاد.")}><Input value={ageLabel(dob)} disabled /></Field>
-          <Field label={t("Gender", "النوع")} hl7={tag("PID-8")}>
-            <Select value={sex} onChange={(e) => setSex(e.target.value as "M" | "F")}><option value="M">{t("Male", "ذكر")}</option><option value="F">{t("Female", "أنثى")}</option></Select>
-          </Field>
-          <Field label={t("Nationality", "الجنسية")} hl7={tag("PID-28")}>
-            <Select value={nationality} onChange={(e) => setNationality(e.target.value)}>{!NATIONALITIES.some((x) => x.code === nationality) && <option value={nationality}>{countryLabel(nationality) || nationality}</option>}{NATIONALITIES.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</Select>
-          </Field>
-          <Field label={t("Marital Status", "الحالة الإجتماعية")} hl7={tag("PID-16")}>
-            <Select value={marital} onChange={(e) => setMarital(e.target.value)}>{MARITAL.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</Select>
-          </Field>
-          <Field label={t("Religion", "الديانة")} hl7={tag("PID-17 ignored by nphies")}>
-            <Select value={religion} onChange={(e) => setReligion(e.target.value)}>{RELIGIONS.map((x) => <option key={x}>{x}</option>)}</Select>
-          </Field>
-          <Field label={t("Blood Group", "فصيلة الدم")} hl7={hisOnly}>
-            <Select value={blood} onChange={(e) => setBlood(e.target.value)}><option value="">{t("Select", "اختر")}</option>{BLOOD.map((x) => <option key={x}>{x}</option>)}</Select>
-          </Field>
-          <Field label={t("File Status", "حالة الملف")} hl7={hisOnly}>
-            <Select value={fileStatus} onChange={(e) => setFileStatus(e.target.value)}>{FILE_STATUS.map((x) => <option key={x}>{x}</option>)}</Select>
-          </Field>
-          <Field label={t("Social Status", "الحالة الوظيفية")} hl7={hisOnly}>
-            <Select value={social} onChange={(e) => setSocial(e.target.value)}><option value="">{t("Select", "اختر")}</option>{SOCIAL.map((x) => <option key={x}>{x}</option>)}</Select>
-          </Field>
-          <Field label={t("Place of Birth", "محل الميلاد")} hl7={hisOnly}><Input value={birthPlace} onChange={(e) => setBirthPlace(e.target.value)} /></Field>
-          <Field label={t("Occupation", "الوظيفة")} hl7={hisOnly}><Input value={occupation} onChange={(e) => setOccupation(e.target.value)} /></Field>
-          <Field label={t("Employee No.", "الرقم الوظيفي")} hl7={hisOnly}><Input value={employeeNo} onChange={(e) => setEmployeeNo(e.target.value)} /></Field>
-        </Grid>
-      </Sec>
-
-      <Sec title={t("ID and Address Details", "بيانات هوية")}>
-        <Grid>
-          <Field label={t("ID Type", "نوع الهوية")} hl7={hisOnly}><Select value={idType} onChange={(e) => setIdType(e.target.value)}>{ID_TYPES.map((x) => <option key={x}>{x}</option>)}</Select></Field>
-          <Field label={t("Issuing Authority", "جهة الإصدار")} hl7={hisOnly}><Select value={issuer} onChange={(e) => setIssuer(e.target.value)}><option value="">{t("Select", "اختر")}</option>{ISSUERS.map((x) => <option key={x}>{x}</option>)}</Select></Field>
-          <Field label={t("ID Issue Date", "تاريخ الإصدار")} hl7={hisOnly}><Input type="date" value={idIssue} onChange={(e) => setIdIssue(e.target.value)} /></Field>
-          <Field label={t("ID Expiry Date", "تاريخ الانتهاء")} hl7={hisOnly}><Input type="date" value={idExpiry} onChange={(e) => setIdExpiry(e.target.value)} className={idExpiry && isExpired(idExpiry) ? "border-destructive" : ""} /></Field>
-          <Field label={t("Copy No.", "رقم النسخة")} hl7={hisOnly}><Input value={copyNo} onChange={(e) => setCopyNo(e.target.value)} /></Field>
-          <Field label={t("Address Type", "نوع العنوان")} hl7={hisOnly}><Select value={addressType} onChange={(e) => setAddressType(e.target.value)}>{ADDRESS_TYPES.map((x) => <option key={x}>{x}</option>)}</Select></Field>
-          <FF name="shortCode" error={errs.shortCode} label={t("National Address Short Code", "العنوان الوطني المختصر")} hl7={tag("PID-11")}>
-            <Input className="font-mono" value={shortCode} onChange={(e) => setShortCode(e.target.value.toUpperCase())} maxLength={8} dir="ltr" aria-invalid={!!errs.shortCode} />
-          </FF>
-        </Grid>
-        <Group title={t("Address", "العنوان")} className="mt-5 border-t border-border pt-5">
-          <Grid>
-            <Field label={t("State / Region", "المنطقة")} hl7={hisOnly}>
-              <Select value={region} onChange={(e) => { setRegion(e.target.value); setCity(""); }}>
-                <option value="">{t("Select", "اختر")}</option>
-                {SAUDI_REGIONS.map((r) => <option key={r.region}>{r.region}</option>)}
-              </Select>
-            </Field>
-            <Field label={t("City", "المدينة")} hl7={hisOnly} hint={region ? undefined : t("Pick the region first.", "اختر المنطقة أولا.")}>
-              <Select value={city} onChange={(e) => setCity(e.target.value)} disabled={!region}>
-                <option value="">{t("Select", "اختر")}</option>
-                {(SAUDI_REGIONS.find((r) => r.region === region)?.cities ?? []).map((c) => <option key={c}>{c}</option>)}
-              </Select>
-            </Field>
-            <FF name="addressLine1" error={errs.addressLine1} required={!isUnknown} label={t("Address Line 1", "سطر العنوان 1")} hl7={hisOnly}>
-              <Input value={address1} onChange={(e) => setAddress1(e.target.value)} placeholder={t("Street, building name", "الشارع، اسم المبنى")} aria-invalid={!!errs.addressLine1} />
-            </FF>
-            <Field label={t("Address Line 2", "سطر العنوان 2")} hl7={hisOnly}>
-              <Input value={address2} onChange={(e) => setAddress2(e.target.value)} placeholder={t("Unit, PO Box (optional)", "الوحدة، صندوق البريد (اختياري)")} />
-            </Field>
-          </Grid>
-        </Group>
-        {warnings.map((w) => <p key={w} className="mt-4 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm">{w}</p>)}
-      </Sec>
-
-      <Sec title={t("Contact Information", "بيانات للإتصال")}>
-        <Grid>
-          <FF name="mobile" error={errs.mobile} required={!isUnknown} label={t("Mobile No.", "الجوال")} hl7={hisOnly}><Input value={mobile} onChange={(e) => setMobile(e.target.value)} dir="ltr" inputMode="tel" aria-invalid={!!errs.mobile} /></FF>
-          <Field label={t("Country Code", "رمز الدولة")} hl7={hisOnly}><Input value={countryCode} onChange={(e) => setCountryCode(e.target.value)} dir="ltr" /></Field>
-          <Field label={t("Area Code", "رمز المنطقة")} hl7={hisOnly}><Input value={areaCode} onChange={(e) => setAreaCode(e.target.value)} dir="ltr" /></Field>
-          <Field label={t("Home Phone", "هاتف المنزل")} hl7={hisOnly}><Input value={homePhone} onChange={(e) => setHomePhone(e.target.value)} dir="ltr" inputMode="tel" /></Field>
-          <Field label={t("Other Phone", "هاتف آخر")} hl7={hisOnly}><Input value={otherPhone} onChange={(e) => setOtherPhone(e.target.value)} dir="ltr" inputMode="tel" /></Field>
-          <Field label={t("Relative Name", "اسم قريب للمريض")} hl7={hisOnly}><Input value={relName} onChange={(e) => setRelName(e.target.value)} /></Field>
-          <Field label={t("Relative Mobile", "جوال قريب المريض")} hl7={hisOnly}><Input value={relPhone} onChange={(e) => setRelPhone(e.target.value)} dir="ltr" inputMode="tel" /></Field>
-          <FF name="email" error={errs.email} label={t("Email", "البريد الإلكتروني")} hl7={hisOnly}><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" aria-invalid={!!errs.email} /></FF>
-        </Grid>
-      </Sec>
-
-      <Sec title={t("Patient Flags", "تنبيهات المريض")}>
-        <p className="mb-4 text-sm text-muted-foreground">{t("Tick what applies. Flags show on the patient banner for every member of staff.", "اختر ما ينطبق. تظهر التنبيهات في شريط المريض لجميع الموظفين.")}</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className={cn("rounded-lg border p-3", dnr ? "border-destructive/50 bg-destructive/5" : "border-border")}>
-            <label className="flex items-start gap-2.5 text-sm">
-              <input type="checkbox" checked={dnr} onChange={(e) => setDnr(e.target.checked)} className="mt-0.5 size-4 accent-[var(--primary)]" />
-              <span><span className="block font-medium">{t("Do Not Resuscitate", "عدم الإنعاش")}</span><span className="block text-xs text-muted-foreground">{t("Only with a written order from a doctor.", "فقط بأمر مكتوب من الطبيب.")}</span></span>
-            </label>
-            {dnr && (
-              <div className="mt-3 grid gap-x-4 gap-y-4 sm:grid-cols-2">
-                <FF name="dnrDoctor" error={errs.dnrDoctor} required label={t("Ordering Doctor", "الطبيب الآمر")}>
-                  <Select value={dnrDoctor} onChange={(e) => setDnrDoctor(e.target.value)} aria-invalid={!!errs.dnrDoctor}><option value="">{t("Select", "اختر")}</option>{doctorOptions}</Select>
-                </FF>
-                <FF name="dnrDate" error={errs.dnrDate} required label={t("Order Date", "تاريخ الأمر")}>
-                  <Input type="date" value={dnrDate} max={today} onChange={(e) => setDnrDate(e.target.value)} aria-invalid={!!errs.dnrDate} />
-                </FF>
-              </div>
-            )}
-          </div>
-          <div className={cn("rounded-lg border p-3", interpreter ? "border-move/50 bg-move/5" : "border-border")}>
-            <label className="flex items-start gap-2.5 text-sm">
-              <input type="checkbox" checked={interpreter} onChange={(e) => setInterpreter(e.target.checked)} className="mt-0.5 size-4 accent-[var(--primary)]" />
-              <span><span className="block font-medium">{t("Needs Interpreter", "يحتاج مترجم")}</span><span className="block text-xs text-muted-foreground">{t("The patient does not speak Arabic well.", "المريض لا يتحدث العربية جيدا.")}</span></span>
-            </label>
-            {interpreter && (
-              <div className="mt-3">
-                <FF name="language" error={errs.language} required label={t("Language", "اللغة")}>
-                  <Select value={language} onChange={(e) => setLanguage(e.target.value)} aria-invalid={!!errs.language}><option value="">{t("Select", "اختر")}</option>{INTERPRETER_LANGUAGES.map((x) => <option key={x}>{x}</option>)}</Select>
-                </FF>
-              </div>
-            )}
-          </div>
-          <label className={cn("flex items-start gap-2.5 rounded-lg border p-3 text-sm", fallRisk ? "border-warn/50 bg-warn/5" : "border-border")}>
-            <input type="checkbox" checked={fallRisk} onChange={(e) => setFallRisk(e.target.checked)} className="mt-0.5 size-4 accent-[var(--primary)]" />
-            <span><span className="block font-medium">{t("Fall Risk", "خطر السقوط")}</span><span className="block text-xs text-muted-foreground">{t("Unsteady, uses a walking aid or fell before.", "غير متزن أو يستخدم وسيلة مساعدة أو سقط من قبل.")}</span></span>
-          </label>
-          <label className={cn("flex items-start gap-2.5 rounded-lg border p-3 text-sm", isolation ? "border-warn/50 bg-warn/5" : "border-border")}>
-            <input type="checkbox" checked={isolation} onChange={(e) => setIsolation(e.target.checked)} className="mt-0.5 size-4 accent-[var(--primary)]" />
-            <span><span className="block font-medium">{t("Isolation", "عزل")}</span><span className="block text-xs text-muted-foreground">{t("Keep apart from other patients because of infection.", "يبقى بعيدا عن المرضى الآخرين بسبب العدوى.")}</span></span>
-          </label>
-        </div>
-      </Sec>
-
-      <Sec title={t("Insurance Card", "كارت التأمين")} name="coverage">
-        <div className="flex flex-wrap items-start gap-3">
-          <Button className="h-10 border-2 border-update/60" onClick={retrieveInsuranceCard} disabled={idNumber.length !== 10}>
-            <CreditCard className="size-4" />{t("Retrieve Patient Insurance Card", "استعراض كارت تأمين المريض")}
-          </Button>
-          <Button className="h-10" disabled={!ins} onClick={() => ins && setArchive((a) => [...a, { kind: "Insurance card", at: new Date().toISOString(), summary: `${ins.payer} ${ins.memberId}` }])}>
-            {t("Archive Patient Insurance Card", "أرشفة كارت تأمين المريض")}
-          </Button>
-          {idNumber.length !== 10 && <span className="self-center text-xs text-muted-foreground">{t("Enter the ID number first.", "أدخل رقم الهوية أولا")}</span>}
-        </div>
-        {ins && (
-          <div className="mt-3 max-w-xl rounded-xl border border-border bg-gradient-to-br from-move/10 to-admit/10 p-4" aria-label="Insurance card">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-base font-semibold">{ins.payer}</div>
-              <Badge tone={ins.status === "Active" ? "ok" : "danger"}>{ins.status === "Active" ? t("Active", "ساري") : t("Expired", "منتهي")}</Badge>
-            </div>
-            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
-              <div><dt className="text-xs text-muted-foreground">{t("Member ID", "الرقم التأميني")}</dt><dd className="font-mono">{ins.memberId}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">{t("Policy", "الوثيقة")}</dt><dd className="font-mono">{ins.policyNo}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">{t("Class", "الفئة")}</dt><dd>{ins.className}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">{t("Network", "الشبكة")}</dt><dd>{ins.network}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">{t("Valid", "الصلاحية")}</dt><dd>{ins.startDate} to {ins.expiryDate}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">{t("Co-pay", "نسبة التحمل")}</dt><dd>{ins.copayPercent}%</dd></div>
-            </dl>
-            {dev && <p className="mt-2 text-xs text-muted-foreground">Simulated eligibility response. A real HIS asks the payer through NPHIES financial services (eligibility), which is a different guide from the UHR pages used here.</p>}
-          </div>
-        )}
-        {outcome && (ins || payType === "Insurance") && (
-          <CoverageBox outcome={outcome} ar={ar}>
-            {outcome.blocking && cashChosen && <p className="mt-2 font-medium">{t("You chose to continue as a cash patient. The patient pays for this visit.", "اخترت المتابعة كمريض نقدي. يدفع المريض تكلفة هذه الزيارة.")}</p>}
-            {outcome.blocking && visit === "none" && <p className="mt-2">{t("No visit is being started, so there is nothing to decide now.", "لا توجد زيارة الآن، فلا يوجد قرار مطلوب.")}</p>}
-            {needsChoice && (
-              <>
-                <p className="mt-2 font-medium">{t("Choose what to do before you save the visit.", "اختر الإجراء قبل حفظ الزيارة.")}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button variant="primary" onClick={() => chooseCash(outcome)}>{t("Continue As Cash Patient", "المتابعة كمريض نقدي")}</Button>
-                  <Button onClick={() => chooseFix(outcome)}>{t("Fix Coverage", "تصحيح التغطية")}</Button>
+                <div className="flex flex-wrap items-center gap-2 sm:mt-[1.625rem]">
+                  <Button className="h-10" onClick={() => lookup()} disabled={idNumber.length !== 10}><Search className="size-4" />{t("Look Up Patient", "بحث عن المريض")}</Button>
+                  <Button className="h-10" onClick={() => setYakeenOpen(true)}><Fingerprint className="size-4" />{t("Verify With Yakeen", "التحقق عبر يقين")}</Button>
+                  {yakeenAt && <Badge tone="ok" className="whitespace-normal leading-tight">{t("Verified by Yakeen", "تم التحقق عبر يقين")}</Badge>}
+                  {found === "found" && <Badge tone="ok" className="whitespace-normal leading-tight">{t("Found in the national registry", "تم العثور عليه في السجل الوطني")}</Badge>}
+                  {found === "none" && <Badge tone="warn" className="whitespace-normal leading-tight">{t("Not found. Enter the details by hand.", "غير موجود. أدخل البيانات يدويا")}</Badge>}
                 </div>
-              </>
-            )}
-            {fixNote && !cashChosen && <p className="mt-2">{t("Ask the patient for a valid card or call the payer. Then retrieve the insurance card again.", "اطلب من المريض بطاقة سارية أو اتصل بشركة التأمين، ثم استعرض كارت التأمين مرة أخرى.")}</p>}
-          </CoverageBox>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                {t("Test IDs: ", "أرقام للتجربة: ")}
+                {REGISTRY.map((r) => (
+                  <button key={r.idNumber} type="button" onClick={() => onIdChange(r.idNumber)} className="me-2 rounded font-mono text-move underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{r.idNumber}</button>
+                ))}
+              </p>
+              {/* The coverage check sits beside the ID, so the payer's answer is known before anything else is typed. */}
+              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-card px-3 py-2.5">
+                <span className="text-sm font-medium">{t("Coverage", "التغطية")}</span>
+                {outcome && (ins || payType === "Insurance") ? (
+                  <span className={cn("inline-flex items-center gap-1.5 text-sm font-semibold", outcome.blocking ? "text-destructive" : outcome.warning ? "text-warn" : "text-ok")} role="status">
+                    {outcome.blocking || outcome.warning ? <TriangleAlert className="size-4" aria-hidden="true" /> : <CircleCheck className="size-4" aria-hidden="true" />}
+                    {ar ? outcome.titleAr : outcome.title}
+                  </span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">{t("Not checked yet", "لم يتم التحقق")}</span>
+                )}
+                <span className="ms-auto flex flex-wrap gap-2">
+                  <ReasonButton size="sm" onClick={retrieveInsuranceCard} reason={idNumber.length !== 10 ? t("Enter the 10 digit ID number first.", "أدخل رقم الهوية أولا.") : undefined}>
+                    <CreditCard className="size-4" />{t("Retrieve Patient Insurance Card", "استعراض كارت تأمين المريض")}
+                  </ReasonButton>
+                  {outcome && <Button size="sm" variant="ghost" onClick={() => setStep("coverage")}>{t("See Coverage", "عرض التغطية")}</Button>}
+                </span>
+              </div>
+              <div role="group" aria-label={t("Profile Options", "خيارات الملف")} className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+                <Toggle checked={isUnknown} onChange={chooseUnknown} icon={<CircleAlert className="size-4" />} tone="warn"
+                  label={t("Unknown / Unconscious", "مجهول / فاقد الوعي")} hint={t("Emergency only", "للطوارئ فقط")} />
+                <Toggle checked={confidential} onChange={(v) => setConfidential(v)} icon={<ShieldAlert className="size-4" />} tone="warn" label={t("Confidential Patient", "مريض سري")} />
+                <Toggle checked={newborn} onChange={(v) => setNewborn(v)} icon={<Baby className="size-4" />} tone="info" label={t("Newborn", "مولود")} />
+              </div>
+              {isUnknown && (
+                <div role="status" className="mt-3 rounded-xl border border-warn/50 bg-warn/10 px-4 py-3 text-sm">
+                  <p className="font-semibold">{t("Unconscious Mode: only the title and the sex are required.", "وضع فاقد الوعي: اللقب والجنس فقط مطلوبان.")}</p>
+                  <p className="mt-0.5">{t("The name is saved as Unknown Patient and a test Health ID is given. Complete the details when the patient can be identified.", "يحفظ الاسم كمريض مجهول ويعطى رقم هوية صحية تجريبي. أكمل البيانات عند التعرف على المريض.")}</p>
+                  <Field className="mt-3 max-w-56" label={t("Approximate Age", "العمر التقريبي")} hint={t("Used for the date of birth when it is not known.", "يستخدم لتاريخ الميلاد عند عدم معرفته.")}>
+                    <Input type="number" min={0} max={120} value={approxAge} onChange={(e) => setApproxAge(e.target.value)} suffix={t("years", "سنة")} />
+                  </Field>
+                </div>
+              )}
+              {newborn && (
+                <div className="mt-4 max-w-md">
+                  <FF name="parentId" error={errs.parentId} required={!isUnknown} label={t("Parent", "ولي الأمر")} hint={t("The mother or father, from the patients on file. A newborn may have no ID number yet.", "اختر الأم أو الأب من المرضى المسجلين. قد لا يكون للمولود رقم هوية بعد.")}>
+                    <ChoiceSelect options={parents.map((x) => ({ value: x.id, label: `${listName(x)}, ${x.mrn}` }))} value={parentId} onChange={setParentId} placeholder={t("Select", "اختر")} label={t("Parent", "ولي الأمر")} />
+                  </FF>
+                </div>
+              )}
+            </Sec>
+
+            <Sec title={t("Patient Name", "إسم المريض")} help={t("As written on the ID card.", "كما هو مكتوب في بطاقة الهوية.")}>
+              <Grid>
+                <FF name="title" error={errs.title} required={isUnknown} label={t("Title", "اللقب")} hl7={hisOnly} hint={titleChoice === null ? t("Filled from the sex and marital status.", "يملأ من الجنس والحالة الاجتماعية.") : undefined}>
+                  <Select value={title} onChange={(e) => setTitleChoice(e.target.value)}>
+                    <option value="">{t("Select", "اختر")}</option>
+                    {TITLES.map((x) => <option key={x}>{x}</option>)}
+                  </Select>
+                </FF>
+                {confidential && (
+                  <FF name="nickName" error={errs.nickName} required label={t("Nick Name (Confidential ID)", "الاسم المستعار")} hl7={hisOnly} hint={t("Shown on lists instead of the name.", "يظهر في القوائم بدل الاسم.")}>
+                    <Input value={nickName} onChange={(e) => setNickName(e.target.value)} placeholder={t("Pseudonym or alias", "اسم مستعار")} />
+                  </FF>
+                )}
+              </Grid>
+              {isUnknown && <p className="mt-3 text-sm text-muted-foreground">{t("Leave the name empty to save it as Unknown Patient.", "اترك الاسم فارغا ليحفظ كمريض مجهول.")}</p>}
+              <Group title={t("Name (English)", "الإسم بالإنجليزية")} className="mt-5 border-t border-border pt-5">
+                <Grid cols={4}>
+                  <FF name="first" error={errs.first} required={!isUnknown} label={t("First", "الأول")} hl7={tag("PID-5.2")}><Input value={first} onChange={(e) => setFirst(e.target.value)} dir="ltr" autoComplete="off" /></FF>
+                  <Field label={t("Father", "الأب")} hl7={tag("PID-5.3")}><Input value={second} onChange={(e) => setSecond(e.target.value)} dir="ltr" autoComplete="off" /></Field>
+                  <Field label={t("Grandfather", "الجد")} hl7={tag("PID-5.3")}><Input value={third} onChange={(e) => setThird(e.target.value)} dir="ltr" autoComplete="off" /></Field>
+                  <FF name="family" error={errs.family} required={!isUnknown} label={t("Family", "العائلة")} hl7={tag("PID-5.1")}><Input value={family} onChange={(e) => setFamily(e.target.value)} dir="ltr" autoComplete="off" /></FF>
+                </Grid>
+              </Group>
+              <Group title={t("Name (Arabic)", "الإسم بالعربي")} className="mt-5 border-t border-border pt-5">
+                <div dir="rtl">
+                  <Grid cols={4}>
+                    <Field label={t("First (Arabic)", "الأول")} hl7={hisOnly}><Input value={firstAr} onChange={(e) => setFirstAr(e.target.value)} dir="rtl" lang="ar" autoComplete="off" /></Field>
+                    <Field label={t("Father (Arabic)", "الأب")} hl7={hisOnly}><Input value={secondAr} onChange={(e) => setSecondAr(e.target.value)} dir="rtl" lang="ar" autoComplete="off" /></Field>
+                    <Field label={t("Grandfather (Arabic)", "الجد")} hl7={hisOnly}><Input value={thirdAr} onChange={(e) => setThirdAr(e.target.value)} dir="rtl" lang="ar" autoComplete="off" /></Field>
+                    <Field label={t("Family (Arabic)", "لقب العائلة")} hl7={hisOnly}><Input value={familyAr} onChange={(e) => setFamilyAr(e.target.value)} dir="rtl" lang="ar" autoComplete="off" /></Field>
+                  </Grid>
+                </div>
+                {dev && <p className="mt-3 text-xs text-muted-foreground">Assumption: the NPHIES ADT pages do not say how to send an Arabic name, so it stays in the HIS and PID-5 carries the English name.</p>}
+              </Group>
+            </Sec>
+
+            <Sec title={t("Personal Details", "بيانات تفصيلية")} filled={nameFilled} total={3}>
+              <Grid>
+                <FF name="dob" error={errs.dob} required={!isUnknown} label={t("Date of Birth", "ت الميلاد")} hl7={tag("PID-7")} hint={dob ? `${hijri(dob)} ${t("Hijri", "هجري")}, ${ageLabel(dob)}` : undefined}>
+                  <Input type="date" value={dob} max={today} onChange={(e) => setDob(e.target.value)} />
+                </FF>
+                <Field group label={t("Sex", "الجنس")} hl7={tag("PID-8")}>
+                  <SegmentedControl options={[{ value: "M" as const, label: t("Male", "ذكر") }, { value: "F" as const, label: t("Female", "أنثى") }]} value={sex} onChange={setSex} label={t("Sex", "الجنس")} />
+                </Field>
+                <Field label={t("Nationality", "الجنسية")} hl7={tag("PID-28")}>
+                  <ChoiceSelect options={nationalityOpts} value={nationality} onChange={(v) => v && setNationality(v)} label={t("Nationality", "الجنسية")} />
+                </Field>
+                <Field label={t("Marital Status", "الحالة الإجتماعية")} hl7={tag("PID-16")}>
+                  <Select value={marital} onChange={(e) => setMarital(e.target.value)}>{MARITAL.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</Select>
+                </Field>
+                <Field label={t("Religion", "الديانة")} hl7={tag("PID-17 ignored by nphies")}>
+                  <Select value={religion} onChange={(e) => setReligion(e.target.value)}>{RELIGIONS.map((x) => <option key={x}>{x}</option>)}</Select>
+                </Field>
+                <Field label={t("Blood Group", "فصيلة الدم")} hl7={hisOnly}>
+                  <Select value={blood} onChange={(e) => setBlood(e.target.value)}><option value="">{t("Not known", "غير معروف")}</option>{BLOOD.map((x) => <option key={x}>{x}</option>)}</Select>
+                </Field>
+                <Field label={t("File Status", "حالة الملف")} hl7={hisOnly}>
+                  <Select value={fileStatus} onChange={(e) => setFileStatus(e.target.value)}>{FILE_STATUS.map((x) => <option key={x}>{x}</option>)}</Select>
+                </Field>
+                <Field label={t("Social Status", "الحالة الوظيفية")} hl7={hisOnly}>
+                  <Select value={social} onChange={(e) => setSocial(e.target.value)}><option value="">{t("Select", "اختر")}</option>{SOCIAL.map((x) => <option key={x}>{x}</option>)}</Select>
+                </Field>
+                <Field label={t("Place of Birth", "محل الميلاد")} hl7={hisOnly}><Input value={birthPlace} onChange={(e) => setBirthPlace(e.target.value)} /></Field>
+                <Field label={t("Occupation", "الوظيفة")} hl7={hisOnly}><Input value={occupation} onChange={(e) => setOccupation(e.target.value)} /></Field>
+                <Field label={t("Employee No.", "الرقم الوظيفي")} hl7={hisOnly}><Input value={employeeNo} onChange={(e) => setEmployeeNo(e.target.value)} /></Field>
+              </Grid>
+            </Sec>
+
+            <Sec title={t("ID Card", "بطاقة الهوية")} help={t("Retrieve the card from the registry, or type the details from the card.", "استعرض البطاقة من السجل أو أدخل البيانات من البطاقة.")}>
+              <div className="flex flex-wrap gap-2">
+                <Button className="h-10" onClick={retrieveIdentityCard} disabled={idNumber.length !== 10}>
+                  <IdCard className="size-4" />{t("Retrieve National ID (Iqama) Card", "استعراض بطاقة الهوية")}
+                </Button>
+                <Button className="h-10" disabled={!idCard} onClick={() => idCard && setArchive((a) => [...a, { kind: "ID card", at: new Date().toISOString(), summary: `${idCard.idType} ${idCard.idNumber}` }])}>
+                  {t("Archive National ID (Iqama) Card", "أرشفة بطاقة الهوية")}
+                </Button>
+              </div>
+              {idCard && <p className="mt-2 text-sm">{idCard.idType} <span className="font-mono">{idCard.idNumber}</span>, {idCard.issuer}, {idCard.issueDate} to {idCard.expiryDate}</p>}
+              {archive.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{archive.map((a, i) => <Badge key={i} tone="update" className="whitespace-normal leading-tight">{t("Archived", "مؤرشف")}: {a.kind} {a.summary}</Badge>)}</div>}
+              <div className="mt-5 border-t border-border pt-5">
+                <Grid>
+                  <Field label={t("ID Type", "نوع الهوية")} hl7={hisOnly}><Select value={idType} onChange={(e) => setIdType(e.target.value)}>{ID_TYPES.map((x) => <option key={x}>{x}</option>)}</Select></Field>
+                  <Field label={t("Issuing Authority", "جهة الإصدار")} hl7={hisOnly}><Select value={issuer} onChange={(e) => setIssuer(e.target.value)}><option value="">{t("Select", "اختر")}</option>{ISSUERS.map((x) => <option key={x}>{x}</option>)}</Select></Field>
+                  <Field label={t("Copy No.", "رقم النسخة")} hl7={hisOnly}><Input value={copyNo} onChange={(e) => setCopyNo(e.target.value)} /></Field>
+                  <Field label={t("ID Issue Date", "تاريخ الإصدار")} hl7={hisOnly}><Input type="date" value={idIssue} onChange={(e) => setIdIssue(e.target.value)} /></Field>
+                  <Field label={t("ID Expiry Date", "تاريخ الانتهاء")} hl7={hisOnly} error={idExpiry && isExpired(idExpiry) ? t("The ID has expired. Ask for a valid ID.", "الهوية منتهية. اطلب هوية سارية.") : undefined}>
+                    <Input type="date" value={idExpiry} onChange={(e) => setIdExpiry(e.target.value)} />
+                  </Field>
+                </Grid>
+              </div>
+              <CardUpload title={t("ID Card Copy", "صورة بطاقة الهوية")} value={idFile} onChange={setIdFile} t={t} />
+            </Sec>
+
+            <Sec title={t("National Health Record", "السجل الصحي الوطني")}>
+              <FF name="healthId" error={errs.healthId} required={!isUnknown} label={t("Health ID", "رقم الهوية الصحية")} hl7={tag("PID-3")} hint={healthIdNote ? <span className={cn("font-medium", healthIdNote.ok ? "text-ok" : "text-warn")} role="status">{healthIdNote.text}</span> : isUnknown ? t("Left empty, a test Health ID is given when you save.", "إذا ترك فارغا يعطى رقم تجريبي عند الحفظ.") : t("Issued by the national patient registry. Fetch it with the ID number and the date of birth.", "يصدر من السجل الوطني. استرجعه برقم الهوية وتاريخ الميلاد.")}>
+                <div className="flex flex-wrap gap-2">
+                  <Input className="min-w-0 flex-1 basis-48 font-mono" value={healthId} onChange={(e) => { setHealthId(e.target.value); setHealthIdNote(null); }} dir="ltr" />
+                  <Button className="h-10" onClick={fetchHealthIdFromRegistry} disabled={idNumber.length !== 10 || !dob}><Search className="size-4" />{t("Fetch Health ID", "استرجاع الهوية الصحية")}</Button>
+                  <Button className="h-10" onClick={() => { setHealthId(nextHealthId()); setHealthIdNote(null); }}>{t("New Test ID", "رقم تجريبي")}</Button>
+                </div>
+              </FF>
+            </Sec>
+          </>
         )}
-        <CardUpload title={t("Insurance Card Copy", "صورة كارت التأمين")} value={insFile} onChange={setInsFile} t={t} />
-      </Sec>
 
-      <Sec title={t("ID Card", "بطاقة الهوية")}>
-        <div className="flex flex-wrap gap-3">
-          <Button className="h-10 border-2 border-cancel/50" onClick={retrieveIdentityCard} disabled={idNumber.length !== 10}>
-            <IdCard className="size-4" />{t("Retrieve National ID (Iqama) Card", "استعراض بطاقة الهوية")}
-          </Button>
-          <Button className="h-10" disabled={!idCard} onClick={() => idCard && setArchive((a) => [...a, { kind: "ID card", at: new Date().toISOString(), summary: `${idCard.idType} ${idCard.idNumber}` }])}>
-            {t("Archive National ID (Iqama) Card", "أرشفة بطاقة الهوية")}
-          </Button>
+        {/* ---------- Step 2: Contact and address ---------- */}
+        {step === "contact" && (
+          <>
+            <Sec title={t("Contact Information", "بيانات للإتصال")} help={t("The mobile number gets appointment and result messages.", "يستقبل الجوال رسائل المواعيد والنتائج.")}>
+              <Grid>
+                <FF name="mobile" error={errs.mobile} required={!isUnknown} label={t("Mobile No.", "الجوال")} hl7={hisOnly}><Input value={mobile} onChange={(e) => setMobile(e.target.value)} dir="ltr" inputMode="tel" placeholder="05XXXXXXXX" /></FF>
+                <Field label={t("Country Code", "رمز الدولة")} hl7={hisOnly}><Input value={countryCode} onChange={(e) => setCountryCode(e.target.value)} dir="ltr" /></Field>
+                <Field label={t("Area Code", "رمز المنطقة")} hl7={hisOnly}><Input value={areaCode} onChange={(e) => setAreaCode(e.target.value)} dir="ltr" /></Field>
+                <Field label={t("Home Phone", "هاتف المنزل")} hl7={hisOnly}><Input value={homePhone} onChange={(e) => setHomePhone(e.target.value)} dir="ltr" inputMode="tel" /></Field>
+                <Field label={t("Other Phone", "هاتف آخر")} hl7={hisOnly}><Input value={otherPhone} onChange={(e) => setOtherPhone(e.target.value)} dir="ltr" inputMode="tel" /></Field>
+                <FF name="email" error={errs.email} label={t("Email", "البريد الإلكتروني")} hl7={hisOnly}><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" /></FF>
+                <Field label={t("Relative Name", "اسم قريب للمريض")} hl7={hisOnly}><Input value={relName} onChange={(e) => setRelName(e.target.value)} /></Field>
+                <Field label={t("Relative Mobile", "جوال قريب المريض")} hl7={hisOnly}><Input value={relPhone} onChange={(e) => setRelPhone(e.target.value)} dir="ltr" inputMode="tel" /></Field>
+              </Grid>
+            </Sec>
+
+            <Sec title={t("Address", "العنوان")} help={t("The national address short code is on the Saudi Post national address card.", "رمز العنوان الوطني المختصر موجود في بطاقة العنوان الوطني.")} filled={contactFilled} total={6}>
+              <Grid>
+                <Field label={t("Address Type", "نوع العنوان")} hl7={hisOnly}><Select value={addressType} onChange={(e) => setAddressType(e.target.value)}>{ADDRESS_TYPES.map((x) => <option key={x}>{x}</option>)}</Select></Field>
+                <FF name="shortCode" error={errs.shortCode} label={t("National Address Short Code", "العنوان الوطني المختصر")} hl7={tag("PID-11")} hint={t("4 letters and 4 digits, for example RRRD2929.", "4 أحرف و4 أرقام، مثال RRRD2929.")}>
+                  <Input className="font-mono tracking-wider" value={shortCode} onChange={(e) => setShortCode(e.target.value.toUpperCase())} maxLength={8} dir="ltr" />
+                </FF>
+                <Field label={t("Region", "المنطقة")} hl7={hisOnly}>
+                  <ChoiceSelect options={SAUDI_REGIONS.map((r) => r.region)} value={region} onChange={(v) => { setRegion(v); setCity(""); }} placeholder={t("Select", "اختر")} label={t("Region", "المنطقة")} />
+                </Field>
+                <Field label={t("City", "المدينة")} hl7={hisOnly} hint={region ? undefined : t("Pick the region first.", "اختر المنطقة أولا.")}>
+                  <ChoiceSelect options={SAUDI_REGIONS.find((r) => r.region === region)?.cities ?? []} value={city} onChange={setCity} placeholder={t("Select", "اختر")} label={t("City", "المدينة")} disabled={!region} />
+                </Field>
+                <FF name="addressLine1" error={errs.addressLine1} required={!isUnknown} label={t("Address Line 1", "سطر العنوان 1")} hl7={hisOnly}>
+                  <Input value={address1} onChange={(e) => setAddress1(e.target.value)} placeholder={t("Street, building name", "الشارع، اسم المبنى")} />
+                </FF>
+                <Field label={t("Address Line 2", "سطر العنوان 2")} hl7={hisOnly}>
+                  <Input value={address2} onChange={(e) => setAddress2(e.target.value)} placeholder={t("Unit, PO Box (optional)", "الوحدة، صندوق البريد (اختياري)")} />
+                </Field>
+              </Grid>
+            </Sec>
+          </>
+        )}
+
+        {/* ---------- Step 3: Coverage ---------- */}
+        {step === "coverage" && (
+          <>
+            <Sec name="coverage" title={t("Insurance Coverage", "التغطية التأمينية")} help={t("The payer is asked before the visit opens. An insurance visit is never saved without asking.", "يتم سؤال شركة التأمين قبل فتح الزيارة.")}>
+              {outcome && (ins || payType === "Insurance") ? (
+                <CoverageBox outcome={outcome} ar={ar} large>
+                  {outcome.blocking && cashChosen && <p className="mt-2 font-medium">{t("You chose to continue as a cash patient. The patient pays for this visit.", "اخترت المتابعة كمريض نقدي. يدفع المريض تكلفة هذه الزيارة.")}</p>}
+                  {outcome.blocking && visit === "none" && <p className="mt-2">{t("No visit is being started, so there is nothing to decide now.", "لا توجد زيارة الآن، فلا يوجد قرار مطلوب.")}</p>}
+                  {needsChoice && (
+                    <>
+                      <p className="mt-2 font-medium">{t("Choose what to do before you save the visit.", "اختر الإجراء قبل حفظ الزيارة.")}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button variant="primary" onClick={() => chooseCash(outcome)}>{t("Continue As Cash Patient", "المتابعة كمريض نقدي")}</Button>
+                        <Button onClick={() => chooseFix(outcome)}>{t("Fix Coverage", "تصحيح التغطية")}</Button>
+                      </div>
+                    </>
+                  )}
+                  {fixNote && !cashChosen && <p className="mt-2">{t("Ask the patient for a valid card or call the payer. Then retrieve the insurance card again.", "اطلب من المريض بطاقة سارية أو اتصل بشركة التأمين، ثم استعرض كارت التأمين مرة أخرى.")}</p>}
+                </CoverageBox>
+              ) : (
+                <div className="flex items-start gap-3 rounded-xl border border-dashed border-input bg-card px-4 py-3 text-sm">
+                  <CreditCard className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <div>
+                    <p className="font-semibold">{payType === "Cash" ? t("Cash patient. The payer is not asked.", "مريض نقدي. لا يتم سؤال شركة التأمين.") : t("Coverage not checked yet", "لم يتم التحقق من التغطية")}</p>
+                    <p className="mt-0.5 text-muted-foreground">{t("Retrieve the insurance card to ask the payer. The answer shows here.", "استعرض كارت التأمين لسؤال شركة التأمين. تظهر الإجابة هنا.")}</p>
+                  </div>
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button variant={ins ? "secondary" : "primary"} className="h-10" onClick={retrieveInsuranceCard} disabled={idNumber.length !== 10}>
+                  <CreditCard className="size-4" />{ins ? t("Check Again", "تحقق مرة أخرى") : t("Retrieve Patient Insurance Card", "استعراض كارت تأمين المريض")}
+                </Button>
+                <Button className="h-10" disabled={!ins} onClick={() => ins && setArchive((a) => [...a, { kind: "Insurance card", at: new Date().toISOString(), summary: `${ins.payer} ${ins.memberId}` }])}>
+                  {t("Archive Patient Insurance Card", "أرشفة كارت تأمين المريض")}
+                </Button>
+                {idNumber.length !== 10 && <button type="button" onClick={() => goTo("idNumber")} className="rounded text-xs text-move underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("Enter the ID number first.", "أدخل رقم الهوية أولا")}</button>}
+              </div>
+              {ins && (
+                <div className="mt-4 max-w-xl rounded-xl border border-border bg-card p-4" aria-label="Insurance card">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-base font-semibold">{ins.payer}</div>
+                    <Badge tone={ins.status === "Active" ? "ok" : "danger"}>{ins.status === "Active" ? t("Active", "ساري") : t("Expired", "منتهي")}</Badge>
+                  </div>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
+                    <div><dt className="text-xs text-muted-foreground">{t("Member ID", "الرقم التأميني")}</dt><dd className="font-mono">{ins.memberId}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">{t("Policy", "الوثيقة")}</dt><dd className="font-mono">{ins.policyNo}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">{t("Class", "الفئة")}</dt><dd>{ins.className}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">{t("Network", "الشبكة")}</dt><dd>{ins.network}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">{t("Valid", "الصلاحية")}</dt><dd>{fmtDate(ins.startDate)} to {fmtDate(ins.expiryDate)}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">{t("Co-pay", "نسبة التحمل")}</dt><dd>{ins.copayPercent}%</dd></div>
+                  </dl>
+                  {dev && <p className="mt-2 text-xs text-muted-foreground">Simulated eligibility response. A real HIS asks the payer through NPHIES financial services (eligibility), which is a different guide from the UHR pages used here.</p>}
+                </div>
+              )}
+              <CardUpload title={t("Insurance Card Copy", "صورة كارت التأمين")} value={insFile} onChange={setInsFile} t={t} />
+            </Sec>
+
+            <Sec title={t("Payment And File", "الدفع والملف")}>
+              <Grid>
+                <Field group label={t("Payment Type", "طريقة الدفع")} hl7={tag("Financial")}>
+                  <SegmentedControl options={[{ value: "Cash" as const, label: t("Cash", "نقدي") }, { value: "Insurance" as const, label: t("Insurance", "تأمين") }]} value={payType} onChange={changePayType} label={t("Payment Type", "طريقة الدفع")} />
+                </Field>
+                <Field label={t("Registration Date", "ت.التسجيل")} hl7={tag("PV1-44")} hint={`${hijri(regDate)} ${t("Hijri", "هجري")}`}><Input type="date" value={regDate} onChange={(e) => setRegDate(e.target.value)} /></Field>
+                <Field label={t("File Number", "رقم الملف")} hl7={tag("PID-3 (MRN not sent)")} hint={t("Given when you save.", "يعطى عند الحفظ.")}><Input value={`MRN${String(100 + n).padStart(7, "0")}`} disabled className="font-mono" /></Field>
+                <Field label={t("Main File No.", "الملف الرئيسي")} hl7={hisOnly}><Input value={`MF-${1000 + n}`} disabled className="font-mono" /></Field>
+                <Field label={t("Registration No.", "رقم التسجيل")} hl7={hisOnly}><Input value={`REG-${today.slice(0, 4)}-${1000 + n}`} disabled className="font-mono" /></Field>
+              </Grid>
+            </Sec>
+          </>
+        )}
+
+        {/* ---------- Step 4: Visit, flags and consent ---------- */}
+        {step === "visit" && (
+          <>
+            {needsChoice && (
+              <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 border-l-4 border-l-destructive bg-card px-4 py-3 text-sm">
+                <TriangleAlert className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+                <span className="min-w-0 flex-1"><strong>{outcome ? (ar ? outcome.titleAr : outcome.title) : ""}.</strong> {t("Decide on the coverage before you save the visit.", "قرر بشأن التغطية قبل حفظ الزيارة.")}</span>
+                <Button size="sm" onClick={() => setStep("coverage")}>{t("Go To Coverage", "الذهاب إلى التغطية")}</Button>
+              </div>
+            )}
+            <Sec title={t("Visit", "الزيارة")} help={t("What is the patient here for today?", "ما سبب حضور المريض اليوم؟")}>
+              <div role="radiogroup" aria-label={t("What is the patient here for?", "ما سبب حضور المريض؟")}>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {VISITS.map((v) => (
+                    <button key={v.id} type="button" role="radio" aria-checked={visit === v.id} onClick={() => chooseVisit(v.id)}
+                      className={cn("flex min-h-20 items-start gap-3 rounded-xl border-2 bg-card p-4 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1", visit === v.id ? "border-[#032C26] dark:border-[#39EDD5]" : "border-border hover:border-foreground/30")}>
+                      <span className={cn("mt-0.5 shrink-0", visit === v.id ? "text-[#035D53] dark:text-[#39EDD5]" : "text-muted-foreground")}>{v.icon}</span>
+                      <span className="min-w-0">
+                        <span className="block text-base font-semibold">{ar ? v.ar : v.en}</span>
+                        <span className="block text-sm text-muted-foreground">{ar ? v.hintAr : v.hintEn}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <button type="button" role="radio" aria-checked={visit === "none"} onClick={() => chooseVisit("none")}
+                  className={cn("mt-3 flex w-full items-center gap-3 rounded-xl border-2 bg-card px-4 py-2.5 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1", visit === "none" ? "border-[#032C26] dark:border-[#39EDD5]" : "border-border hover:border-foreground/30")}>
+                  <UserPlus className={cn("size-5 shrink-0", visit === "none" ? "text-[#035D53] dark:text-[#39EDD5]" : "text-muted-foreground")} />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{t("No Visit Now", "بدون زيارة الآن")}</span>
+                    <span className="block text-sm text-muted-foreground">{t("Register the patient only. Start a visit later.", "تسجيل المريض فقط. ابدأ الزيارة لاحقا.")}</span>
+                  </span>
+                </button>
+              </div>
+
+              {visit !== "none" && (
+                <Group title={visit === "O" ? t("Outpatient Visit", "زيارة العيادات الخارجية") : visit === "I" ? t("Inpatient Admission", "التنويم") : t("Emergency Visit", "زيارة طوارئ")} className="mt-5 border-t border-border pt-5">
+                  <Grid>
+                    <Field label={visit === "I" ? t("Admitting Doctor", "الطبيب المنوم") : t("Doctor", "الطبيب")} hl7={tag(visit === "I" ? "PV1-7, PV1-17" : "PV1-7")}>
+                      <ChoiceSelect options={doctorOpts} value={attending} onChange={(v) => v && setAttending(v)} label={t("Doctor", "الطبيب")} />
+                    </Field>
+                    {visit !== "E" && (
+                      <Field label={visit === "O" ? t("Clinic", "العيادة") : t("Department", "القسم")} hl7={tag("PV1-10")}>
+                        <ChoiceSelect options={SERVICES.map((s) => ({ value: s.code, label: s.label }))} value={service} onChange={(v) => v && setService(v)} label={t("Department", "القسم")} />
+                      </Field>
+                    )}
+                    {visit === "I" && (
+                      <FF name="bedId" error={errs.bedId} required label={t("Bed", "السرير")} hl7={tag("PV1-3")} hint={beds.length ? undefined : t("No bed is free. Free a bed first.", "لا يوجد سرير شاغر.")}>
+                        <ChoiceSelect options={beds.map((b) => ({ value: b.id, label: `${b.wardName}, ${bedLabel(b.id)}` }))} value={bedId} onChange={setBedId} placeholder={t("Select", "اختر")} label={t("Bed", "السرير")} />
+                      </FF>
+                    )}
+                    {visit === "I" && (
+                      <>
+                        <FF name="admissionType" error={errs.admissionType} required label={t("Admission Type", "نوع التنويم")} hl7={tag("PV1-4")}>
+                          <Select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)}>
+                            <option value="">{t("Select", "اختر")}</option>
+                            {ADMISSION_TYPES.map((a) => <option key={a.label} value={a.label}>{a.label}</option>)}
+                          </Select>
+                        </FF>
+                        <FF name="patientCondition" error={errs.patientCondition} required label={t("Patient Condition", "حالة المريض")} hl7={hisOnly}>
+                          <Select value={patientCondition} onChange={(e) => setPatientCondition(e.target.value)}>
+                            <option value="">{t("Select", "اختر")}</option>
+                            {PATIENT_CONDITIONS.map((x) => <option key={x}>{x}</option>)}
+                          </Select>
+                        </FF>
+                        <FF name="expectedStay" error={errs.expectedStay} label={t("Expected Stay", "مدة الإقامة المتوقعة")} hl7={hisOnly}>
+                          <Input type="number" min={1} max={365} step={1} value={expectedStay} onChange={(e) => setExpectedStay(e.target.value)} placeholder="3" suffix={t("days", "أيام")} />
+                        </FF>
+                        <Field label={t("Activity Level", "مستوى النشاط")} hl7={hisOnly}>
+                          <Select value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)}><option value="">{t("Select", "اختر")}</option>{ACTIVITY_LEVELS.map((x) => <option key={x}>{x}</option>)}</Select>
+                        </Field>
+                        <Field label={t("Admission Specialty", "تخصص التنويم")} hl7={hisOnly}>
+                          <ChoiceSelect options={ADMISSION_SPECIALTIES} value={admissionSpecialty} onChange={setAdmissionSpecialty} placeholder={t("Select", "اختر")} label={t("Admission Specialty", "تخصص التنويم")} />
+                        </Field>
+                      </>
+                    )}
+                    {visit === "E" && (
+                      <Field label={t("Arrival Mode", "وسيلة الوصول")} hl7={tag("ZPV1-18")}>
+                        <Select value={arrival} onChange={(e) => setArrival(e.target.value as EdData["arrivalMode"])}>{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>
+                      </Field>
+                    )}
+                    {visit === "E" && !canSetTriage() && (
+                      <Field label={t("Triage Level (CTAS)", "مستوى الفرز")}>
+                        <p className="flex h-10 items-center rounded-lg border border-border bg-muted px-3 text-sm">{t("The triage nurse sets the level.", "يحدد ممرض الفرز المستوى.")}</p>
+                      </Field>
+                    )}
+                    {visit === "E" && canSetTriage() && (
+                      <Field label={t("Triage Level (CTAS)", "مستوى الفرز")} hl7={tag("ZPV1-22")} hint={ctas ? ctasInfo(ctas).description : t("Leave it for the triage nurse, or choose it now if it is clear.", "اتركه لممرض الفرز أو اختره الآن.")}>
+                        <Select value={ctas ?? ""} onChange={(e) => setCtas(e.target.value ? (Number(e.target.value) as CtasLevel) : undefined)}>
+                          <option value="">{t("Decide At Triage", "يحدد عند الفرز")}</option>
+                          {CTAS.map((c) => <option key={c.level} value={c.level}>CTAS {c.level}, {c.label} ({c.targetMin === 0 ? "doctor now" : `doctor within ${c.targetMin} min`})</option>)}
+                        </Select>
+                      </Field>
+                    )}
+                    <Field label={t("Referring Doctor", "الطبيب المحول")} hl7={tag("PV1-8")}>
+                      <ChoiceSelect options={doctorOpts} value={referring} onChange={setReferring} emptyLabel={t("None", "لا يوجد")} label={t("Referring Doctor", "الطبيب المحول")} />
+                    </Field>
+                    <Field label={visit === "I" ? t("Reason for Admission", "سبب التنويم") : t("Reason for Visit", "سبب الزيارة")} hl7={tag("PV2-12")} className="col-span-full">
+                      <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Type or tap one below", "اكتب أو اختر أدناه")} />
+                    </Field>
+                  </Grid>
+                  <div className="mt-3 flex flex-wrap gap-1.5">{COMPLAINT_SAMPLES.map((c) => <button key={c.code} type="button" onClick={() => setReason(c.text)} className="rounded-full border border-border bg-card px-2.5 py-1 text-xs hover:border-foreground/45 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{c.text}</button>)}</div>
+                  {dev && <p className="mt-3 text-xs text-muted-foreground">{visit === "I" ? "Saving sends ADT A01 with patient class I." : `Saving sends ADT A04 with patient class ${visit}.`} Registering with no visit sends nothing: NPHIES has no message for a patient file alone.</p>}
+                </Group>
+              )}
+            </Sec>
+
+            <Sec title={t("Patient Flags", "تنبيهات المريض")} help={t("Tick what applies. Flags show on the patient banner for every member of staff.", "اختر ما ينطبق. تظهر التنبيهات في شريط المريض لجميع الموظفين.")}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <CheckRow checked={dnr} onChange={setDnr} tone="danger" hint={t("Only with a written order from a doctor.", "فقط بأمر مكتوب من الطبيب.")}>{t("Do Not Resuscitate", "عدم الإنعاش")}</CheckRow>
+                  {dnr && (
+                    <div className="mt-3 grid gap-x-4 gap-y-4 rounded-lg border border-border bg-card p-3 sm:grid-cols-2">
+                      <FF name="dnrDoctor" error={errs.dnrDoctor} required label={t("Ordering Doctor", "الطبيب الآمر")}>
+                        <ChoiceSelect options={doctorOpts} value={dnrDoctor} onChange={setDnrDoctor} placeholder={t("Select", "اختر")} label={t("Ordering Doctor", "الطبيب الآمر")} />
+                      </FF>
+                      <FF name="dnrDate" error={errs.dnrDate} required label={t("Order Date", "تاريخ الأمر")}>
+                        <Input type="date" value={dnrDate} max={today} onChange={(e) => setDnrDate(e.target.value)} />
+                      </FF>
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <CheckRow checked={interpreter} onChange={setInterpreter} hint={t("The patient does not speak Arabic well.", "المريض لا يتحدث العربية جيدا.")}>{t("Needs Interpreter", "يحتاج مترجم")}</CheckRow>
+                  {interpreter && (
+                    <div className="mt-3 rounded-lg border border-border bg-card p-3">
+                      <FF name="language" error={errs.language} required label={t("Language", "اللغة")}>
+                        <ChoiceSelect options={INTERPRETER_LANGUAGES} value={language} onChange={setLanguage} placeholder={t("Select", "اختر")} label={t("Language", "اللغة")} />
+                      </FF>
+                    </div>
+                  )}
+                </div>
+                <CheckRow checked={fallRisk} onChange={setFallRisk} tone="warn" hint={t("Unsteady, uses a walking aid or fell before.", "غير متزن أو يستخدم وسيلة مساعدة أو سقط من قبل.")}>{t("Fall Risk", "خطر السقوط")}</CheckRow>
+                <CheckRow checked={isolation} onChange={setIsolation} tone="warn" hint={t("Keep apart from other patients because of infection.", "يبقى بعيدا عن المرضى الآخرين بسبب العدوى.")}>{t("Isolation", "عزل")}</CheckRow>
+              </div>
+            </Sec>
+
+            <Sec title={t("Consent", "الموافقة")}>
+              <Field group name="consent" required={!isUnknown} label={t("Information Sharing", "مشاركة المعلومات")} error={errs.consent} hint={isUnknown ? t("An unconscious patient cannot agree now. Ask when the patient is awake.", "لا يستطيع المريض فاقد الوعي الموافقة الآن. اسأله عندما يستيقظ.") : undefined}>
+                <CheckRow checked={consent} onChange={setConsent}>
+                  {t("The patient has been told how their health information is used and shared with the national exchange (NPHIES), and agrees.", "تم إبلاغ المريض بكيفية استخدام معلوماته الصحية ومشاركتها مع المنصة الوطنية (نفيس) ووافق على ذلك.")}
+                </CheckRow>
+              </Field>
+            </Sec>
+          </>
+        )}
+
+        {/* Back and next between the steps */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {stepIndex > 0 ? <Button onClick={() => goStep(steps[stepIndex - 1].id)}>{ar ? "→" : "←"} {t("Back", "السابق")}: {steps[stepIndex - 1].label}</Button> : <span />}
+          {stepIndex < steps.length - 1 && <Button onClick={() => goStep(steps[stepIndex + 1].id)}>{t("Next", "التالي")}: {steps[stepIndex + 1].label} {ar ? "←" : "→"}</Button>}
         </div>
-        {idCard && <p className="mt-2 text-sm">{idCard.idType} <span className="font-mono">{idCard.idNumber}</span>, {idCard.issuer}, {idCard.issueDate} to {idCard.expiryDate}</p>}
-        {archive.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{archive.map((a, i) => <Badge key={i} tone="update" className="whitespace-normal leading-tight">{t("Archived", "مؤرشف")}: {a.kind} {a.summary}</Badge>)}</div>}
-        <CardUpload title={t("ID Card Copy", "صورة بطاقة الهوية")} value={idFile} onChange={setIdFile} t={t} />
-      </Sec>
-
-      <Sec title={t("National Health Record", "السجل الصحي الوطني")}>
-        <Grid cols={2}>
-          <FF name="healthId" error={errs.healthId} required={!isUnknown} label={t("Health ID", "رقم الهوية الصحية")} hl7={tag("PID-3")} hint={isUnknown ? t("Left empty, a test Health ID is given when you save.", "إذا ترك فارغا يعطى رقم تجريبي عند الحفظ.") : t("Issued by the NHIC Patient Registry. Fetch it with the ID number and the date of birth.", "يصدر من السجل الوطني. استرجعه برقم الهوية وتاريخ الميلاد.")}>
-            <div className="flex flex-wrap gap-2">
-              <Input className="min-w-0 flex-1 font-mono" value={healthId} onChange={(e) => { setHealthId(e.target.value); setHealthIdNote(null); }} dir="ltr" aria-invalid={!!errs.healthId} />
-              <Button className="h-10" onClick={fetchHealthIdFromRegistry} disabled={idNumber.length !== 10 || !dob}><Search className="size-4" />{t("Fetch Health ID", "استرجاع الهوية الصحية")}</Button>
-              <Button className="h-10" onClick={() => { setHealthId(nextHealthId()); setHealthIdNote(null); }}>{t("New Test ID", "رقم تجريبي")}</Button>
-            </div>
-            {healthIdNote && <span role="status" className={cn("text-xs font-medium", healthIdNote.ok ? "text-ok" : "text-warn")}>{healthIdNote.text}</span>}
-          </FF>
-        </Grid>
-      </Sec>
-
-      <div data-field="consent" className="mt-6">
-        <label className="flex items-start gap-2.5 text-sm">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} aria-invalid={!!errs.consent} className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" />
-          <span>
-            {t("The patient has been told how their health information is used and shared with the national exchange (NPHIES), and agrees.", "تم إبلاغ المريض بكيفية استخدام معلوماته الصحية ومشاركتها مع المنصة الوطنية (نفيس) ووافق على ذلك.")}
-            {!isUnknown && <><span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span><span className="sr-only"> (required)</span></>}
-          </span>
-        </label>
-        {isUnknown && <p className="mt-1 ps-6 text-xs text-muted-foreground">{t("An unconscious patient cannot agree now. Ask when the patient is awake.", "لا يستطيع المريض فاقد الوعي الموافقة الآن. اسأله عندما يستيقظ.")}</p>}
-        {errs.consent && <p role="alert" className="mt-1 ps-6 text-xs font-medium text-destructive">{errs.consent}</p>}
       </div>
 
       {/* Save bar: stays at the bottom of the screen while the clerk scrolls. */}
-      <div className="sticky bottom-0 z-20 mt-6 flex flex-wrap items-center gap-2 rounded-t-xl border border-border bg-card px-4 py-3 shadow-lg sm:pe-40">
-        <Button variant="primary" onClick={() => trySave()}>{saveLabel}</Button>
-        <Button onClick={() => navigate(AFTER[visit].path)}>{t("Cancel", "إلغاء")}</Button>
-        {showErrors && problems.length > 0 && (
-          <span className="text-sm font-medium text-destructive">{t(problems.length === 1 ? "1 thing to fix" : `${problems.length} things to fix`, `${problems.length} للتصحيح`)}</span>
-        )}
-        {needsChoice && !(showErrors && problems.length > 0) && <span className="text-sm text-muted-foreground">{t("The insurance does not cover this visit. You will be asked what to do.", "التأمين لا يغطي هذه الزيارة. سيطلب منك اختيار الإجراء.")}</span>}
-      </div>
+      <FormActions
+        sticky
+        reserveEnd
+        className="mt-6"
+        status={
+          shownCount > 0
+            ? <AttentionLink count={shownCount} onClick={() => summary.current?.focus()} />
+            : needsChoice
+              ? <span>{t("The insurance does not cover this visit. You will be asked what to do.", "التأمين لا يغطي هذه الزيارة. سيطلب منك اختيار الإجراء.")}</span>
+              : <span>{t(`Step ${stepIndex + 1} of ${steps.length}. You can save from any step.`, `الخطوة ${stepIndex + 1} من ${steps.length}. يمكنك الحفظ من أي خطوة.`)}</span>
+        }
+        onCancel={() => navigate(AFTER[visit].path)}
+        cancelLabel={t("Cancel", "إلغاء")}
+        onSave={() => trySave()}
+        saveLabel={saveLabel}
+      />
+      {leaveDialog}
+
+      {/* National identity check */}
+      <Dialog
+        open={yakeenOpen}
+        onClose={() => setYakeenOpen(false)}
+        wide
+        title={t("Verify With Yakeen", "التحقق عبر يقين")}
+        subtitle={t("Check the ID with the national identity service. Use the details to fill the form.", "تحقق من الهوية عبر خدمة الهوية الوطنية واستخدم البيانات لتعبئة النموذج.")}
+      >
+        {yakeenOpen && <YakeenLookup initial={{ idType: idNumber.startsWith("2") ? "iqama" : "national-id", idNumber, dob }} onUse={applyYakeen} />}
+      </Dialog>
 
       {/* Duplicate check */}
       <Dialog

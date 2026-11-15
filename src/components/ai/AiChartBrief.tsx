@@ -5,11 +5,10 @@ import { ChevronDown, ChevronRight, RotateCw, ThumbsDown, ThumbsUp } from "lucid
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { cn } from "@/components/ui/primitives";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
-import { runCds } from "@/lib/ai/cds";
 import { ageOf, fullName, vitalsLine } from "@/lib/ai/context";
 import { buildContext } from "@/lib/ai/live";
 import { audit } from "@/lib/audit";
-import { attentionFor, buildTimeline } from "@/lib/chart-review";
+import { buildTimeline, chartChecks, latestChartVitals } from "@/lib/chart-review";
 import type { Encounter, Patient } from "@/lib/model";
 import { navigate } from "@/lib/router";
 import { can } from "@/lib/session";
@@ -36,13 +35,14 @@ const CLS = { I: "inpatient care", O: "outpatient care", E: "the emergency depar
 /** Pure: builds the brief from the chart. */
 export function buildBrief(enc: Encounter, patient: Patient, now: Date = new Date()): Brief {
   const ctx = buildContext(enc, patient, now);
+  const vitals = latestChartVitals(enc);
   const reason = enc.complaints.map((c) => c.text).join(", ") || enc.reason;
   const meds = ctx.meds.map((m) => m.name);
   const story = [
     `${fullName(patient)} is a ${ageOf(patient.dob, now)} year old ${patient.sex === "M" ? "man" : "woman"} in ${CLS[enc.cls as keyof typeof CLS] ?? "care"}${reason ? `, here for ${reason.toLowerCase()}` : ""}.`,
     enc.dx.length ? `Working diagnosis: ${enc.dx.map((d) => d.text).join("; ")}.` : "No diagnosis is recorded yet.",
     enc.allergies.length ? `Allergic to ${enc.allergies.map((a) => a.text).join(", ")}.` : "No allergies are recorded.",
-    enc.vitals ? `Latest vital signs: ${vitalsLine(enc.vitals)}` : "No vital signs have been taken on this visit.",
+    vitals ? `Latest vital signs: ${vitalsLine(vitals)}` : "No vital signs have been taken on this visit.",
     meds.length ? `On ${meds.slice(0, 4).join(", ")}${meds.length > 4 ? ` and ${meds.length - 4} more` : ""}.` : "",
   ].filter(Boolean).join(" ");
 
@@ -52,13 +52,13 @@ export function buildBrief(enc: Encounter, patient: Patient, now: Date = new Dat
     ...(reason ? [{ label: "Reason", value: reason }] : []),
     { label: "Diagnosis", value: enc.dx.length ? enc.dx.map((d) => d.text).join("; ") : "Not recorded", tone: enc.dx.length ? undefined : ("muted" as const) },
     { label: "Allergies", value: enc.allergies.length ? enc.allergies.map((a) => a.text).join(", ") : "None recorded", tone: enc.allergies.length ? ("danger" as const) : ("muted" as const) },
-    { label: "Vital Signs", value: enc.vitals ? vitalsLine(enc.vitals).replace(/\.$/, "") : "None taken", tone: enc.vitals ? undefined : ("muted" as const) },
+    { label: "Vital Signs", value: vitals ? vitalsLine(vitals).replace(/\.$/, "") : "None taken", tone: vitals ? undefined : ("muted" as const) },
     ...(meds.length ? [{ label: "Medicines", value: `${meds.slice(0, 3).join(", ")}${meds.length > 3 ? ` +${meds.length - 3}` : ""}` }] : []),
   ];
 
   const seen = new Set<string>();
   const watch: Brief["watch"] = [];
-  for (const f of [...runCds(ctx), ...attentionFor(enc, patient)]) {
+  for (const f of chartChecks(enc, patient)) {
     if (f.level === "info" || seen.has(f.text)) continue;
     seen.add(f.text);
     watch.push({ level: f.level, text: f.text });

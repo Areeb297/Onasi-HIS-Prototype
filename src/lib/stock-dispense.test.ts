@@ -1,3 +1,4 @@
+import { setRsdMode } from "./integrations/rsd-test-util";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DRUG_BY_ID } from "./rx-catalogue";
 import { addDraftItem, getRx, resetRx, setHeight, type NewItem } from "./rx";
@@ -36,6 +37,7 @@ describe("stock added on the Pharmacy Stock screens can be dispensed", () => {
   beforeEach(() => {
     switchUser("U4"); // pharmacist
     resetStock();
+    setRsdMode("off"); // these tests dispense without RSD packs
     resetRx(false);
     updateEncounter(enc().visitNumber, (e) => {
       e.vitals = { ...(e.vitals ?? { bp: "", pulse: "", temp: "", spo2: "", rr: "", weight: "", at: "" }), weight: "84" };

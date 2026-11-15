@@ -1,3 +1,4 @@
+import { setRsdMode } from "./integrations/rsd-test-util";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DRUGS, DRUG_BY_ID, searchDrugs } from "./rx-catalogue";
 import { calcQuantity, classifyDispense, fillState, GROUPS, recomputeStatus, refillsRemainingAfter, STEPS, stepStatus, validateDispenseQty } from "./rx-logic";
@@ -187,6 +188,7 @@ describe("prescription store and send", () => {
 
   beforeEach(() => {
     resetRx(false);
+    setRsdMode("off"); // these tests dispense without RSD packs
     updateEncounter(enc().visitNumber, (e) => {
       e.vitals = { ...(e.vitals ?? { bp: "", pulse: "", temp: "", spo2: "", rr: "", weight: "", at: "" }), weight: "84" };
     }, { touch: false });

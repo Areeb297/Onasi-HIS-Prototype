@@ -49,6 +49,8 @@ export const USERS: DemoUser[] = [
   { id: "U3", name: "Omar Alshehri", role: "registration", department: "Front Desk" },
   { id: "U4", name: "Noura Alzahrani, PharmD", role: "pharmacist", department: "Pharmacy" },
   { id: "U5", name: "Faisal Alqahtani, MLT", role: "lab", department: "Laboratory", providerId: "T5001" },
+  // A second lab user, so a result entered by one technologist can be verified by another.
+  { id: "U10", name: "Sara Alshammari, Lab Supervisor", role: "lab", department: "Laboratory", providerId: "T5002" },
   { id: "U6", name: "Dr. Layla Alanazi", role: "radiologist", department: "Radiology", providerId: "R6001" },
   { id: "U7", name: "Majed Aldosari", role: "billing", department: "RCM" },
   { id: "U8", name: "Reem Alghamdi", role: "auditor", department: "Compliance" },

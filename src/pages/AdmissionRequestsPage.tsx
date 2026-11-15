@@ -4,7 +4,7 @@ import { IconBan, IconCalendarPlus, IconCircleCheck, IconCircleX, IconHourglass 
 import { AdmissionRequestForm } from "@/components/admission/AdmissionRequestForm";
 import { ApproveDialog } from "@/components/admission/ApproveDialog";
 import { DecisionDialog } from "@/components/admission/DecisionDialog";
-import { DataTable, ListPage, ListToolbar, StatFilters, inRange, useList, type Column, type FilterDef, type RowAction } from "@/components/list";
+import { CellSub, DataTable, ListPage, ListToolbar, StatFilters, inRange, useList, type Column, type FilterDef, type RowAction } from "@/components/list";
 import { Badge } from "@/components/ui/primitives";
 import {
   ADMITTING_DEPARTMENTS, STATUSES, STATUS_LABEL, STATUS_TONE, admissionTypeLabel, canDecideAdmission, canRequestAdmission,
@@ -65,14 +65,17 @@ export function AdmissionRequestsPage() {
     {
       id: "patient", header: "Patient", hideable: false, value: (x) => x.name,
       cell: (x) => (
-        <div className="min-w-44">
-          <div className="font-semibold text-[#032c26] dark:text-foreground">{x.name}</div>
-          <div className="text-xs text-muted-foreground"><span className="font-mono">{x.mrn}</span>{x.r.dx ? `, ${x.r.dx.code}` : ""}{dev ? `, ${x.r.id}` : ""}</div>
+        <div className="min-w-48">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <span className="font-semibold text-[#032c26] dark:text-foreground">{x.name}</span>
+            <span className="font-mono text-xs text-muted-foreground">{x.mrn}</span>
+          </div>
+          {(x.r.dx || dev) && <CellSub>{[x.r.dx?.code, dev ? x.r.id : ""].filter(Boolean).join(", ")}</CellSub>}
         </div>
       ),
     },
-    { id: "dept", header: "Department", value: (x) => departmentLabel(x.r.department), cell: (x) => <div><div>{departmentLabel(x.r.department)}</div>{x.r.subDepartment && <div className="text-xs text-muted-foreground">{x.r.subDepartment}</div>}</div> },
-    { id: "type", header: "Type", value: (x) => admissionTypeLabel(x.r.admissionType), cell: (x) => <div><div className="whitespace-nowrap">{admissionTypeLabel(x.r.admissionType)}</div>{x.r.condition && <div className="text-xs text-muted-foreground">{x.r.condition}</div>}</div> },
+    { id: "dept", header: "Department", value: (x) => departmentLabel(x.r.department), cell: (x) => <div><div className="whitespace-nowrap">{departmentLabel(x.r.department)}</div>{x.r.subDepartment && <CellSub>{x.r.subDepartment}</CellSub>}</div> },
+    { id: "type", header: "Type", value: (x) => admissionTypeLabel(x.r.admissionType), cell: (x) => <div><div className="whitespace-nowrap">{admissionTypeLabel(x.r.admissionType)}</div>{x.r.condition && <CellSub>{x.r.condition}</CellSub>}</div> },
     { id: "requestedBy", header: "Requested By", value: (x) => x.r.requestedBy, cell: (x) => <span className="whitespace-nowrap">{x.r.requestedBy}</span> },
     { id: "approving", header: "Approving Doctor", value: (x) => doctorLabel(x.r.approvingDoctor), cell: (x) => <span className="whitespace-nowrap">{doctorLabel(x.r.approvingDoctor)}</span> },
     { id: "admitting", header: "Admitting Doctor", defaultHidden: true, value: (x) => doctorLabel(x.r.admittingDoctor), cell: (x) => <span className="whitespace-nowrap">{doctorLabel(x.r.admittingDoctor)}</span> },
@@ -82,9 +85,9 @@ export function AdmissionRequestsPage() {
       cell: (x) => (
         <div className="min-w-28">
           <Badge tone={STATUS_TONE[x.r.status]}>{STATUS_LABEL[x.r.status]}</Badge>
-          {x.r.approval && <div className="mt-1 text-xs text-muted-foreground">{x.r.approval.bedId ? bedLabel(x.r.approval.bedId) : "No bed"}{dev ? `, ${x.r.approval.eventId} ${x.r.approval.visitNumber}` : ""}</div>}
+          {x.r.approval && <CellSub className="mt-0.5">{x.r.approval.bedId ? bedLabel(x.r.approval.bedId) : "No bed"}{dev ? `, ${x.r.approval.eventId} ${x.r.approval.visitNumber}` : ""}</CellSub>}
           {x.visit?.status === "cancelled" && <div className="text-xs text-destructive">Visit cancelled after approval</div>}
-          {x.r.decisionReason && <div className="max-w-48 truncate text-xs text-muted-foreground" title={x.r.decisionReason}>{x.r.decisionReason}</div>}
+          {x.r.decisionReason && <CellSub className="max-w-48 truncate"><span title={x.r.decisionReason}>{x.r.decisionReason}</span></CellSub>}
         </div>
       ),
     },

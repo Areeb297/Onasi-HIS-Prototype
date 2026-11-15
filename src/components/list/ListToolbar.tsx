@@ -134,7 +134,7 @@ function QuickSelect<T>({ def, value, onChange, disabled }: { def: FilterDef<T>;
           "glass-pill h-9 max-w-52 truncate rounded-full pl-3 pr-8 text-[0.8125rem] font-medium text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 dark:[color-scheme:dark]",
           value && "border-[#03c1ac]/60 bg-[#39edd5]/10",
         )}>
-        <option value="">{def.allLabel ?? `All ${def.label}`}</option>
+        <option value="">{def.allLabel ?? `Any ${def.label}`}</option>
         {def.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </span>
@@ -191,7 +191,7 @@ function FilterDrawer<T>({ list, open, onOpenChange }: { list: ListApi<T>; open:
             return (
               <Field key={d.id} label={d.label} hint={blocked && dependsLabel ? `Choose the ${dependsLabel} first.` : undefined}>
                 <Select value={value} disabled={blocked} onChange={(e) => list.setFilter(d.id, e.target.value)}>
-                  <option value="">{d.allLabel ?? `All ${d.label}`}</option>
+                  <option value="">{d.allLabel ?? `Any ${d.label}`}</option>
                   {d.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </Select>
               </Field>
