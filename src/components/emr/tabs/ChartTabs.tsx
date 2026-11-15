@@ -170,6 +170,15 @@ export function ChartTabs({ enc, patient, split, canSplit, onPick, onBeside }: {
             );
           })}
         </div>
+        {canSplit && (
+          <p className="hidden shrink-0 items-center gap-1 self-center px-2 pt-1.5 text-xs text-muted-foreground xl:flex" aria-live="polite">
+            {second ? (
+              <><kbd className="rounded border border-border bg-muted px-1 font-sans">Ctrl</kbd>+<kbd className="rounded border border-border bg-muted px-1 font-sans">\</kbd> closes the second pane</>
+            ) : (
+              <><kbd className="rounded border border-border bg-muted px-1 font-sans">Ctrl</kbd>+click a tab to view two side by side</>
+            )}
+          </p>
+        )}
         <div ref={more} className="shrink-0 px-1.5 pt-1.5 sm:relative">
           <button
             id={chartTabDomId("more")} type="button" aria-haspopup="true" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}
