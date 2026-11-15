@@ -89,7 +89,8 @@ describe("swim lane boards render", () => {
           expect(lab).toContain("Orders Today");
           expect(lab).not.toMatch(/call-?back/i);
           expect(lab).toContain("Collect Specimen");
-          expect(lab).toContain("Release Result");
+          expect(lab).toContain("Receive Sample");
+          expect(lab).toContain("Verify Result");
           expect(rad).toContain("Exams Today");
           expect(rad).toContain("Report due");
           expect(rx).toContain("Waiting For Pharmacy");

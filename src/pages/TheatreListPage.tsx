@@ -1,15 +1,15 @@
 import * as React from "react";
 import { RotateCcw } from "lucide-react";
-import { STAGE_TONE } from "@/components/emr/TheatreSection";
+import { SCHEDULE_TONE, STAGE_TONE } from "@/components/emr/TheatreSection";
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { navigate } from "@/lib/router";
 import { useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { resetTheatre, useTheatre } from "@/lib/theatre";
-import { STEPS, caseStage, nextAction, scheduleEnd, stepDone, type SurgeryCase } from "@/lib/theatre-logic";
+import { STEPS, caseStage, isBooked, nextAction, scheduleEnd, scheduleStatus, stepDone, type SurgeryCase } from "@/lib/theatre-logic";
 
-type FilterId = "action" | "today" | "theatre" | "recovery" | "closed" | "all";
+type FilterId = "action" | "postponed" | "today" | "theatre" | "recovery" | "closed" | "all";
 
 const today = (): string => {
   const d = new Date();
@@ -18,6 +18,7 @@ const today = (): string => {
 
 const FILTERS: { id: FilterId; label: string; test: (c: SurgeryCase) => boolean }[] = [
   { id: "action", label: "Needs Action", test: (c) => !c.closed },
+  { id: "postponed", label: "Postponed", test: (c) => caseStage(c) === "Postponed" },
   { id: "today", label: "Today", test: (c) => (c.schedule?.date ?? c.request.plannedDate) === today() },
   { id: "theatre", label: "In Theatre", test: (c) => ["In Theatre", "Note Needed"].includes(caseStage(c)) },
   { id: "recovery", label: "In Recovery", test: (c) => caseStage(c) === "In Recovery" },
@@ -26,7 +27,7 @@ const FILTERS: { id: FilterId; label: string; test: (c: SurgeryCase) => boolean 
 ];
 
 /** When the case is due: the booked slot, or the planned date while it is not booked yet. */
-const sortKey = (c: SurgeryCase) => (c.schedule ? `${c.schedule.date}T${c.schedule.start}` : `${c.request.plannedDate}T99:99`);
+const sortKey = (c: SurgeryCase) => (c.schedule?.date ? `${c.schedule.date}T${c.schedule.start || "99:99"}` : `${c.request.plannedDate}T99:99`);
 
 /** Every surgery case in the hospital, one row each, with the step that is waiting. */
 export function TheatreListPage() {
@@ -44,7 +45,7 @@ export function TheatreListPage() {
     .filter((c) => {
       if (!query) return true;
       const p = his.patients.find((x) => x.id === c.patientId);
-      return `${patientName(p)} ${p?.mrn ?? ""} ${c.visit} ${c.id} ${c.request.procedure} ${c.request.surgeon} ${c.schedule?.room ?? ""}`.toLowerCase().includes(query);
+      return `${patientName(p)} ${p?.mrn ?? ""} ${c.visit} ${c.id} ${c.request.procedure} ${c.request.surgeon} ${c.schedule?.room ?? ""} ${scheduleStatus(c) ?? ""}`.toLowerCase().includes(query);
     })
     .sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
 
@@ -72,7 +73,7 @@ export function TheatreListPage() {
             ))}
           </div>
           <Field label="Search" className="ml-auto w-full sm:w-64">
-            <Input placeholder="Patient, procedure, surgeon or room" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input placeholder="Patient, procedure, surgeon, room or status" value={q} onChange={(e) => setQ(e.target.value)} />
           </Field>
         </div>
       </Card>
@@ -97,6 +98,7 @@ export function TheatreListPage() {
             {rows.map((c) => {
               const p = his.patients.find((x) => x.id === c.patientId);
               const stage = caseStage(c);
+              const sched = scheduleStatus(c);
               const doneCount = STEPS.filter((s) => stepDone(c, s.id)).length;
               return (
                 <tr key={c.id} className="hover:bg-muted/40">
@@ -112,8 +114,10 @@ export function TheatreListPage() {
                   <Td>
                     {c.schedule ? (
                       <>
-                        <div className="font-medium">{c.schedule.room}</div>
-                        <div className="text-xs tabular-nums text-muted-foreground">{c.schedule.date}, {c.schedule.start} to {scheduleEnd(c.schedule)}</div>
+                        <div className="font-medium">{c.schedule.room || "No room yet"}</div>
+                        <div className="text-xs tabular-nums text-muted-foreground">{c.schedule.date}{c.schedule.start ? `, ${c.schedule.start} to ${scheduleEnd(c.schedule)}` : ""}</div>
+                        {sched && <Badge tone={SCHEDULE_TONE[sched]} className="mt-1">{sched}</Badge>}
+                        {!isBooked(c) && <div className="text-xs text-muted-foreground">Does not hold the room</div>}
                       </>
                     ) : (
                       <>

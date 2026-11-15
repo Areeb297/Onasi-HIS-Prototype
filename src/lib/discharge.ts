@@ -1,4 +1,4 @@
-import type { Clearance, ClearanceKey, DischargeOutcome, DischargeRecord, Encounter } from "./model";
+import type { Clearance, ClearanceKey, DischargeApproval, DischargeAttendant, DischargeDetails, DischargeOutcome, DischargeRecord, DischargeSummary, Encounter } from "./model";
 import type { Permission } from "./session";
 
 /**
@@ -121,6 +121,79 @@ export function outcomeProblems(input: OutcomeInput, ctx: { admitAt?: string; no
     if (!d.cause.trim()) out.push("Enter the cause of death.");
     if (!d.certifiedBy.trim()) out.push("Choose the certifying doctor.");
   }
+  return out;
+}
+
+/* ---------- discharge details: condition, time, attendant, summary, instructions, approvals ---------- */
+
+/** Condition On Discharge. The HIS loads its list from the database; these are the usual clinical values. */
+export const DISCHARGE_CONDITIONS = ["Recovered", "Improved", "Stable", "Unchanged", "Worse"];
+export const ATTENDANT_ID_TYPES = ["National ID", "Iqama", "Passport", "GCC ID"];
+export const ATTENDANT_RELATIONS = ["Father", "Mother", "Husband", "Wife", "Son", "Daughter", "Brother", "Sister", "Other Relative", "Friend", "Ambulance Crew"];
+export const APPROVAL_ROLES = ["Attending Doctor", "Consultant", "Head Of Department", "Resident"];
+
+export const emptyAttendant = (): DischargeAttendant => ({ name: "", phone: "", relation: "", idType: "", idNumber: "" });
+export const emptySummary = (): DischargeSummary => ({ reasonForAdmission: "", admittingDiagnosis: "", procedures: "", findings: "", course: "" });
+export const emptyApproval = (at: string, doctor = ""): DischargeApproval => ({ role: "Attending Doctor", doctor, at, remarks: "" });
+
+/** Saudi mobile or landline digits, with or without +966. */
+export const phoneOk = (v: string): boolean => /^\+?[0-9 ]{9,15}$/.test(v.trim());
+
+/** Why an ID number does not fit its type. null when it fits or nothing is typed. */
+export function idNumberProblem(type: string, value: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (type === "National ID" && !/^1\d{9}$/.test(v)) return "A National ID has 10 digits and starts with 1.";
+  if (type === "Iqama" && !/^2\d{9}$/.test(v)) return "An Iqama number has 10 digits and starts with 2.";
+  if (type === "Passport" && !/^[A-Za-z0-9]{6,12}$/.test(v)) return "A passport number has 6 to 12 letters or digits.";
+  return null;
+}
+
+/** Keep only what was filled in, so a saved discharge holds no empty blocks. */
+export function cleanDetails(d: DischargeDetails): DischargeDetails {
+  const t = (s: string | undefined) => (s ?? "").trim();
+  const out: DischargeDetails = {};
+  if (t(d.condition)) out.condition = t(d.condition);
+  if (d.dischargeAt) out.dischargeAt = d.dischargeAt;
+  const a = d.attendant;
+  if (a && (t(a.name) || t(a.phone) || t(a.relation) || t(a.idType) || t(a.idNumber))) {
+    out.attendant = { name: t(a.name), phone: t(a.phone), relation: t(a.relation), idType: t(a.idType), idNumber: t(a.idNumber) };
+  }
+  const s = d.summary;
+  if (s && Object.values(s).some((x) => t(x))) {
+    out.summary = { reasonForAdmission: t(s.reasonForAdmission), admittingDiagnosis: t(s.admittingDiagnosis), procedures: t(s.procedures), findings: t(s.findings), course: t(s.course) };
+  }
+  if (t(d.instructions)) out.instructions = t(d.instructions);
+  if (t(d.educatedBy)) out.educatedBy = t(d.educatedBy);
+  if (d.ambulance) out.ambulance = true;
+  if (d.approvals?.length) out.approvals = d.approvals.map((x) => ({ ...x, remarks: x.remarks.trim() }));
+  return out;
+}
+
+/**
+ * What is still missing or wrong in the discharge details. Empty when they are complete.
+ * The condition is needed unless the patient died. The time must sit inside the stay. Times are local date-time strings.
+ */
+export function detailProblems(d: DischargeDetails, ctx: { outcome?: DischargeOutcome | ""; admitAt?: string; now: string }): string[] {
+  const out: string[] = [];
+  if (ctx.outcome !== "died" && !(d.condition ?? "").trim()) out.push("Choose the condition on discharge.");
+  if (!d.dischargeAt) out.push("Enter the discharge date and time.");
+  else if (d.dischargeAt > ctx.now) out.push("The discharge time cannot be in the future.");
+  else if (ctx.admitAt && d.dischargeAt < ctx.admitAt) out.push("The discharge time cannot be before the admission.");
+  const a = d.attendant;
+  if (a) {
+    if (a.phone.trim() && !phoneOk(a.phone)) out.push("Enter the attendant's contact number with digits only, for example 0551234567.");
+    if (a.idNumber.trim() && !a.idType) out.push("Choose the attendant's ID type.");
+    const why = idNumberProblem(a.idType, a.idNumber);
+    if (why) out.push(`Attendant ID: ${why}`);
+  }
+  (d.approvals ?? []).forEach((x, i) => {
+    const n = `Approval ${i + 1}`;
+    if (!x.doctor) out.push(`${n}: choose the approving doctor.`);
+    if (!x.role) out.push(`${n}: choose the doctor's role.`);
+    if (!x.at) out.push(`${n}: enter the approval date and time.`);
+    else if (x.at > ctx.now) out.push(`${n}: the approval time cannot be in the future.`);
+  });
   return out;
 }
 

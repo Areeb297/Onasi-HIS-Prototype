@@ -1,7 +1,7 @@
 import { IconMessageChatbot } from "@tabler/icons-react";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { TaskRow, timeOf } from "@/components/ai/TaskRow";
-import { Button, Card } from "@/components/ui/primitives";
+import { Button } from "@/components/ui/primitives";
 import { isPaused, progressOf, useAgentWork, waitingTasks } from "@/lib/ai/agent-work";
 import { AGENTS } from "@/lib/ai/agents";
 import { ASSISTANT_NAME } from "@/lib/ai/brand";
@@ -18,7 +18,7 @@ export function AgentWorkCard() {
   const pct = all.total ? Math.round((all.done / all.total) * 100) : 0;
 
   return (
-    <Card className="mt-4">
+    <section className="glass-panel glass-hover mt-4 overflow-hidden rounded-2xl">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--brand-deep)] text-[var(--brand-mint)]"><OnasiAiMark size={24} /></span>
         <div className="min-w-0 flex-1 basis-64">
@@ -33,13 +33,13 @@ export function AgentWorkCard() {
         </div>
       </div>
       <div className="px-5 pb-1">
-        <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Agent tasks done today">
-          <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${pct}%` }} />
+        <div className="h-2 overflow-hidden rounded-full bg-[var(--viz-track,var(--muted))]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Agent tasks done today">
+          <div className="h-full rounded-full bg-[linear-gradient(90deg,#05a391,#39edd5)] transition-[width] duration-500" style={{ width: `${pct}%` }} />
         </div>
         <p className="mt-1.5 text-xs text-muted-foreground">{all.total ? `${all.done} of ${all.total} tasks done today, ${all.waiting} waiting for a person.` : "No tasks raised today."}</p>
       </div>
-      {waiting.length > 0 && <ul className="mt-2 divide-y divide-border border-t border-border px-5">{waiting.slice(0, 3).map((t) => <TaskRow key={t.id} task={t} compact />)}</ul>}
+      {waiting.length > 0 && <ul className="mt-2 divide-y divide-border/70 border-t border-border/70 px-5">{waiting.slice(0, 3).map((t) => <TaskRow key={t.id} task={t} compact />)}</ul>}
       {waiting.length === 0 && <div className="pb-3" />}
-    </Card>
+    </section>
   );
 }

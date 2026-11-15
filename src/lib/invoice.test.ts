@@ -1,22 +1,32 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  allocatePayment, ensureInvoice, getInvoices, invoiceOf, invoiceView, linesFromCharge, refundOverpayment, resetInvoices, sendToZatca,
+  allocatePayment, ensureInvoice, getInvoices, insurerOf, invoiceOf, invoiceView, linesFromCharge, refundOverpayment, resetInvoices, sendToZatca,
   setZatcaFailNext, statusOf, syncInvoices, takePayment, vatAppliesToPatientShare, worklist, zatcaClock, type Invoice,
 } from "./invoice";
+import { coverageView } from "./chart-entries";
 import { cancelLabOrder, placeLabOrder, resetLab } from "./lab";
 import { AUTH_FROM, estimateCharge, resetFinancial, runFinancial } from "./nphies-financial";
 import { switchUser } from "./session";
-import { getState } from "./store";
+import { getState, replaceState, seedState } from "./store";
 
 const encOf = (pid: string) => getState().encounters.find((e) => e.patientId === pid && e.status !== "cancelled")!;
-const SAUDI = "P004"; // outpatient, Saudi
-const NON_SAUDI = "P007"; // outpatient, Egyptian
+const SAUDI = "P004"; // outpatient, Saudi, insured below
+const NON_SAUDI = "P007"; // outpatient, Egyptian, insured below
+const CASH = "P001"; // inpatient with no insurance card: a cash patient
+const CARD = { payer: "Bupa Arabia", policyNo: "POL-48210", memberId: "MEM-7710021", className: "Class A", network: "Gold Network", startDate: "2026-01-01", expiryDate: "2026-12-31", copayPercent: 10, status: "Active" as const };
+/** Puts an insurance card on a patient's file, as registration does after the coverage check. */
+const insure = (ids: string[]) => {
+  const s = getState();
+  replaceState({ ...s, patients: s.patients.map((p) => (ids.includes(p.id) ? { ...p, extra: { ...p.extra!, visitPayType: "Insurance" as const, insurance: CARD } } : p)) });
+};
 const view = (visit: string) => invoiceView(invoiceOf(visit)!);
 const H = 3600_000;
 
 describe("invoice", () => {
   beforeEach(() => {
     switchUser("U9");
+    replaceState(seedState());
+    insure([SAUDI, NON_SAUDI]);
     resetInvoices();
     resetFinancial();
     resetLab();
@@ -60,11 +70,32 @@ describe("invoice", () => {
     expect(v.totals.total).toBeCloseTo(v.totals.gross + v.totals.patientTax, 2);
   });
 
-  it("puts the whole amount on the patient for a cash visit", () => {
-    const inv = ensureInvoice(encOf(SAUDI).visitNumber)!;
-    const v = invoiceView({ ...inv, insurer: null }, 0);
+  it("takes the payer from the patient's coverage, as the chart header does", () => {
+    const p = (id: string) => getState().patients.find((x) => x.id === id)!;
+    expect(insurerOf(p(SAUDI))).toBe("Bupa Arabia");
+    expect(insurerOf(p(CASH))).toBeNull();
+    expect(insurerOf({ extra: { ...p(SAUDI).extra!, visitPayType: "Cash" } })).toBeNull();
+    for (const id of [SAUDI, CASH]) expect(insurerOf(p(id)) ?? "Cash").toBe(coverageView(p(id), "2026-11-15").payer);
+    expect(ensureInvoice(encOf(SAUDI).visitNumber)!.insurer).toBe("Bupa Arabia");
+  });
+
+  it("puts the whole amount on a cash patient, with no insurance share", () => {
+    const v = invoiceView(ensureInvoice(encOf(CASH).visitNumber)!);
+    expect(v.invoice.insurer).toBeNull();
     expect(v.totals.patientAmount).toBe(v.totals.gross);
     expect(v.totals.insurancePayable).toBe(0);
+    expect(v.totals.insuranceBalance).toBe(0);
+    expect(v.totals.patientBalance).toBe(v.totals.patientPayable);
+  });
+
+  it("moves a draft invoice to cash when the patient's coverage is removed", () => {
+    const visit = encOf(SAUDI).visitNumber;
+    expect(ensureInvoice(visit)!.insurer).toBe("Bupa Arabia");
+    const s = getState();
+    replaceState({ ...s, patients: s.patients.map((p) => (p.id === SAUDI ? { ...p, extra: { ...p.extra!, visitPayType: "Cash" as const } } : p)) });
+    const v = invoiceView(ensureInvoice(visit)!);
+    expect(v.invoice.insurer).toBeNull();
+    expect(v.totals.patientAmount).toBe(v.totals.gross);
   });
 
   it("refuses an amount of zero or more than the balance", () => {

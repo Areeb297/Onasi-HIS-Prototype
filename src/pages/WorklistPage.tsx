@@ -1,18 +1,24 @@
 import * as React from "react";
 import { IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
-import { Plus, RotateCcw } from "lucide-react";
+import { BedDouble, ChevronDown, ClipboardList, Plus, Receipt, RotateCcw, Route } from "lucide-react";
 import { ActionLegend, RowActions, type ActionKey } from "@/components/RowActions";
 import { PatientFlagBadges } from "@/components/PatientBanner";
 import { DischargeProgress, useVisitActions } from "@/components/VisitActions";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th } from "@/components/ui/primitives";
+import { SUB_DEPARTMENTS, canRequestAdmission, useAdmissionRequests } from "@/lib/admission-requests";
+import { useAppointments } from "@/lib/appointments";
 import { heldBedOf } from "@/lib/beds";
+import { coveragesOf, useCoverages } from "@/lib/coverage";
 import { useDevMode } from "@/lib/devmode";
 import { niceDate } from "@/lib/discharge";
 import { can, hasGlass, useSession } from "@/lib/session";
 import type { Encounter } from "@/lib/model";
+import { caseOf, useFinancial } from "@/lib/nphies-financial";
 import { DOCTORS, SERVICES } from "@/lib/reference-data";
 import { navigate } from "@/lib/router";
 import { bedLabel, patientName, toLocalInput, useHis } from "@/lib/store";
+import { appointmentLabel, appointmentOf, appointmentTone, eligibilityCell, subDepartmentOf } from "@/lib/worklist";
 
 type Mode = "opd" | "ipd" | "er";
 
@@ -34,29 +40,78 @@ function dateOf(e: Encounter): string {
 
 const day = (offset: number) => toLocalInput(new Date(Date.now() + offset * 86_400_000)).slice(0, 10);
 
+/** Links to screens the visit already has: medication chart, patient journey, invoice, and an admission request. */
+function VisitLinks({ e }: { e: Encounter }) {
+  const requestable = e.status === "active" && (e.cls === "O" || e.cls === "E") && canRequestAdmission();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost" aria-label={`Go to a screen for visit ${e.visitNumber}`}>
+          Go To <ChevronDown className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuItem className="gap-3 py-2 text-sm" onClick={() => navigate("/chart", { visit: e.visitNumber, s: "emar" })}>
+          <ClipboardList className="size-4 text-move" />Open Medication Chart
+        </DropdownMenuItem>
+        <DropdownMenuItem className="gap-3 py-2 text-sm" onClick={() => navigate("/chart", { visit: e.visitNumber, s: "overview" })}>
+          <Route className="size-4 text-update" />Patient Journey
+        </DropdownMenuItem>
+        {can("billing") && (
+          <DropdownMenuItem className="gap-3 py-2 text-sm" onClick={() => navigate("/invoice", { visit: e.visitNumber })}>
+            <Receipt className="size-4 text-ok" />Invoice
+          </DropdownMenuItem>
+        )}
+        {requestable && (
+          <DropdownMenuItem className="gap-3 py-2 text-sm" onClick={() => navigate("/admission-requests", { new: "1", patient: e.patientId, visit: e.visitNumber })}>
+            <BedDouble className="size-4 text-admit" />Request Admission
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolean }) {
   const state = useHis();
   const dev = useDevMode();
   useSession();
+  const { appointments } = useAppointments();
+  const { requests } = useAdmissionRequests();
+  const coverageStore = useCoverages();
+  const fin = useFinancial();
   const { act, openRegister, openPatient, openClearances, openLeftWard, dialogs } = useVisitActions();
 
   const [start, setStart] = React.useState(day(mode !== "ipd" ? -7 : -14));
   const [end, setEnd] = React.useState(day(mode !== "ipd" ? 0 : 7));
   const [dept, setDept] = React.useState("");
+  const [sub, setSub] = React.useState("");
   const [status, setStatus] = React.useState("");
+  const [elig, setElig] = React.useState("");
   const [q, setQ] = React.useState("");
+  const today = day(0);
 
   const statuses =
     mode === "ipd" ? ["Admitted", "Pre-Admit", "Discharged", "Cancelled"] : ["Arrived", "Checked In", "Discharged", "Cancelled"];
 
-  const rows = state.encounters
-    .filter((e) => (mode === "opd" ? e.cls === "O" : mode === "er" ? e.cls === "E" : e.cls === "I"))
+  const subOf = (e: Encounter) => subDepartmentOf(e, requests, appointments);
+  const eligOf = (e: Encounter) =>
+    eligibilityCell(state.patients.find((x) => x.id === e.patientId), caseOf(e.visitNumber, fin), coveragesOf(e.patientId, coverageStore, state.patients), today);
+
+  const ofMode = state.encounters.filter((e) => (mode === "opd" ? e.cls === "O" : mode === "er" ? e.cls === "E" : e.cls === "I"));
+  const subOptions = dept
+    ? [...new Set([...(SUB_DEPARTMENTS[dept] ?? []), ...ofMode.filter((e) => e.service === dept).map(subOf)])].sort()
+    : [];
+
+  const rows = ofMode
     .filter((e) => {
       const d = dateOf(e).slice(0, 10);
       return !d || (d >= start && d <= end);
     })
     .filter((e) => !dept || e.service === dept)
+    .filter((e) => !sub || subOf(e) === sub)
     .filter((e) => !status || visitStatus(e).label === status)
+    .filter((e) => !elig || eligOf(e).label === elig)
     .filter((e) => {
       const p = state.patients.find((x) => x.id === e.patientId);
       return !q || `${patientName(p)} ${p?.mrn} ${e.visitNumber}`.toLowerCase().includes(q.toLowerCase());
@@ -72,7 +127,9 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
     setStart(day(mode !== "ipd" ? -7 : -14));
     setEnd(day(mode !== "ipd" ? 0 : 7));
     setDept("");
+    setSub("");
     setStatus("");
+    setElig("");
     setQ("");
   }
 
@@ -89,9 +146,10 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
             : "Inpatients and pre-admissions. Each action shows what will happen before you confirm. Discharge needs the four clearances, and the bed stays held until the patient leaves the ward."
         }
         right={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {mode !== "ipd" ? (
               <>
+                {mode === "opd" && <Button onClick={() => navigate("/reclassified")}>Reclassified To Outpatient</Button>}
                 {mode === "opd" && <Button onClick={() => openRegister("A04")}>
                   <Plus className="size-4" />
                   Register Visit
@@ -103,6 +161,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
               </>
             ) : (
               <>
+                <Button onClick={() => navigate("/ward-view")}><BedDouble className="size-4" />Ward View</Button>
                 <Button onClick={() => openRegister("A05")}>
                   <Plus className="size-4" />
                   Pre-Admit Patient
@@ -119,19 +178,31 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
       )}
 
       <Card className="mb-4 px-4 py-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[repeat(7,minmax(0,1fr))_auto]">
           <Field label="Start Date"><Input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="End Date"><Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
           <Field label={mode === "ipd" ? "Service" : "Department"}>
-            <Select value={dept} onChange={(e) => setDept(e.target.value)}>
+            <Select value={dept} onChange={(e) => { setDept(e.target.value); setSub(""); }}>
               <option value="">All</option>
               {SERVICES.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
+            </Select>
+          </Field>
+          <Field label="Sub-Department">
+            <Select value={sub} disabled={!dept} onChange={(e) => setSub(e.target.value)}>
+              <option value="">{dept ? "All" : `Choose the ${mode === "ipd" ? "service" : "department"} first`}</option>
+              {subOptions.map((s) => <option key={s} value={s}>{s}</option>)}
             </Select>
           </Field>
           <Field label="Status">
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">All</option>
               {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+            </Select>
+          </Field>
+          <Field label="Eligibility">
+            <Select value={elig} onChange={(e) => setElig(e.target.value)}>
+              <option value="">All</option>
+              {["Eligible", "Not Eligible", "Cash"].map((s) => <option key={s} value={s}>{s}</option>)}
             </Select>
           </Field>
           <Field label="Patient"><Input placeholder="Name, MRN or visit" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
@@ -146,13 +217,14 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
           <h2 className="text-lg font-semibold">{mode === "opd" ? "OPD Patients" : mode === "er" ? "Emergency Patients" : "IPD Patients"}</h2>
           <Badge tone="neutral">{rows.length} total</Badge>
         </div>
-        <Table className="mt-3">
+        <Table className="relative mt-3">
           <thead className="bg-move/8">
             <tr>
               <Th>Patient</Th>
               <Th>{mode === "ipd" ? "Admit Date" : "Date"}</Th>
               <Th>{mode === "ipd" ? "Ward and Bed" : "Department"}</Th>
               <Th>Doctor</Th>
+              <Th>Eligibility</Th>
               <Th>Status</Th>
               {mode === "ipd" && <Th>Discharge</Th>}
               <Th>Actions</Th>
@@ -160,7 +232,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><Td colSpan={mode === "ipd" ? 7 : 6}><Empty>No visits match these filters.</Empty></Td></tr>
+              <tr><Td colSpan={mode === "ipd" ? 8 : 7}><Empty>No visits match these filters.</Empty></Td></tr>
             )}
             {rows.map((e) => {
               const p = state.patients.find((x) => x.id === e.patientId);
@@ -168,6 +240,8 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
               const doc = DOCTORS.find((d) => d.id === e.attending);
               const dep = SERVICES.find((s) => s.code === e.service);
               const allergic = e.allergies.length > 0;
+              const el = eligOf(e);
+              const appt = mode === "opd" ? appointmentOf(e.visitNumber, appointments) : undefined;
               return (
                 <tr key={e.visitNumber} className="hover:bg-muted/40">
                   <Td>
@@ -195,7 +269,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
                     {mode !== "ipd" ? (
                       <>
                         <div>{dep?.label ?? e.service}</div>
-                        <div className="text-xs text-muted-foreground">{dep?.label} Clinic</div>
+                        <div className="text-xs text-muted-foreground">{subOf(e)}</div>
                       </>
                     ) : e.status === "active" ? (
                       <div className="font-medium">{bedLabel(e.bedId)}</div>
@@ -213,15 +287,34 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
                       <div className="text-muted-foreground">{e.status === "preadmit" ? "Not assigned yet" : "None"}</div>
                     )}
                   </Td>
-                  <Td>{doc ? `Dr. ${doc.given} ${doc.family}` : "None"}</Td>
                   <Td>
-                    <span className="flex items-center gap-1.5">
+                    <div className="whitespace-nowrap">{doc ? `Dr. ${doc.given} ${doc.family}` : "None"}</div>
+                    {mode === "ipd" && <div className="text-xs text-muted-foreground">{subOf(e)}</div>}
+                  </Td>
+                  <Td>
+                    <span className="inline-flex flex-col items-start gap-0.5" title={el.basis}>
+                      <Badge tone={el.tone}>{el.label}</Badge>
+                      {el.label !== "Cash" && <span className="max-w-40 truncate text-xs text-muted-foreground">{el.payer}</span>}
+                    </span>
+                  </Td>
+                  <Td>
+                    <span className="flex flex-wrap items-center gap-1.5">
                       <Badge tone={st.tone}>{st.label}</Badge>
                       {e.dirty && <Badge tone="warn" className="whitespace-nowrap">Changes Not Sent</Badge>}
                     </span>
+                    {appt && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Appointment <Badge tone={appointmentTone(appt)} className="ms-1">{appointmentLabel(appt)}</Badge>
+                      </div>
+                    )}
                   </Td>
                   {mode === "ipd" && <Td><DischargeProgress enc={e} onClearances={openClearances} onLeftWard={openLeftWard} /></Td>}
-                  <Td><RowActions enc={e} onAct={(k) => onAct(e, k)} /></Td>
+                  <Td>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <RowActions enc={e} onAct={(k) => onAct(e, k)} />
+                      <VisitLinks e={e} />
+                    </div>
+                  </Td>
                 </tr>
               );
             })}

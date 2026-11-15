@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useDevMode } from "@/lib/devmode";
 import { Check, Copy, Pencil, X } from "lucide-react";
 import { UseCaseIcon } from "@/components/ai/UseCaseIcon";
 import { copyText } from "@/components/ui/code-block";
@@ -29,6 +30,7 @@ const ACCEPT_HINT: Partial<Record<AiOutput["useCase"], string>> = {
 };
 
 export function OutputCard({ out, enc, patient }: { out: AiOutput; enc: Encounter; patient: Patient }) {
+  const dev = useDevMode();
   const [text, setText] = React.useState(out.text);
   const [editing, setEditing] = React.useState(false);
   const [verdict, setVerdict] = React.useState<Verdict>("open");
@@ -92,7 +94,7 @@ export function OutputCard({ out, enc, patient }: { out: AiOutput; enc: Encounte
           <h3 className="text-sm font-semibold leading-tight">{out.title}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="rounded-sm border border-dashed border-warn px-1.5 py-0.5 text-xs font-semiboldst text-warn">{AI_LABEL}</span>
-            {out.simulated && <span className="font-mono text-xsr text-muted-foreground">simulated</span>}
+            {dev && out.simulated && <span className="font-mono text-xs text-muted-foreground">simulated</span>}
             {verdict === "accepted" && <Badge tone="ok">Accepted{edited ? " (edited)" : ""}</Badge>}
             {verdict === "rejected" && <Badge tone="danger">Rejected</Badge>}
           </div>
@@ -148,7 +150,7 @@ export function OutputCard({ out, enc, patient }: { out: AiOutput; enc: Encounte
         ) : (
           <p className="mt-1">No chart fields.</p>
         )}
-        <p className="mt-1.5">Made by {out.engine}. It uses only the open chart. Nothing leaves the browser.</p>
+        <p className="mt-1.5">{dev ? `Made by ${out.engine}.` : "Written from fixed rules."} It uses only the open chart. Nothing leaves the browser.</p>
       </details>
 
       {verdict === "open" && out.useCase !== "help" && (

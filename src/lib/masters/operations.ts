@@ -142,7 +142,7 @@ export const OPERATIONS: MasterDef[] = [
   },
   {
     id: "pharmacy",
-    title: "Pharmacy",
+    title: "Drug Master",
     module: "Pharmacy",
     description: "Drug master used by prescriptions and dispensing. Prices are in SAR.",
     columns: [
@@ -357,7 +357,7 @@ export const OPERATIONS: MasterDef[] = [
     description: "Discount agreed with each payer by service group.",
     note: "Scaffold with sample rows. Discounts are made up and are not real payer contracts.",
     columns: [
-      mono("contractId", "Contract Id", true),
+      mono("contractId", "Contract ID", true),
       pick("payer", "Payer", ["Bupa Arabia", "Tawuniya", "MedGulf", "Daman", "NextCare", "Malath Insurance"], true),
       pick("serviceGroup", "Service Group", ["Consultation", "Laboratory", "Radiology", "Pharmacy", "Inpatient", "Procedures"], true),
       pick("discountType", "Discount Type", ["Percentage", "Fixed Amount"], true),

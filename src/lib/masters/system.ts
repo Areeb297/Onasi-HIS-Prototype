@@ -107,7 +107,7 @@ export const SYSTEM: MasterDef[] = [
     description: "Every form that can appear in the patient chart.",
     note: "The form list is read from the chart menu. Editing a row here does not change the form fields in the app.",
     columns: [
-      mono("formId", "Form Id", true),
+      mono("formId", "Form ID", true),
       text("title", "Form", true),
       text("description", "Description", true),
       pick("group", "Group", EMR_GROUPS, true),
@@ -122,7 +122,7 @@ export const SYSTEM: MasterDef[] = [
     module: "EMR Setup",
     description: "The groups in the left menu of the patient chart.",
     columns: [
-      mono("moduleId", "Module Id", true),
+      mono("moduleId", "Module ID", true),
       pick("name", "Module", EMR_GROUPS, true),
       text("nameArabic", "Arabic Name"),
       num("order", "Menu Order"),
@@ -154,7 +154,7 @@ export const SYSTEM: MasterDef[] = [
     module: "EMR Setup",
     description: "Every page in the patient chart menu. Native pages have their own screen. Form pages use the form engine.",
     columns: [
-      mono("pageId", "Page Id", true),
+      mono("pageId", "Page ID", true),
       text("label", "Page", true),
       text("caption", "Caption"),
       mono("url", "URL"),
@@ -176,7 +176,7 @@ export const SYSTEM: MasterDef[] = [
     module: "EMR Setup",
     description: "Which roles can read and write each chart page.",
     columns: [
-      mono("pageId", "Page Id", true),
+      mono("pageId", "Page ID", true),
       text("page", "Page", true),
       pick("group", "Module", EMR_GROUPS),
       text("readRoles", "Can Read", true),
@@ -310,7 +310,7 @@ export const SYSTEM: MasterDef[] = [
     module: "Users",
     description: "Demo accounts. The same accounts appear in the user switcher.",
     columns: [
-      mono("userId", "User Id", true),
+      mono("userId", "User ID", true),
       text("name", "Name", true),
       mono("username", "Username"),
       text("email", "Email", true),
@@ -327,7 +327,7 @@ export const SYSTEM: MasterDef[] = [
         pick("identificationType", "Identity Type", ["National ID", "Iqama", "Passport", "Border Number"]),
         mono("identificationValue", "Identity Number"),
         text("profilePhoto", "Profile Photo", false, "photo.jpg"),
-        mono("phoneNumber", "Phone #", false, "+966 5X XXX XXXX"),
+        mono("phoneNumber", "Phone Number", false, "+966 5X XXX XXXX"),
         text("address", "Address", true),
         pick("country", "Country", ["Saudi Arabia", "United Arab Emirates", "Kuwait", "Bahrain", "Egypt", "Jordan", "Pakistan", "Philippines"]),
         pick("state", "State", ["Riyadh Region", "Makkah Region", "Eastern Province", "Madinah Region", "Asir Region", "Qassim Region"]),
@@ -366,7 +366,7 @@ export const SYSTEM: MasterDef[] = [
     module: "Role Permissions",
     description: "Roles and how many permissions each has.",
     columns: [
-      mono("roleId", "Role Id", true),
+      mono("roleId", "Role ID", true),
       text("name", "Role", true),
       num("permissions", "Permissions"),
       num("modules", "Modules"),
@@ -383,7 +383,7 @@ export const SYSTEM: MasterDef[] = [
     description: "Which menu groups each role can open.",
     columns: [
       monoPick("role", "Role", ROLE_IDS, true),
-      mono("moduleId", "Module Id", true),
+      mono("moduleId", "Module ID", true),
       text("module", "Module"),
       num("pages", "Pages Open"),
       num("total", "Pages In Module"),

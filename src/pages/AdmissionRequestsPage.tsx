@@ -8,7 +8,6 @@ import {
   ADMITTING_DEPARTMENTS, STATUSES, STATUS_LABEL, STATUS_TONE, admissionTypeLabel, canDecideAdmission, canRequestAdmission,
   departmentLabel, doctorLabel, useAdmissionRequests, type AdmissionRequest, type RequestStatus,
 } from "@/lib/admission-requests";
-import { niceDate } from "@/lib/discharge";
 import { useDevMode } from "@/lib/devmode";
 import { navigate, useRoute } from "@/lib/router";
 import { hasGlass, useSession } from "@/lib/session";
@@ -123,24 +122,28 @@ export function AdmissionRequestsPage() {
         {!mayDecide && (
           <p className="px-4 pt-2 text-sm text-muted-foreground">Your role can see requests. Approving, rejecting and cancelling need the right to send admissions.</p>
         )}
-        <Table className="mt-3">
+        {/* Phone and small tablet: one card per request, so the actions are never off the side of the screen. */}
+        <ul className="mt-3 divide-y divide-border border-t border-border lg:hidden" aria-label="Admission requests">
+          {rows.length === 0 && <li><Empty>No admission requests match these filters.</Empty></li>}
+          {rows.map((r) => (
+            <RequestCard key={r.id} r={r} name={nameOf(r.patientId)} mrn={his.patients.find((p) => p.id === r.patientId)?.mrn ?? ""} dev={dev} mayDecide={mayDecide} onAct={(kind) => setDlg({ kind, id: r.id })} />
+          ))}
+        </ul>
+        <Table className="mt-3 hidden lg:block">
           <thead>
             <tr>
               <Th>Patient</Th>
-              <Th>MRN</Th>
-              <Th>Requested By</Th>
-              <Th>Approving Doctor</Th>
+              <Th>Doctors</Th>
               <Th>Department</Th>
-              <Th>Type</Th>
-              <Th>Condition</Th>
-              <Th>Requested Date</Th>
+              <Th>Type And Condition</Th>
+              <Th>Requested</Th>
               <Th>Status</Th>
               <Th>Actions</Th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><Td colSpan={10}><Empty>No admission requests match these filters.</Empty></Td></tr>
+              <tr><Td colSpan={7}><Empty>No admission requests match these filters.</Empty></Td></tr>
             )}
             {rows.map((r) => (
               <Row key={r.id} r={r} name={nameOf(r.patientId)} mrn={his.patients.find((p) => p.id === r.patientId)?.mrn ?? ""} dev={dev} mayDecide={mayDecide} onAct={(kind) => setDlg({ kind, id: r.id })} />
@@ -156,63 +159,111 @@ export function AdmissionRequestsPage() {
   );
 }
 
-function Row({ r, name, mrn, dev, mayDecide, onAct }: {
+interface RowProps {
   r: AdmissionRequest;
   name: string;
   mrn: string;
   dev: boolean;
   mayDecide: boolean;
   onAct: (kind: "approve" | "reject" | "cancel") => void;
-}) {
+}
+
+/** Short date and time for the worklist, for example "15 Nov 2026, 13:57". */
+const shortDate = (local: string | undefined) =>
+  local ? new Date(local).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "None";
+
+/** The pieces of a request that the table row and the phone card both show. */
+function useRequestParts({ r, name, dev, mayDecide, onAct }: RowProps) {
   const his = useHis();
   const visit = r.approval ? his.encounters.find((e) => e.visitNumber === r.approval!.visitNumber) : undefined;
   const chartVisit = r.approval?.visitNumber ?? r.fromVisit;
+  const patient = chartVisit ? (
+    <button onClick={() => navigate("/chart", { visit: chartVisit })} className="rounded text-left text-sm font-semibold text-move hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
+  ) : (
+    <span className="text-sm font-semibold">{name}</span>
+  );
+  const status = (
+    <>
+      <Badge tone={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</Badge>
+      {r.approval && (
+        <div className="mt-1 text-xs text-muted-foreground">
+          {r.approval.bedId ? bedLabel(r.approval.bedId) : "No bed"}{dev ? ` · ${r.approval.eventId} ${r.approval.visitNumber}` : ""}
+          {visit?.status === "cancelled" && <div className="text-destructive">The visit was cancelled after approval.</div>}
+        </div>
+      )}
+      {r.decisionReason && <div className="mt-1 max-w-48 text-xs text-muted-foreground">{r.decisionReason}</div>}
+    </>
+  );
+  const actions = r.status === "pending" && mayDecide ? (
+    <div className="flex flex-wrap gap-1.5">
+      <Button size="sm" variant="primary" onClick={() => onAct("approve")} aria-label={`Approve request ${r.id} for ${name}`}><CheckCircle2 className="size-4" />Approve</Button>
+      <Button size="sm" variant="danger" onClick={() => onAct("reject")} aria-label={`Reject request ${r.id} for ${name}`}><XCircle className="size-4" />Reject</Button>
+      <Button size="sm" onClick={() => onAct("cancel")} aria-label={`Cancel request ${r.id} for ${name}`}><Ban className="size-4" />Cancel</Button>
+    </div>
+  ) : (
+    <span className="text-xs text-muted-foreground">{r.decidedBy ? `${r.decidedBy}, ${shortDate(r.decidedAt)}` : "None"}</span>
+  );
+  const idLine = `${r.id}${r.dx ? ` · ${r.dx.code}` : ""}${dev && r.fromVisit ? ` · from ${r.fromVisit}` : ""}`;
+  return { patient, status, actions, idLine };
+}
+
+function Row(props: RowProps) {
+  const { r, mrn } = props;
+  const { patient, status, actions, idLine } = useRequestParts(props);
   return (
     <tr className="align-top hover:bg-muted/40">
       <Td>
-        {chartVisit ? (
-          <button onClick={() => navigate("/chart", { visit: chartVisit })} className="text-left text-sm font-semibold text-move hover:underline">{name}</button>
-        ) : (
-          <span className="text-sm font-semibold">{name}</span>
-        )}
-        <div className="text-xs text-muted-foreground">
-          {r.id}{r.dx ? ` · ${r.dx.code}` : ""}{dev && r.fromVisit ? ` · from ${r.fromVisit}` : ""}
-        </div>
+        {patient}
+        <div className="font-mono text-xs text-muted-foreground">{mrn}</div>
+        <div className="text-xs text-muted-foreground">{idLine}</div>
       </Td>
-      <Td className="whitespace-nowrap font-mono text-xs">{mrn}</Td>
       <Td>
         <div>{r.requestedBy}</div>
         <div className="text-xs text-muted-foreground">Admitting: {doctorLabel(r.admittingDoctor)}</div>
+        <div className="text-xs text-muted-foreground">Approving: {doctorLabel(r.approvingDoctor)}</div>
       </Td>
-      <Td>{doctorLabel(r.approvingDoctor)}</Td>
       <Td>
         <div>{departmentLabel(r.department)}</div>
         {r.subDepartment && <div className="text-xs text-muted-foreground">{r.subDepartment}</div>}
       </Td>
-      <Td className="min-w-40">{admissionTypeLabel(r.admissionType)}</Td>
-      <Td>{r.condition || "None"}</Td>
-      <Td className="whitespace-nowrap">{niceDate(r.requestedAt)}</Td>
       <Td>
-        <Badge tone={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</Badge>
-        {r.approval && (
-          <div className="mt-1 text-xs text-muted-foreground">
-            {r.approval.bedId ? bedLabel(r.approval.bedId) : "No bed"}{dev ? ` · ${r.approval.eventId} ${r.approval.visitNumber}` : ""}
-            {visit?.status === "cancelled" && <div className="text-destructive">The visit was cancelled after approval.</div>}
-          </div>
-        )}
-        {r.decisionReason && <div className="mt-1 max-w-48 text-xs text-muted-foreground">{r.decisionReason}</div>}
+        <div>{admissionTypeLabel(r.admissionType)}</div>
+        <div className="text-xs text-muted-foreground">Condition: {r.condition || "None"}</div>
       </Td>
-      <Td>
-        {r.status === "pending" && mayDecide ? (
-          <div className="flex flex-wrap gap-1.5">
-            <Button size="sm" variant="primary" onClick={() => onAct("approve")} aria-label={`Approve request ${r.id} for ${name}`}><CheckCircle2 className="size-4" />Approve</Button>
-            <Button size="sm" variant="danger" onClick={() => onAct("reject")} aria-label={`Reject request ${r.id} for ${name}`}><XCircle className="size-4" />Reject</Button>
-            <Button size="sm" onClick={() => onAct("cancel")} aria-label={`Cancel request ${r.id} for ${name}`}><Ban className="size-4" />Cancel</Button>
-          </div>
-        ) : (
-          <span className="text-xs text-muted-foreground">{r.decidedBy ? `${r.decidedBy}, ${niceDate(r.decidedAt)}` : "None"}</span>
-        )}
-      </Td>
+      <Td className="whitespace-nowrap">{shortDate(r.requestedAt)}</Td>
+      <Td>{status}</Td>
+      <Td className="min-w-48">{actions}</Td>
     </tr>
+  );
+}
+
+function RequestCard(props: RowProps) {
+  const { r, mrn } = props;
+  const { patient, status, actions, idLine } = useRequestParts(props);
+  const fact = (label: string, value: React.ReactNode) => (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm">{value}</dd>
+    </div>
+  );
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          {patient}
+          <div className="text-xs text-muted-foreground"><span className="font-mono">{mrn}</span> · {idLine}</div>
+        </div>
+        <div className="shrink-0 text-right">{status}</div>
+      </div>
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
+        {fact("Requested By", r.requestedBy)}
+        {fact("Approving Doctor", doctorLabel(r.approvingDoctor))}
+        {fact("Department", <>{departmentLabel(r.department)}{r.subDepartment ? `, ${r.subDepartment}` : ""}</>)}
+        {fact("Type", admissionTypeLabel(r.admissionType))}
+        {fact("Condition", r.condition || "None")}
+        {fact("Requested", shortDate(r.requestedAt))}
+      </dl>
+      <div className="mt-3">{actions}</div>
+    </li>
   );
 }

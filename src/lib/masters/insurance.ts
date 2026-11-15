@@ -48,7 +48,7 @@ export const INSURANCE: MasterDef[] = [
       text("name", "Insurer", true),
       pick("type", "Type", ["Private insurer", "Government payer", "Self-pay"], true),
       pick("tpa", "TPA", TPAS),
-      mono("payerId", "Payer Id", false, "PAYER-000"),
+      mono("payerId", "Payer ID", false, "PAYER-000"),
       mono("registrationNumber", "CR / Unified No", false, "7000000000"),
       text("networkName", "Network Name"),
       badge("status", "Status", ["Active", "Draft", "Disabled"]),

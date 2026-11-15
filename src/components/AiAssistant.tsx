@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CornerDownLeft, Trash2 } from "lucide-react";
+import { CornerDownLeft, Maximize2, Minimize2, Trash2 } from "lucide-react";
 import { AssistantChat } from "@/components/ai/AssistantChat";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
 import { OutputCard } from "@/components/ai/OutputCard";
@@ -13,6 +13,7 @@ import { helpText, ruleEngine, USE_CASES, type AiOutput, type UseCaseId } from "
 import { onOpenAssistant } from "@/lib/ai/launcher";
 import { auditSuggest, buildContext, visitFromHash } from "@/lib/ai/live";
 import { audit } from "@/lib/audit";
+import { useDevMode } from "@/lib/devmode";
 import type { Encounter, Patient } from "@/lib/model";
 import { useRoute } from "@/lib/router";
 import { can, hasGlass, useSession } from "@/lib/session";
@@ -27,6 +28,8 @@ import { getState, useHis } from "@/lib/store";
  * with a DRAFT stamp, and the launcher is a tab docked to the screen edge.
  */
 
+const FULL_KEY = "onasi-ai-full-screen";
+
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 type Item =
@@ -40,7 +43,12 @@ export function AiAssistant() {
   useSession();
   useRoute(); // re-render when the address changes, so the open chart stays current
   const st = useHis();
+  const dev = useDevMode();
   const [open, setOpen] = React.useState(false);
+  // The panel can fill the whole screen. The choice is kept for the session.
+  const [full, setFullState] = React.useState(() => { try { return sessionStorage.getItem(FULL_KEY) === "1"; } catch { return false; } });
+  const setFull = (on: boolean) => { setFullState(on); try { sessionStorage.setItem(FULL_KEY, on ? "1" : "0"); } catch { /* storage may be blocked */ } };
+  const wide = full ? "mx-auto w-full max-w-5xl" : "";
   const [items, setItems] = React.useState<Item[]>([]);
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -120,12 +128,12 @@ export function AiAssistant() {
 
   return (
     <>
-      {/* Launcher: a floating button at the bottom right, clear of the tables. The red number is the safety checks waiting on this chart. */}
+      {/* Launcher: a floating button fixed at the bottom right. The page content has bottom padding (in App.tsx) so its last row scrolls clear of it. The red number is the safety checks waiting on this chart. */}
       <button
         onClick={() => { setMode(enc ? "chart" : "hospital"); setOpen(true); }}
         aria-label={`Ask ${ASSISTANT_NAME}${checks ? `. ${checks} safety checks on this chart.` : ""}`}
         title={`Ask ${ASSISTANT_NAME} (Ctrl+J)`}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 rounded-full bg-[var(--brand-deep)] py-2 pl-3 pr-4 text-white shadow-lg ring-1 ring-white/10 transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-primary dark:text-primary-foreground"
+        className="fixed bottom-5 right-5 z-40 flex size-12 items-center justify-center gap-2.5 rounded-full bg-[var(--brand-deep)] text-white md:size-auto md:py-2 md:pl-3 md:pr-4 shadow-lg ring-1 ring-white/10 transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-primary dark:text-primary-foreground"
       >
         <span className="relative">
           <OnasiAiMark size={24} />
@@ -133,14 +141,19 @@ export function AiAssistant() {
             <span className="absolute -right-2 -top-2 flex size-4 items-center justify-center rounded-full bg-destructive text-xs font-bold text-white">{checks}</span>
           )}
         </span>
-        <span className="text-sm font-semibold">Ask {ASSISTANT_NAME}</span>
+        <span className="hidden text-sm font-semibold md:inline">Ask {ASSISTANT_NAME}</span>
       </button>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-full gap-0 sm:max-w-xl" aria-describedby="nabd-desc">
+        <SheetContent
+          side="right"
+          className={cn("w-full gap-0", full ? "max-w-none sm:max-w-none" : "sm:max-w-xl")}
+          aria-describedby="nabd-desc"
+          onEscapeKeyDown={(e) => { if (full) { e.preventDefault(); setFull(false); } }}
+        >
           <SheetHeader className="gap-3 border-b border-border pr-12">
             <SheetTitle className="sr-only">Ask {ASSISTANT_NAME}</SheetTitle>
-            <SheetDescription id="nabd-desc" className="sr-only">{SIM_NOTE}</SheetDescription>
+            <SheetDescription id="nabd-desc" className="sr-only">Ask about the hospital or the open chart. A clinician must review every answer.{dev ? ` ${SIM_NOTE}` : ""}</SheetDescription>
             <div className="flex items-center gap-3">
               <div className="flex size-11 items-center justify-center rounded-xl bg-foreground text-background">
                 <OnasiAiMark size={28} thinking={busy} />
@@ -150,9 +163,15 @@ export function AiAssistant() {
                   <span className="text-lg font-semibold tracking-tight">{ASSISTANT_NAME}</span>
                   <span dir="rtl" lang="ar" className="text-base text-muted-foreground">{ASSISTANT_NAME_AR}</span>
                 </div>
-                <div className="text-xs text-muted-foreground">Ctrl+J opens and closes it.</div>
+                <div className="text-xs text-muted-foreground">{full ? "Esc returns to the side panel." : "Ctrl+J opens and closes it."}</div>
               </div>
-              <span className="ms-auto rounded-sm border border-dashed border-warn px-1.5 py-0.5 text-xs font-semibold text-warn" title={SIM_NOTE}>Simulated</span>
+              <span className="ms-auto flex items-center gap-2">
+                {dev && <span className="rounded-sm border border-dashed border-warn px-1.5 py-0.5 text-xs font-semibold text-warn" title={SIM_NOTE}>Simulated</span>}
+                <Button size="sm" variant="ghost" onClick={() => setFull(!full)} aria-pressed={full} title={full ? "Exit Full Screen (Esc)" : "Expand to full screen"} aria-label={full ? "Exit Full Screen" : "Expand"}>
+                  {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                  <span className="hidden sm:inline">{full ? "Exit Full Screen" : "Expand"}</span>
+                </Button>
+              </span>
             </div>
             <div role="tablist" aria-label="What to ask about" className="flex rounded-lg border border-border bg-muted p-0.5">
               <button type="button" role="tab" aria-selected={mode === "hospital"} onClick={() => setMode("hospital")} className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", mode === "hospital" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>The Hospital</button>
@@ -173,19 +192,19 @@ export function AiAssistant() {
                   "No chart is open. Open a patient chart to use the chart tools."
                 )}
               </div>
-              <p className="text-xs leading-snug text-muted-foreground">{SIM_NOTE}</p>
+              {dev && <p className="text-xs leading-snug text-muted-foreground">{SIM_NOTE}</p>}
               </>
             )}
           </SheetHeader>
 
           {mode === "hospital" || !enc ? (
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-3", wide)}>
               <AssistantChat compact firstQuestion={question} />
             </div>
           ) : (
             <>
           {/* Use case tiles */}
-          <div className="grid grid-cols-3 gap-2 border-b border-border p-3" role="group" aria-label="What I can do">
+          <div className={cn("grid grid-cols-3 gap-2 border-b border-border p-3", full && "sm:grid-cols-6", wide)} role="group" aria-label="What I can do">
             {USE_CASES.map((u) => (
               <button
                 key={u.id}
@@ -201,7 +220,7 @@ export function AiAssistant() {
           </div>
 
           {/* Log */}
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3" aria-live="polite">
+          <div className={cn("min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3", wide)} aria-live="polite">
             {items.length === 0 && (
               <div className="border-s-2 border-border ps-3 text-sm">
                 <p className="text-muted-foreground">I work on the open chart only. Pick a tool above, or ask in your own words:</p>
@@ -234,7 +253,7 @@ export function AiAssistant() {
           </div>
 
           <form
-            className="flex items-center gap-2 border-t border-border p-3"
+            className={cn("flex items-center gap-2 border-t border-border p-3", wide)}
             onSubmit={(e) => {
               e.preventDefault();
               send(draft);

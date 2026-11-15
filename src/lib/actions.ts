@@ -1,12 +1,14 @@
 import { audit } from "./audit";
 import { bedInfo, bedProblem, heldBedOf } from "./beds";
+import { followUpTitle, orderFollowUp, type FollowUpInput } from "./care-requests";
 import {
-  canGiveClearance, clearanceBlock, clearanceLabel, departureGap, gapText, leftWardProblem, missingClearances, outcomeCode, outcomeDef,
-  outcomeProblems, reasonProblem, reasonText, type OutcomeInput,
+  canGiveClearance, cleanDetails, clearanceBlock, clearanceLabel, departureGap, detailProblems, gapText, leftWardProblem, missingClearances, outcomeCode,
+  outcomeDef, outcomeProblems, reasonProblem, reasonText, type OutcomeInput,
 } from "./discharge";
-import type { ClearanceKey, Dx, Encounter, LogEntry, ScenarioForm } from "./model";
-import { currentUser, roleOf } from "./session";
-import { DISPOSITIONS, DOCTORS, SERVICES, defaultAdmissionMethod } from "./reference-data";
+import type { AdmissionDetails, ClearanceKey, DischargeDetails, Dx, Encounter, LogEntry, ScenarioForm, TransferEntry } from "./model";
+import { can, currentUser, roleOf } from "./session";
+import { ADMISSION_METHODS, DISPOSITIONS, DOCTORS, SERVICES, defaultAdmissionMethod } from "./reference-data";
+import { conversionProblems, moveVisitProblem, type ConversionInput } from "./visit-forms";
 import { EVENT_BY_ID, eventLabel, type EventId } from "./spec";
 import { pushToast } from "./toast";
 import {
@@ -37,6 +39,7 @@ function describe(eventId: EventId, bedId?: string): string {
     case "A12": return `Transfer cancelled. Back in ${bedLabel(bedId)}.`;
     case "A13": return "Discharge undone.";
     case "A38": return "Pre-admission cancelled.";
+    case "A45": return "Visit moved to";
     default: return "Done.";
   }
 }
@@ -73,16 +76,34 @@ export function quickSend(eventId: EventId, visit: string, patch?: (f: ScenarioF
     if (enc.cls !== "I") form.bedId = "";
     else if (!form.bedId || bedProblem(state, form.bedId, { visit })) form.bedId = firstFreeBed(state);
   }
+  // Cancelling a transfer that changed the department puts the department back as well as the bed.
+  const undone = eventId === "A12" ? openTransfer(enc) : undefined;
+  if (undone) form.service = undone.fromService;
   patch?.(form);
   const problem = formProblem(state, eventId, form);
   if (problem) return fail(problem);
   const entry = send(eventId, form, { source: "user" });
   // The discharge is reversed, so its outcome and leaving time no longer apply. The clearances stay.
   if (eventId === "A13") updateEncounter(visit, (e) => { e.discharge = undefined; }, { touch: false });
+  if (undone) {
+    updateEncounter(visit, (e) => {
+      e.service = undone.fromService;
+      e.subDepartment = undone.fromSubDepartment;
+      e.transferLog = (e.transferLog ?? []).map((t) => (t.at === undone.at && t.toBed === undone.toBed && !t.cancelledAt ? { ...t, cancelledAt: nowLocal() } : t));
+    }, { touch: false });
+  }
   return finish(eventId, visit, entry, form.bedId || undefined);
 }
 
-export function dischargeWith(visit: string, dx: Dx[], disposition: string): Outcome {
+/** The newest transfer that is still in force: it moved the patient into the bed they are in now. */
+function openTransfer(enc: Encounter): TransferEntry | undefined {
+  const live = (enc.transferLog ?? []).filter((t) => !t.cancelledAt);
+  const last = live[live.length - 1];
+  return last && last.toBed === enc.bedId ? last : undefined;
+}
+
+/** Discharge (A03) with the chosen diagnoses and PV1-36 code. `dischargeAt` is the discharge time, now when empty. */
+export function dischargeWith(visit: string, dx: Dx[], disposition: string, dischargeAt?: string): Outcome {
   // Save the chosen diagnoses on the visit first so the EMR and the message agree.
   updateEncounter(visit, (e) => {
     for (const d of dx) if (!e.dx.some((x) => x.code === d.code)) e.dx.push({ ...d, type: "F", at: nowLocal() });
@@ -90,7 +111,7 @@ export function dischargeWith(visit: string, dx: Dx[], disposition: string): Out
   return quickSend("A03", visit, (f) => {
     f.dx = getState().encounters.find((e) => e.visitNumber === visit)!.dx.map((d) => ({ ...d }));
     f.disposition = disposition;
-    f.dischargeAt = nowLocal();
+    f.dischargeAt = dischargeAt || nowLocal();
   });
 }
 
@@ -111,6 +132,10 @@ export interface CreateParams {
   expectedAdmitAt?: string;
   /** A05: a bed to hold for the planned admission. */
   reserveBedId?: string;
+  /** Diagnoses that go in the message (DG1), for example the admitting diagnosis of an admit or pre-admit. Saved on the visit too. */
+  dx?: Dx[];
+  /** Admission details kept in the HIS: condition, activity level, expected days, attendant, notes. Not sent. */
+  admission?: AdmissionDetails;
 }
 
 /** Register (A04), admit (A01) or pre-admit (A05) in one step. */
@@ -143,6 +168,8 @@ export function quickCreate(kind: "A04" | "A01" | "A05", p: CreateParams): Outco
   if (kind === "A04") form.cls = p.cls ?? "O";
   form.admissionMethod = p.admissionMethod || defaultAdmissionMethod(form.cls);
   if (p.consulting) form.consulting = p.consulting;
+  // Diagnoses given with the request join the ones already on a pre-admission, one per code.
+  for (const d of p.dx ?? []) if (d.code && !form.dx.some((x) => x.code === d.code)) form.dx.push({ ...d, at: d.at ?? (form.admitAt || nowLocal()) });
   const problem = formProblem(state, kind, form);
   if (problem) return fail(problem);
   if (kind === "A05" && p.reserveBedId) {
@@ -150,8 +177,24 @@ export function quickCreate(kind: "A04" | "A01" | "A05", p: CreateParams): Outco
     if (why) return fail(why);
   }
   const entry = send(kind, form, { source: "user" });
-  if (kind === "A05" && p.reserveBedId) updateEncounter(entry.visitNumber, (e) => { e.reservedBedId = p.reserveBedId; }, { touch: false });
+  if ((kind === "A05" && p.reserveBedId) || p.admission) {
+    updateEncounter(entry.visitNumber, (e) => {
+      if (kind === "A05" && p.reserveBedId) e.reservedBedId = p.reserveBedId;
+      if (p.admission) e.admission = { ...(e.admission ?? {}), ...stripEmpty(p.admission) };
+    }, { touch: false });
+  }
   return finish(kind, entry.visitNumber, entry, form.bedId || undefined);
+}
+
+/** Drop empty text and missing numbers so saved details hold only what was filled in. */
+function stripEmpty<T extends object>(o: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const [k, v] of Object.entries(o) as [keyof T, unknown][]) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === "string" && !v.trim()) continue;
+    out[k] = (typeof v === "string" ? v.trim() : v) as T[keyof T];
+  }
+  return out;
 }
 
 /** Outpatient check-in. It is a HIS step, not an ADT event, so no message is sent. */
@@ -196,6 +239,8 @@ export interface DischargeInput extends OutcomeInput {
   dx: Dx[];
   /** Typed reason to discharge an inpatient with clearances missing. */
   overrideReason?: string;
+  /** Condition, time, attendant, summary, instructions and approvals from the dialog. Checked and saved when given. */
+  details?: DischargeDetails;
 }
 
 /** Discharge with an outcome. Inpatients need all four clearances, or an override reason that goes to the audit log. */
@@ -207,9 +252,14 @@ export function dischargePatient(visit: string, input: DischargeInput): Outcome 
   if (block) return fail(block);
   const problems = outcomeProblems(input, { admitAt: enc.admitAt, now: nowLocal() });
   if (problems.length) return fail(problems[0]);
+  const details = input.details ? cleanDetails(input.details) : undefined;
+  if (input.details) {
+    const why = detailProblems(input.details, { outcome: input.outcome, admitAt: enc.admitAt, now: nowLocal() });
+    if (why.length) return fail(why[0]);
+  }
   const me = who();
   const bedId = enc.cls === "I" ? enc.bedId : undefined;
-  const out = dischargeWith(visit, input.dx, outcomeCode(input.outcome));
+  const out = dischargeWith(visit, input.dx, outcomeCode(input.outcome), details?.dischargeAt);
   if (!out.ok) return out;
   const at = nowLocal();
   const patient = nameOf(enc);
@@ -219,8 +269,20 @@ export function dischargePatient(visit: string, input: DischargeInput): Outcome 
       override: missing.length ? { reason: input.overrideReason!.trim(), by: me.by, at, missing } : undefined,
       transfer: input.outcome === "transfer" && input.transfer ? { ...input.transfer } : undefined,
       death: input.outcome === "died" && input.death ? { ...input.death } : undefined,
+      ...details,
     };
   }, { touch: false });
+  if (details && Object.keys(details).length) {
+    const parts = [
+      details.condition && `Condition: ${details.condition}`,
+      details.dischargeAt && `Discharge time: ${details.dischargeAt.replace("T", " ")}`,
+      details.attendant?.name && `Attendant: ${details.attendant.name}${details.attendant.relation ? ` (${details.attendant.relation})` : ""}`,
+      details.educatedBy && `Education given by ${details.educatedBy}`,
+      details.ambulance && "Ambulance transport requested",
+      details.approvals?.length && `${details.approvals.length} doctor approval${details.approvals.length === 1 ? "" : "s"}`,
+    ].filter(Boolean);
+    audit("update", `Discharge details ${visit}`, { patient, detail: `${parts.join(". ")}.` });
+  }
   if (missing.length) {
     audit("update", `Discharge override ${visit}`, {
       patient, detail: `Discharged without ${missing.map(clearanceLabel).join(", ")} clearance. Reason: ${input.overrideReason!.trim()}`,
@@ -295,6 +357,122 @@ export function sendWithReason(eventId: "A11" | "A38" | "A12" | "A07", visit: st
   const v = out.entry?.visitNumber || visit;
   updateEncounter(v, (e) => { e.cancelReason = text; }, { touch: false });
   audit("update", `${EVENT_BY_ID[eventId].name} ${v}`, { patient: nameOf(enc), detail: `Reason: ${text}` });
+  return out;
+}
+
+/* ---------- transfer, change of class, move visit ---------- */
+
+const serviceLabel = (code: string): string => SERVICES.find((s) => s.code === code)?.label ?? code;
+
+export interface TransferInput {
+  bedId: string;
+  /** New department. The current one when empty. Sent in PV1-10. */
+  service: string;
+  subDepartment: string;
+  reason: string;
+  note?: string;
+}
+
+/** Ward transfer (A02) with a reason, and a new department when it changes. The reason stays in the HIS and the audit log. */
+export function transferPatient(visit: string, t: TransferInput): Outcome {
+  const why = reasonProblem(t.reason, t.note ?? "");
+  if (why) return fail(why);
+  const enc = visitOf(visit);
+  if (!enc) return fail("That visit was not found.");
+  const service = t.service || enc.service;
+  const out = quickSend("A02", visit, (f) => { f.bedId = t.bedId; f.service = service; });
+  if (!out.ok) return out;
+  const text = reasonText(t.reason, t.note ?? "");
+  const entry: TransferEntry = {
+    at: nowLocal(), by: who().by, fromBed: enc.bedId, toBed: t.bedId, fromService: enc.service, toService: service,
+    fromSubDepartment: enc.subDepartment, subDepartment: t.subDepartment.trim() || undefined, reason: text,
+  };
+  updateEncounter(visit, (e) => {
+    e.service = service;
+    e.subDepartment = entry.subDepartment;
+    e.transferLog = [...(e.transferLog ?? []), entry];
+  }, { touch: false });
+  audit("update", `Transfer ${visit}`, {
+    patient: nameOf(enc),
+    detail: `${bedLabel(enc.bedId)} to ${bedLabel(t.bedId)}, ${serviceLabel(service)}${entry.subDepartment ? `, ${entry.subDepartment}` : ""}. Reason: ${text}`,
+  });
+  return out;
+}
+
+/** Change an outpatient or emergency visit to an inpatient stay (A06) with the admission details the HIS records. */
+export function convertToInpatient(visit: string, c: ConversionInput): Outcome {
+  const enc = visitOf(visit);
+  if (!enc) return fail("That visit was not found.");
+  const problems = conversionProblems(c, { visitStart: enc.admitAt, now: nowLocal() });
+  if (problems.length) return fail(problems[0]);
+  const out = quickSend("A06", visit, (f) => {
+    f.bedId = c.bedId;
+    f.service = c.service;
+    f.admissionMethod = c.admissionType;
+    f.admitAt = c.at;
+  });
+  if (!out.ok) return out;
+  const me = who();
+  const typeLabel = ADMISSION_METHODS.find((m) => m.code === c.admissionType)?.label ?? c.admissionType;
+  updateEncounter(visit, (e) => {
+    if (c.subDepartment.trim()) e.subDepartment = c.subDepartment.trim();
+    e.admission = {
+      ...(e.admission ?? {}),
+      ...stripEmpty({ admissionType: typeLabel, patientCondition: c.condition, activityLevel: c.activityLevel, conversionReason: c.reason }),
+      convertedAt: nowLocal(), convertedBy: me.by,
+    };
+  }, { touch: false });
+  audit("update", `Change to inpatient ${visit}`, {
+    patient: nameOf(enc),
+    detail: `${serviceLabel(c.service)}, ${typeLabel}, condition ${c.condition}, bed ${bedLabel(c.bedId)}. Reason: ${c.reason.trim()}`,
+  });
+  return out;
+}
+
+/**
+ * Change an inpatient stay to outpatient (A07) with a reason. When `followUp` is given, an outpatient follow-up request
+ * goes to the appointments desk in the same step. It is checked first, so nothing is sent when it is incomplete.
+ */
+export function changeToOutpatient(visit: string, reason: string, note = "", followUp?: Omit<FollowUpInput, "visit">): Outcome {
+  if (followUp) {
+    if (!Number.isInteger(followUp.amount) || followUp.amount < 1 || followUp.amount > 365) return fail("Enter a whole number of days or weeks for the follow-up, 1 or more.");
+    if (!followUp.clinic.trim()) return fail("Choose the clinic for the follow-up.");
+  }
+  const out = sendWithReason("A07", visit, reason, note);
+  if (!out.ok || !followUp) return out;
+  const fu = orderFollowUp({ ...followUp, visit: out.entry?.visitNumber || visit });
+  if (fu.ok) pushToast({ tone: "ok", text: `${followUpTitle(fu.value)} requested.`, detail: `The appointments desk books it at the ${fu.value.clinic}.` });
+  else pushToast({ tone: "warn", text: "The follow-up was not requested.", detail: fu.errors.join(" ") });
+  return out;
+}
+
+/**
+ * Move a visit that was opened on the wrong patient to the right one (A45). Needs the right to send ADT messages.
+ * The reason, both files and the message are written to the audit log.
+ */
+export function moveVisit(visit: string, toPatientId: string, reason: string, note = ""): Outcome {
+  const enc = visitOf(visit);
+  const s = getState();
+  const from = enc ? s.patients.find((p) => p.id === enc.patientId) : undefined;
+  const to = s.patients.find((p) => p.id === toPatientId);
+  if (!can("adt.send")) {
+    audit("denied", `Move visit ${visit}`, { patient: patientName(from), detail: "Moving a visit needs the right to send ADT messages." });
+    return fail("Your role cannot move a visit.");
+  }
+  const why = reasonProblem(reason, note);
+  if (why) return fail(why);
+  const problem = moveVisitProblem(s, visit, toPatientId);
+  if (problem) return fail(problem);
+  const out = quickSend("A45", visit, (f) => { f.correctPatientId = toPatientId; });
+  if (!out.ok) return out;
+  const text = reasonText(reason, note);
+  updateEncounter(visit, (e) => {
+    e.moves = [...(e.moves ?? []), { at: nowLocal(), by: who().by, fromPatientId: enc!.patientId, toPatientId, reason: text, controlId: out.entry?.controlId }];
+  }, { touch: false });
+  audit("update", `Move visit ${visit}`, {
+    patient: patientName(to),
+    detail: `From ${from?.mrn} (${patientName(from)}) to ${to?.mrn} (${patientName(to)}). Reason: ${text}. ${out.entry?.trigger} ${out.entry?.controlId}.`,
+  });
   return out;
 }
 

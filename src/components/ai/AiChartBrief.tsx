@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useDevMode } from "@/lib/devmode";
 import { motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, ChevronDown, ChevronRight, RotateCw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { OnasiAiMark } from "@/components/ai/OnasiAiMark";
@@ -95,6 +96,7 @@ function Loading({ step }: { step: number }) {
 
 export function AiChartBrief({ enc, patient, onGo, inModal = false }: { enc: Encounter; patient: Patient; onGo?: () => void; inModal?: boolean }) {
   const reduce = useReducedMotion();
+  const dev = useDevMode();
   const key = enc.visitNumber;
   const [step, setStep] = React.useState(() => (briefed.has(key) ? STEPS.length : 0));
   const [open, setOpen] = React.useState(true);
@@ -129,7 +131,7 @@ export function AiChartBrief({ enc, patient, onGo, inModal = false }: { enc: Enc
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/10 px-5 py-2.5">
         <OnasiAiMark size={18} thinking={!ready} className="text-[var(--brand-mint)]" />
         <h2 className="text-sm font-semibold">Patient summary by {ASSISTANT_NAME}</h2>
-        <span className="rounded border border-dashed border-white/40 px-1.5 py-0.5 text-xs text-white/80">Simulated</span>
+        {dev && <span className="rounded border border-dashed border-white/40 px-1.5 py-0.5 text-xs text-white/80">Simulated</span>}
         {ready && (
           <div className={cn("ms-auto flex items-center gap-1", inModal && "me-8")}>
             <button type="button" onClick={again} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white">

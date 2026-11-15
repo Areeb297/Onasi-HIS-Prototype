@@ -5,9 +5,11 @@ import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Sel
 import { Textarea } from "@/components/ui/textarea";
 import {
   DOSE_WINDOW_MIN, OUTCOME_LABEL, PRN_REASONS, REASONS_FOR, RIGHTS, STATE_LABEL, TIMING_REASONS,
-  addEffectNote, dosesBetween, emarApplies, lastGiven, marOrders, recordDose, recordsOf, useEmar, voidRecord,
+  addEffectNote, dosesBetween, dueInHour, emarApplies, hourOf, lastGiven, marOrders, recordDose, recordsOf, summarizeDay, useEmar, voidRecord,
   type AdminRecord, type DoseOutcome, type DoseSlot, type DoseState, type MarOrder, type Right,
 } from "@/lib/emar";
+import { ComplicationsPicker, QuantityFields, SitePicker, qty } from "@/components/emr/EmarFields";
+import { EmarRoundDialog } from "@/components/emr/EmarRoundDialog";
 import type { Encounter, Patient } from "@/lib/model";
 import { navigate } from "@/lib/router";
 import { useRx } from "@/lib/rx";
@@ -16,7 +18,8 @@ import { patientName, toLocalInput, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 
 /**
- * The chart "Medication Chart" tab (eMAR). A nurse works from the Now view; the day and week grids show the whole picture.
+ * The chart "Medication Chart" tab (eMAR). A nurse works from the Now view; the day, week and month grids show the whole picture.
+ * All medicines due at one hour can be recorded together in one dialog.
  * A dose is saved only when the nurse picks an outcome. Colour is never the only signal: every state has a word and a letter.
  */
 
@@ -27,6 +30,9 @@ const dayLabel = (t: number) => new Date(t).toLocaleDateString("en-GB", { weekda
 const dateTime = (t: number | string) => new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const addDays = (t: number, n: number) => { const d = new Date(t); d.setDate(d.getDate() + n); return d.getTime(); };
+const startOfMonth = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(1); return d.getTime(); };
+const addMonths = (t: number, n: number) => { const d = new Date(startOfMonth(t)); d.setMonth(d.getMonth() + n); return d.getTime(); };
+const monthLabel = (t: number) => new Date(t).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
 const STATE_CLASS: Record<DoseState, string> = {
   given: "border-ok/40 bg-ok/12 text-ok",
@@ -60,7 +66,7 @@ function useNow(everyMs = 30_000): number {
   return now;
 }
 
-type View = "now" | "day" | "week";
+type View = "now" | "day" | "week" | "month";
 type Picked = { itemId: string; slot: number | null } | null;
 
 export function EmarSection({ enc }: { enc: Encounter }) {
@@ -74,6 +80,7 @@ export function EmarSection({ enc }: { enc: Encounter }) {
   const [day, setDay] = React.useState(() => startOfDay(Date.now()));
   const [picked, setPicked] = React.useState<Picked>(null);
   const [detail, setDetail] = React.useState<string | null>(null);
+  const [round, setRound] = React.useState<number | null>(null);
   const topRef = React.useRef<HTMLDivElement>(null);
 
   if (!emarApplies(enc)) {
@@ -100,8 +107,15 @@ export function EmarSection({ enc }: { enc: Encounter }) {
   };
   const openPrn = (o: MarOrder) => { setPicked({ itemId: o.itemId, slot: null }); setDetail(null); toTop(); };
 
-  const views: { id: View; label: string }[] = [{ id: "now", label: "Now" }, { id: "day", label: "Day" }, { id: "week", label: "Week" }];
+  const views: { id: View; label: string }[] = [{ id: "now", label: "Now" }, { id: "day", label: "Day" }, { id: "week", label: "Week" }, { id: "month", label: "Month" }];
   const step = view === "week" ? 7 : 1;
+  const move = (dir: 1 | -1) => setDay(view === "month" ? addMonths(day, dir) : addDays(day, dir * step));
+  const unit = view === "week" ? "Week" : view === "month" ? "Month" : "Day";
+  const roundDoses = round !== null ? dueInHour(enc, round, now, emar, rx) : [];
+  const openRound = (hour: number) => {
+    if (!canRecord) { pushToast({ tone: "warn", text: "Your role cannot record doses" }); return; }
+    setPicked(null); setDetail(null); setRound(hour);
+  };
 
   return (
     <div className="space-y-4">
@@ -143,19 +157,24 @@ export function EmarSection({ enc }: { enc: Encounter }) {
           <>
             {view !== "now" && (
               <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
-                <Button size="sm" onClick={() => setDay(addDays(day, -step))}><ChevronLeft className="size-4" aria-hidden="true" /> {view === "week" ? "Previous Week" : "Previous Day"}</Button>
+                <Button size="sm" onClick={() => move(-1)}><ChevronLeft className="size-4" aria-hidden="true" /> Previous {unit}</Button>
                 <Button size="sm" onClick={() => setDay(startOfDay(Date.now()))}>Today</Button>
-                <Button size="sm" onClick={() => setDay(addDays(day, step))}>{view === "week" ? "Next Week" : "Next Day"} <ChevronRight className="size-4" aria-hidden="true" /></Button>
-                <span className="text-sm font-medium">{view === "day" ? dayLabel(day) : `${dayLabel(addDays(day, -3))} to ${dayLabel(addDays(day, 3))}`}</span>
+                <Button size="sm" onClick={() => move(1)}>Next {unit} <ChevronRight className="size-4" aria-hidden="true" /></Button>
+                <span className="text-sm font-medium">{view === "day" ? dayLabel(day) : view === "month" ? monthLabel(day) : `${dayLabel(addDays(day, -3))} to ${dayLabel(addDays(day, 3))}`}</span>
               </div>
             )}
-            {view === "now" && <NowView enc={enc} orders={orders} now={now} canRecord={canRecord} onOpen={open} onPrn={openPrn} />}
-            {view === "day" && <DayGrid enc={enc} orders={orders} day={day} now={now} onOpen={open} />}
+            {view === "now" && <NowView enc={enc} orders={orders} now={now} canRecord={canRecord} onOpen={open} onPrn={openPrn} onRound={openRound} />}
+            {view === "day" && <DayGrid enc={enc} orders={orders} day={day} now={now} canRecord={canRecord} onOpen={open} onRound={openRound} />}
             {view === "week" && <WeekGrid enc={enc} orders={orders} day={day} now={now} onOpen={open} />}
-            <Legend letters={view === "week"} />
+            {view === "month" && <MonthGrid enc={enc} orders={orders} month={day} now={now} onPickDay={(t) => { setDay(t); setView("day"); }} />}
+            <Legend letters={view === "week" || view === "month"} />
           </>
         )}
       </Card>
+
+      {round !== null && patient && roundDoses.length > 0 && (
+        <EmarRoundDialog key={round} enc={enc} patient={patient} hour={round} doses={roundDoses} onClose={() => setRound(null)} />
+      )}
 
       <Card>
         <CardHeader title="Recorded Doses" subtitle="Who recorded each dose and when. Newest first." />
@@ -230,7 +249,7 @@ function Legend({ letters }: { letters: boolean }) {
         {LEGEND_ORDER.map((s) => (
           <li key={s} className="flex items-center gap-1.5">
             <StateChip state={s} />
-            <span>{letters ? `${STATE_CODE[s]} in the week grid. ` : ""}{STATE_HELP[s]}</span>
+            <span>{letters ? `${STATE_CODE[s]} in the week and month grids. ` : ""}{STATE_HELP[s]}</span>
           </li>
         ))}
       </ul>
@@ -240,13 +259,17 @@ function Legend({ letters }: { letters: boolean }) {
 
 /* ---------- Now: the nurse's working list ---------- */
 
-function NowView({ enc, orders, now, canRecord, onOpen, onPrn }: { enc: Encounter; orders: MarOrder[]; now: number; canRecord: boolean; onOpen: (d: DoseSlot) => void; onPrn: (o: MarOrder) => void }) {
+function NowView({ enc, orders, now, canRecord, onOpen, onPrn, onRound }: { enc: Encounter; orders: MarOrder[]; now: number; canRecord: boolean; onOpen: (d: DoseSlot) => void; onPrn: (o: MarOrder) => void; onRound: (hour: number) => void }) {
   const all = dosesBetween(enc, 0, now + 12 * HOUR, now);
   const rank: Partial<Record<DoseState, number>> = { overdue: 0, due: 1, scheduled: 2 };
   const pending = all.filter((d) => !d.record).sort((a, b) => (rank[a.state] ?? 9) - (rank[b.state] ?? 9) || a.time - b.time);
   const overdue = pending.filter((d) => d.state === "overdue").length;
   const due = pending.filter((d) => d.state === "due").length;
   const prn = orders.filter((o) => o.kind === "prn");
+  // Hours with more than one dose waiting now or overdue: those can be recorded together.
+  const byHour = new Map<number, number>();
+  for (const d of pending) if (d.state !== "scheduled" && d.order.live) byHour.set(hourOf(d.time), (byHour.get(hourOf(d.time)) ?? 0) + 1);
+  const rounds = [...byHour.entries()].filter(([, n]) => n > 1).sort((a, b) => a[0] - b[0]);
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5 text-sm">
@@ -256,6 +279,16 @@ function NowView({ enc, orders, now, canRecord, onOpen, onPrn }: { enc: Encounte
         {overdue + due === 0 && <Badge tone="ok">Nothing Due Now</Badge>}
         <span className="text-xs text-muted-foreground">Overdue first, then due now, then the next 12 hours.</span>
       </div>
+      {rounds.length > 0 && canRecord && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-move/6 px-4 py-2.5">
+          <span className="text-xs font-medium text-muted-foreground">Several medicines at one time:</span>
+          {rounds.map(([h, n]) => (
+            <Button key={h} size="sm" variant="primary" onClick={() => onRound(h)}>
+              Record All Due At {hm(h)}{startOfDay(h) !== startOfDay(now) ? ` ${dayLabel(h)}` : ""} ({n})
+            </Button>
+          ))}
+        </div>
+      )}
       <Table>
         <thead><tr><Th>Status</Th><Th>Due</Th><Th>Medicine</Th><Th>Action</Th></tr></thead>
         <tbody>
@@ -316,7 +349,7 @@ function NowView({ enc, orders, now, canRecord, onOpen, onPrn }: { enc: Encounte
 
 /* ---------- Day grid: medicines against dose times ---------- */
 
-function DayGrid({ enc, orders, day, now, onOpen }: { enc: Encounter; orders: MarOrder[]; day: number; now: number; onOpen: (d: DoseSlot) => void }) {
+function DayGrid({ enc, orders, day, now, canRecord, onOpen, onRound }: { enc: Encounter; orders: MarOrder[]; day: number; now: number; canRecord: boolean; onOpen: (d: DoseSlot) => void; onRound: (hour: number) => void }) {
   const doses = dosesBetween(enc, day, addDays(day, 1) - 1, now);
   const times = [...new Set(doses.filter((d) => d.dueAt !== null).map((d) => d.time))].sort((a, b) => a - b);
   const anyPrn = orders.some((o) => o.kind === "prn");
@@ -326,7 +359,19 @@ function DayGrid({ enc, orders, day, now, onOpen }: { enc: Encounter; orders: Ma
       <thead>
         <tr>
           <Th>Medicine</Th>
-          {times.map((t) => <Th key={t} className="text-center tabular-nums">{hm(t)}</Th>)}
+          {times.map((t) => {
+            const open = doses.filter((d) => d.dueAt !== null && hourOf(d.time) === hourOf(t) && !d.record && d.order.live).length;
+            return (
+              <Th key={t} className="text-center tabular-nums">
+                <div>{hm(t)}</div>
+                {canRecord && open > 1 && (
+                  <button type="button" onClick={() => onRound(hourOf(t))} className="mt-1 rounded px-1.5 py-0.5 text-[0.6875rem] font-medium text-move underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Record all ${open} doses due at ${hm(t)}`}>
+                    Record All ({open})
+                  </button>
+                )}
+              </Th>
+            );
+          })}
           {anyPrn && <Th>As Needed</Th>}
         </tr>
       </thead>
@@ -393,6 +438,64 @@ function WeekGrid({ enc, orders, day, now, onOpen }: { enc: Encounter; orders: M
   );
 }
 
+/* ---------- Month grid: medicines against the days of a month ---------- */
+
+const SUMMARY_TEXT = (counts: Partial<Record<DoseState, number>>): string =>
+  LEGEND_ORDER.filter((s) => counts[s]).map((s) => `${counts[s]} ${STATE_LABEL[s].toLowerCase()}`).join(", ");
+
+function MonthGrid({ enc, orders, month, now, onPickDay }: { enc: Encounter; orders: MarOrder[]; month: number; now: number; onPickDay: (day: number) => void }) {
+  const first = startOfMonth(month);
+  const days: number[] = [];
+  for (let t = first; startOfMonth(t) === first; t = addDays(t, 1)) days.push(t);
+  const doses = dosesBetween(enc, first, addDays(days[days.length - 1], 1) - 1, now);
+  const today = startOfDay(now);
+  return (
+    <>
+      <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">Each cell shows the number of doses that day and a letter for the one that needs attention first. Open a day to record or review its doses.</p>
+      <Table>
+        <thead>
+          <tr>
+            <Th className="sticky left-0 z-10">Medicine</Th>
+            {days.map((t) => (
+              <Th key={t} className={cn("px-1 text-center tabular-nums", t === today && "bg-move/12")}>
+                <span className="block text-[0.625rem] font-normal text-muted-foreground">{new Date(t).toLocaleDateString("en-GB", { weekday: "narrow" })}</span>
+                {new Date(t).getDate()}
+              </Th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((o) => (
+            <tr key={o.itemId}>
+              <Td className="sticky left-0 z-10 bg-card">
+                <div className="min-w-[10rem] font-medium">{o.drug.generic}</div>
+                <div className="text-xs text-muted-foreground">{o.doseText} · {o.frequencyText}</div>
+              </Td>
+              {days.map((t) => {
+                const cell = doses.filter((d) => d.order.itemId === o.itemId && startOfDay(d.time) === t);
+                const sum = summarizeDay(cell);
+                const label = `${o.drug.generic}, ${dayLabel(t)}: ${sum.total ? SUMMARY_TEXT(sum.counts) : "no doses"}. Open this day.`;
+                return (
+                  <Td key={t} className="px-0.5 text-center">
+                    {sum.worst ? (
+                      <button type="button" onClick={() => onPickDay(t)} aria-label={label} title={label} className={cn("inline-flex min-w-7 flex-col items-center rounded-md border px-1 py-0.5 text-[0.6875rem] leading-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", STATE_CLASS[sum.worst])}>
+                        <span className="font-semibold">{STATE_CODE[sum.worst]}</span>
+                        <span className="tabular-nums">{sum.total}</span>
+                      </button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground" aria-label="No dose">-</span>
+                    )}
+                  </Td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </>
+  );
+}
+
 /* ---------- recording a dose ---------- */
 
 const RIGHT_LABEL: Record<Right, string> = { patient: "Right patient", drug: "Right drug", dose: "Right dose", route: "Right route", time: "Right time" };
@@ -409,6 +512,10 @@ function DoseForm({ enc, patient, order, slot, onClose }: { enc: Encounter; pati
   const [note, setNote] = React.useState("");
   const [witnessName, setWitnessName] = React.useState("");
   const [witnessNo, setWitnessNo] = React.useState("");
+  const [given, setGiven] = React.useState(String(order.doseQty));
+  const [wasted, setWasted] = React.useState("0");
+  const [site, setSite] = React.useState("");
+  const [complications, setComplications] = React.useState<string[]>([]);
   const [errors, setErrors] = React.useState<string[]>([]);
 
   const at = new Date(atText).getTime();
@@ -421,7 +528,7 @@ function DoseForm({ enc, patient, order, slot, onClose }: { enc: Encounter; pati
     route: order.routeText,
     time: slot !== null ? `due ${hm(slot)}${dayLabel(slot) !== dayLabel(Date.now()) ? ` on ${dayLabel(slot)}` : ""}` : order.frequencyText,
   };
-  const otherNote = reason === "Other" || timingReason === "Other" || prnReason === "Other";
+  const otherNote = reason === "Other" || timingReason === "Other" || prnReason === "Other" || complications.includes("Other");
 
   function save() {
     if (!outcome) return;
@@ -432,6 +539,10 @@ function DoseForm({ enc, patient, order, slot, onClose }: { enc: Encounter; pati
       timingReason: offTime ? timingReason : undefined,
       witness: order.highAlert ? { name: witnessName, staffNo: witnessNo } : undefined,
       prnReason: prn ? prnReason : undefined,
+      site: outcome === "given" && site ? site : undefined,
+      qtyGiven: outcome === "given" ? qty(given) : undefined,
+      qtyWasted: outcome === "given" ? qty(wasted) : undefined,
+      complications: complications.length ? complications : undefined,
     });
     if (!res.ok) { setErrors(res.errors); return; }
     pushToast({ tone: outcome === "given" ? "ok" : "warn", text: `${order.drug.generic} recorded as ${OUTCOME_LABEL[outcome].toLowerCase()}`, detail: `By ${res.record.by} at ${hm(new Date(res.record.at).getTime())}.` });
@@ -516,6 +627,8 @@ function DoseForm({ enc, patient, order, slot, onClose }: { enc: Encounter; pati
               </>
             )}
           </div>
+          <QuantityFields order={order} given={given} wasted={wasted} onChange={(g, w) => { setGiven(g); setWasted(w); }} />
+          <SitePicker idPrefix={`dose-${order.itemId}`} value={site} route={order.route} onChange={setSite} />
         </div>
       )}
 
@@ -527,6 +640,12 @@ function DoseForm({ enc, patient, order, slot, onClose }: { enc: Encounter; pati
               {REASONS_FOR[outcome].map((r) => <option key={r}>{r}</option>)}
             </Select>
           </Field>
+        </div>
+      )}
+
+      {outcome && (
+        <div className="mt-4 max-w-3xl">
+          <ComplicationsPicker value={complications} onChange={setComplications} />
         </div>
       )}
 
@@ -570,6 +689,10 @@ function recordFacts(r: AdminRecord): string[] {
   if (r.offMinutes !== undefined && Math.abs(r.offMinutes) > DOSE_WINDOW_MIN) out.push(`${Math.abs(r.offMinutes)} minutes ${r.offMinutes < 0 ? "early" : "late"}: ${r.timingReason ?? "no reason"}`);
   if (r.reason) out.push(`Reason: ${r.reason}`);
   if (r.prnReason) out.push(`Given for: ${r.prnReason}`);
+  if (r.qtyGiven !== undefined && r.qtyDue !== undefined && (r.qtyWasted || r.qtyGiven !== r.qtyDue)) out.push(`Quantity: ${r.qtyGiven} given, ${r.qtyWasted ?? 0} wasted, of ${r.qtyDue} due`);
+  if (r.site) out.push(`Site: ${r.site}`);
+  if (r.complications?.length) out.push(`Complications: ${r.complications.join(", ")}`);
+  if (r.batch) out.push("Recorded with other doses due at the same hour");
   if (r.witness) out.push(`Second nurse: ${r.witness.name} (${r.witness.staffNo})`);
   if (r.note) out.push(`Note: ${r.note}`);
   if (r.effect) out.push(`Effect: ${r.effect.text} (${r.effect.by}, ${dateTime(r.effect.at)})`);

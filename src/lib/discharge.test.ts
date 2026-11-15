@@ -1,10 +1,16 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { dischargePatient, markBedReady, quickCreate, quickSend, recordLeftWard, returnBedToService, sendWithReason, setBedOutOfService, setClearance } from "./actions";
-import { bedInfo } from "./beds";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
-  CLEARANCES, OUTCOMES, canGiveClearance, clearanceBlock, departureGap, gapText, leftWardProblem, missingClearances, outcomeOfCode, outcomeProblems,
-  overrideOk, reasonProblem, reasonText,
+  changeToOutpatient, convertToInpatient, dischargePatient, markBedReady, moveVisit, quickCreate, quickSend, recordLeftWard, returnBedToService,
+  sendWithReason, setBedOutOfService, setClearance, transferPatient,
+} from "./actions";
+import { bedInfo } from "./beds";
+import { followUpsOf, resetCareRequests } from "./care-requests";
+import {
+  CLEARANCES, OUTCOMES, canGiveClearance, cleanDetails, clearanceBlock, departureGap, detailProblems, gapText, idNumberProblem, leftWardProblem,
+  missingClearances, outcomeOfCode, outcomeProblems, overrideOk, reasonProblem, reasonText,
 } from "./discharge";
+import { ts } from "./hl7";
+import { conversionProblems, extrasProblems, extrasToAdmission, emptyExtras, freeBedsByFloor, moveVisitProblem } from "./visit-forms";
 import { DISPOSITION_CODE } from "./ed";
 import type { ClearanceKey, Encounter } from "./model";
 import { VS } from "./nphies-valuesets";
@@ -242,6 +248,15 @@ describe("discharge flow on the store", () => {
     expect(bedInfo(getState(), "302-B")?.state).toBe("occupied");
   });
 
+  it("still reads a discharge saved before the new details existed", () => {
+    const v = visit("P001").visitNumber;
+    dischargePatient(v, { outcome: "home", dx: [], overrideReason: "Family is leaving the country tonight" });
+    const e = visit("P001");
+    expect(e.discharge?.condition).toBeUndefined();
+    expect(e.discharge?.approvals).toBeUndefined();
+    expect(departureGap(e, nowLocal())).toMatchObject({ left: false });
+  });
+
   it("cancelling needs a reason, keeps it on the visit, and frees the reserved bed", () => {
     const v = visit("P005").visitNumber;
     expect(sendWithReason("A38", v, "", "").ok).toBe(false);
@@ -250,5 +265,227 @@ describe("discharge flow on the store", () => {
     expect(out.entry?.trigger).toBe("A38");
     expect(visit("P005")).toMatchObject({ status: "cancelled", cancelReason: "Patient declined: Called the ward" });
     expect(bedInfo(getState(), "402-B")?.state).toBe("free");
+  });
+});
+
+/* ---------- discharge details, transfer, change of class, admit details, move visit ---------- */
+
+const ATTENDANT = { name: "Fahad Alharbi", phone: "0551234567", relation: "Son", idType: "National ID", idNumber: "1012345678" };
+
+describe("discharge details", () => {
+  const ctx = { outcome: "home" as const, admitAt: "2026-11-13T08:00", now: "2026-11-14T12:00" };
+
+  it("needs the condition unless the patient died, and a discharge time inside the stay", () => {
+    expect(detailProblems({}, ctx)).toEqual(["Choose the condition on discharge.", "Enter the discharge date and time."]);
+    expect(detailProblems({ dischargeAt: "2026-11-14T11:00" }, { ...ctx, outcome: "died" })).toEqual([]);
+    expect(detailProblems({ condition: "Improved", dischargeAt: "2026-11-14T12:30" }, ctx)[0]).toMatch(/future/);
+    expect(detailProblems({ condition: "Improved", dischargeAt: "2026-11-12T12:00" }, ctx)[0]).toMatch(/before the admission/);
+    expect(detailProblems({ condition: "Improved", dischargeAt: "2026-11-14T11:00" }, ctx)).toEqual([]);
+  });
+
+  it("checks the attendant's phone and ID, and each doctor approval", () => {
+    const base = { condition: "Stable", dischargeAt: "2026-11-14T11:00" };
+    expect(detailProblems({ ...base, attendant: ATTENDANT }, ctx)).toEqual([]);
+    expect(detailProblems({ ...base, attendant: { ...ATTENDANT, phone: "call me" } }, ctx)[0]).toMatch(/contact number/);
+    expect(detailProblems({ ...base, attendant: { ...ATTENDANT, idNumber: "2012345678" } }, ctx)[0]).toMatch(/National ID/);
+    expect(detailProblems({ ...base, attendant: { ...ATTENDANT, idType: "" } }, ctx)[0]).toMatch(/ID type/);
+    expect(idNumberProblem("Iqama", "2123456789")).toBeNull();
+    expect(idNumberProblem("Passport", "A1")).toMatch(/passport/);
+    expect(idNumberProblem("National ID", "")).toBeNull();
+    const approval = { role: "Consultant", doctor: "D1001", at: "2026-11-14T10:00", remarks: "" };
+    expect(detailProblems({ ...base, approvals: [approval] }, ctx)).toEqual([]);
+    expect(detailProblems({ ...base, approvals: [{ ...approval, doctor: "" }] }, ctx)).toEqual(["Approval 1: choose the approving doctor."]);
+    expect(detailProblems({ ...base, approvals: [approval, { ...approval, at: "2026-11-14T13:00" }] }, ctx)).toEqual(["Approval 2: the approval time cannot be in the future."]);
+  });
+
+  it("keeps only what was filled in", () => {
+    expect(cleanDetails({ condition: " ", attendant: { name: "", phone: "", relation: "", idType: "", idNumber: "" }, ambulance: false, approvals: [] })).toEqual({});
+    expect(cleanDetails({ condition: "Improved ", instructions: " Rest ", ambulance: true })).toEqual({ condition: "Improved", instructions: "Rest", ambulance: true });
+  });
+});
+
+describe("visit dialog rules", () => {
+  beforeEach(() => resetAll());
+
+  it("groups the free beds by floor and room, with the department's ward first", () => {
+    const groups = freeBedsByFloor(getState(), { patientId: "P010" }, "4B");
+    expect(groups.map((g) => g.floor)).toEqual(["Floor 4", "Floor 3", "Floor 2"]);
+    const ids = (pid: string) => freeBedsByFloor(getState(), { patientId: pid }).flatMap((g) => g.rooms.flatMap((r) => r.beds.map((b) => b.bed.id)));
+    expect(ids("P010")).toEqual(expect.arrayContaining(["302-A", "302-B", "401-A", "401-B", "402-A", "ICU1-B", "ICU2-A"]));
+    expect(ids("P010")).not.toContain("301-A"); // occupied
+    expect(ids("P010")).not.toContain("402-B"); // reserved for P005
+    expect(ids("P010")).not.toContain("ICU2-B"); // out of service
+    expect(ids("P005")).toContain("402-B");
+    expect(groups[0].rooms.map((r) => r.room)).toEqual(["401", "402"]);
+  });
+
+  it("needs the department, type, condition, a time inside the visit, a reason and a bed to change to inpatient", () => {
+    const c = { bedId: "302-A", service: "MED", subDepartment: "", admissionType: "03", condition: "Fair", at: "2026-11-14T11:00", reason: "Needs IV antibiotics", activityLevel: "" };
+    const ctx = { visitStart: "2026-11-14T10:00", now: "2026-11-14T12:00" };
+    expect(conversionProblems(c, ctx)).toEqual([]);
+    expect(conversionProblems({ ...c, reason: "IV" }, ctx)[0]).toMatch(/reason/);
+    expect(conversionProblems({ ...c, at: "2026-11-14T09:00" }, ctx)[0]).toMatch(/before the visit/);
+    expect(conversionProblems({ ...c, at: "2026-11-14T12:30" }, ctx)[0]).toMatch(/future/);
+    expect(conversionProblems({ ...c, condition: "", bedId: "" }, ctx)).toEqual(["Choose the patient condition.", "Pick a bed."]);
+  });
+
+  it("checks the admit details and keeps only what was filled in", () => {
+    expect(extrasProblems({ ...emptyExtras(), expectedDays: "2.5" })[0]).toMatch(/whole number/);
+    expect(extrasProblems({ ...emptyExtras(), attendantPhone: "abc" })[0]).toMatch(/digits/);
+    expect(extrasToAdmission({ ...emptyExtras(), expectedDays: "3", condition: "Stable", notes: "  " })).toEqual({ expectedStayDays: 3, patientCondition: "Stable" });
+  });
+
+  it("will not move an open admission onto a patient who is already admitted", () => {
+    const s = getState();
+    expect(moveVisitProblem(s, visit("P001").visitNumber, "P002")).toMatch(/already has an open admission/);
+    expect(moveVisitProblem(s, visit("P001").visitNumber, "P010")).toBeNull();
+    expect(moveVisitProblem(s, visit("P007").visitNumber, "P002")).toBeNull();
+    expect(moveVisitProblem(s, visit("P007").visitNumber, "P007")).toMatch(/different/);
+    expect(moveVisitProblem(s, visit("P007").visitNumber, "")).toMatch(/Choose/);
+  });
+});
+
+describe("visit dialogs on the store", () => {
+  const mem = new Map<string, string>();
+  beforeAll(() => {
+    // The audit trail is read back from storage.
+    (globalThis as unknown as { localStorage: unknown }).localStorage = {
+      getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k),
+    };
+  });
+  beforeEach(() => {
+    resetAll();
+    resetCareRequests();
+    switchUser("U9");
+  });
+  const auditLog = (): { action: string; target: string; detail?: string }[] => JSON.parse(mem.get("onasi-emr-audit-v1") ?? "[]");
+  const pv1 = (message: string | undefined) => (message ?? "").split("\r").find((s) => s.startsWith("PV1|"))!.split("|");
+
+  it("discharges an inpatient with the details and sends the chosen discharge time", () => {
+    const v = visit("P001").visitNumber;
+    const at = nowLocal(-30);
+    const details = {
+      condition: "Improved", dischargeAt: at, attendant: ATTENDANT,
+      summary: { reasonForAdmission: "Fever and cough", admittingDiagnosis: "J18.9 Pneumonia", procedures: "", findings: "CRP falling", course: "IV antibiotics for three days" },
+      instructions: "Finish the antibiotics", educatedBy: "Huda Alotaibi, RN", ambulance: true,
+      approvals: [{ role: "Consultant", doctor: "D1001", at: nowLocal(-40), remarks: "Fit to go home" }],
+    };
+    const base = { outcome: "home" as const, dx: [], overrideReason: "Family is leaving the country tonight" };
+    expect(dischargePatient(v, { ...base, details: { ...details, condition: "" } }).ok).toBe(false);
+    expect(dischargePatient(v, { ...base, details: { ...details, dischargeAt: nowLocal(30) } }).ok).toBe(false);
+    expect(visit("P001").status).toBe("active");
+    const out = dischargePatient(v, { ...base, details });
+    expect(out.ok).toBe(true);
+    expect(out.entry?.trigger).toBe("A03");
+    expect(out.entry?.message).toContain("306689006");
+    expect(pv1(out.entry?.message)[45]).toBe(ts(at));
+    const e = visit("P001");
+    expect(e.dischargeAt).toBe(at);
+    expect(e.discharge).toMatchObject({ outcome: "home", condition: "Improved", dischargeAt: at, attendant: ATTENDANT, ambulance: true, educatedBy: "Huda Alotaibi, RN", instructions: "Finish the antibiotics" });
+    expect(e.discharge?.summary?.course).toBe("IV antibiotics for three days");
+    expect(e.discharge?.approvals).toEqual(details.approvals);
+    // The four-clearance override is untouched by the new details.
+    expect(e.discharge?.override?.missing).toEqual(KEYS);
+    expect(auditLog().some((a) => a.target === `Discharge details ${v}` && /Ambulance transport requested/.test(a.detail ?? ""))).toBe(true);
+  });
+
+  it("transfers with a reason and a new department, and cancelling the transfer puts both back", () => {
+    const v = visit("P001").visitNumber;
+    expect(transferPatient(v, { bedId: "401-A", service: "SUR", subDepartment: "General Surgery", reason: "" }).ok).toBe(false);
+    expect(visit("P001").bedId).toBe("301-A");
+    const out = transferPatient(v, { bedId: "401-A", service: "SUR", subDepartment: "General Surgery", reason: "Moved to the specialty ward" });
+    expect(out.entry?.trigger).toBe("A02");
+    expect(pv1(out.entry?.message)[10].split("^")[0]).toBe("MS");
+    expect(visit("P001")).toMatchObject({ bedId: "401-A", service: "SUR", subDepartment: "General Surgery" });
+    expect(visit("P001").transferLog?.[0]).toMatchObject({ fromBed: "301-A", toBed: "401-A", fromService: "MED", toService: "SUR", reason: "Moved to the specialty ward" });
+    expect(auditLog().some((a) => a.target === `Transfer ${v}` && /Moved to the specialty ward/.test(a.detail ?? ""))).toBe(true);
+
+    const back = sendWithReason("A12", v, "Moved by mistake");
+    expect(back.entry?.trigger).toBe("A12");
+    expect(pv1(back.entry?.message)[10].split("^")[0]).toBe("MX");
+    expect(visit("P001")).toMatchObject({ bedId: "301-A", service: "MED", subDepartment: undefined });
+    expect(visit("P001").transferLog?.[0].cancelledAt).toBeTruthy();
+  });
+
+  it("changes an outpatient visit to inpatient with the admission details", () => {
+    const v = visit("P007").visitNumber;
+    const c = { bedId: "302-A", service: "MED", subDepartment: "Pulmonology", admissionType: "03", condition: "Fair", at: nowLocal(-5), reason: "Needs IV antibiotics", activityLevel: "Bed Rest" };
+    expect(convertToInpatient(v, { ...c, condition: "" }).ok).toBe(false);
+    expect(convertToInpatient(v, { ...c, at: nowLocal(60) }).ok).toBe(false);
+    expect(convertToInpatient(v, { ...c, bedId: "301-A" }).ok).toBe(false); // taken
+    expect(visit("P007").cls).toBe("O");
+    const out = convertToInpatient(v, c);
+    expect(out.entry?.trigger).toBe("A06");
+    expect(pv1(out.entry?.message)[4]).toBe("03");
+    expect(visit("P007")).toMatchObject({ cls: "I", bedId: "302-A", subDepartment: "Pulmonology", admissionMethod: "03", admitAt: c.at });
+    expect(visit("P007").admission).toMatchObject({ patientCondition: "Fair", activityLevel: "Bed Rest", conversionReason: "Needs IV antibiotics", convertedBy: "System Administrator" });
+  });
+
+  it("changes to outpatient and requests the follow-up in the same step", () => {
+    const v = visit("P002").visitNumber;
+    const fu = { amount: 2, unit: "weeks" as const, clinic: "Diabetes And Endocrine Clinic", doctorId: "D1001", visitType: "in-person" as const, instructions: "Bring the sugar diary" };
+    expect(changeToOutpatient(v, "Does not need an inpatient bed", "", { ...fu, amount: 0 }).ok).toBe(false);
+    expect(visit("P002").cls).toBe("I"); // nothing was sent
+    const out = changeToOutpatient(v, "Does not need an inpatient bed", "", fu);
+    expect(out.entry?.trigger).toBe("A07");
+    expect(visit("P002")).toMatchObject({ cls: "O", status: "active", cancelReason: "Does not need an inpatient bed" });
+    expect(followUpsOf(v)).toHaveLength(1);
+    expect(followUpsOf(v)[0]).toMatchObject({ clinic: fu.clinic, amount: 2, unit: "weeks", status: "requested", instructions: fu.instructions });
+    // Without a follow-up it works as before.
+    const v3 = visit("P003").visitNumber;
+    expect(changeToOutpatient(v3, "Admitted by mistake").ok).toBe(true);
+    expect(followUpsOf(v3)).toHaveLength(0);
+  });
+
+  it("moves a visit to the right patient with A45, audited, only for a role that may send ADT", () => {
+    const v = visit("P007").visitNumber;
+    switchUser("U4"); // pharmacist: no adt.send
+    expect(moveVisit(v, "P010", "Registered on the wrong patient").ok).toBe(false);
+    expect(auditLog().some((a) => a.action === "denied" && a.target === `Move visit ${v}`)).toBe(true);
+    switchUser("U9");
+    expect(moveVisit(v, "P010", "").ok).toBe(false);
+    expect(moveVisit(v, "P007", "Registered on the wrong patient").ok).toBe(false);
+    expect(getState().encounters.find((e) => e.visitNumber === v)!.patientId).toBe("P007");
+    const out = moveVisit(v, "P010", "Other", "Same family name at the desk");
+    expect(out.ok).toBe(true);
+    expect(out.entry?.trigger).toBe("A45");
+    expect(out.entry?.segments).toContain("MRG");
+    expect(out.entry?.patientId).toBe("P010");
+    const e = getState().encounters.find((x) => x.visitNumber === v)!;
+    expect(e.patientId).toBe("P010");
+    expect(e.moves?.[0]).toMatchObject({ fromPatientId: "P007", toPatientId: "P010", reason: "Other: Same family name at the desk", controlId: out.entry?.controlId });
+    expect(auditLog().some((a) => a.action === "update" && a.target === `Move visit ${v}` && /Same family name/.test(a.detail ?? ""))).toBe(true);
+    // A discharged visit can be moved too.
+    expect(moveVisit(visit("P009").visitNumber, "P010", "Wrong ID card scanned").ok).toBe(true);
+  });
+
+  it("admits and pre-admits with the admitting diagnosis in the message and the details saved", () => {
+    const appendix = { code: "K35.80", text: "Acute appendicitis, unspecified", type: "A" as const };
+    const pre = quickCreate("A05", {
+      patientId: "P010", attending: "D1002", service: "SUR", reason: "Planned appendectomy", expectedAdmitAt: nowLocal(600), consulting: "D1001", dx: [appendix],
+      admission: { patientCondition: "Stable", expectedStayDays: 2, attendantName: "Sara Alkhaldi", attendantPhone: "0559876543", attendantRelation: "Wife", notes: " " },
+    });
+    expect(pre.ok).toBe(true);
+    expect(pre.entry?.segments).toContain("DG1");
+    expect(pre.entry?.message).toContain("K35.80");
+    const p = visit("P010");
+    expect(p.dx).toHaveLength(1);
+    expect(p.dx[0]).toMatchObject({ code: "K35.80", type: "A" });
+    expect(p.consulting).toBe("D1001");
+    expect(p.admission).toEqual({ patientCondition: "Stable", expectedStayDays: 2, attendantName: "Sara Alkhaldi", attendantPhone: "0559876543", attendantRelation: "Wife" });
+
+    const adm = quickCreate("A01", {
+      patientId: "P010", attending: "D1002", service: "SUR", reason: "", bedId: "401-A",
+      dx: [appendix, { code: "E11.9", text: "Type 2 diabetes mellitus without complications", type: "W" }], admission: { activityLevel: "Bed Rest" },
+    });
+    expect(adm.ok).toBe(true);
+    expect(adm.entry?.message).toContain("E11.9");
+    const a = visit("P010");
+    expect(a.status).toBe("active");
+    expect(a.dx.map((d) => d.code)).toEqual(["K35.80", "E11.9"]);
+    expect(a.admission).toMatchObject({ patientCondition: "Stable", activityLevel: "Bed Rest" });
+    // Without a diagnosis nothing changes: no DG1.
+    const plain = quickCreate("A04", { patientId: "P006", attending: "D1001", service: "OPD", reason: "Review" });
+    expect(plain.entry?.segments).not.toContain("DG1");
   });
 });

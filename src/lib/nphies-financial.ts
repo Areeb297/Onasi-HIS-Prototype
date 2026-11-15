@@ -1,4 +1,5 @@
 import { audit } from "./audit";
+import { coverageView } from "./chart-entries";
 import { createStore } from "./fhir/store-util";
 import { getLab } from "./lab";
 import type { Encounter, Patient } from "./model";
@@ -14,11 +15,12 @@ import { pushToast } from "./toast";
  *
  * Sources: Healthcare Financial Services IG (portal.nphies.sa/ig): message exchange, prior authorization, claim submission,
  * payment notification. Only the flow and the message names come from the guide. The rules below are ASSUMPTIONS made for the demo:
- *  - Payer per patient is picked from the RCM payer list by a fixed rule, because the patient record has no insurance details.
+ *  - The payer is the insurance card on the patient's file, read the same way as the chart header (coverageView). A patient with
+ *    no card, or a visit registered as cash, is a cash visit: nothing is sent to NPHIES for it.
  *  - The charge is estimated from the visit class and the lab, radiology and prescription items (made-up prices, SAR).
  *  - Prior authorization is needed for inpatient visits and for charges of 1,000 SAR or more.
  *  - A charge above 5,000 SAR gets a deferred answer (pended) that is fetched by polling; above 8,000 SAR the payer asks a question first.
- *  - The simulated payer pays 90 percent of the approved amount (the rest is the patient share).
+ *  - The simulated payer pays the approved amount less the co-pay on the card (90 percent when the card has no co-pay figure).
  *  - Message payloads are shortened skeletons, not validated against the IG profiles.
  */
 
@@ -26,6 +28,7 @@ export const PAYERS = ["Bupa Arabia", "Tawuniya", "MedGulf", "Daman", "NextCare"
 export const AUTH_FROM = 1000;
 export const DEFERRED_FROM = 5000;
 export const QUESTION_FROM = 8000;
+/** The payer's share when the card does not say what the co-pay is. Use payerShareOf for a patient. */
 export const PAYER_SHARE = 0.9;
 
 export type FinStep = "eligibility" | "authorization" | "claim" | "payment";
@@ -72,11 +75,39 @@ export const setFinRejectNext = (on: boolean) => store.set({ ...store.get(), rej
 
 /* ---------- visit facts ---------- */
 
-export function payerOf(p: Patient): string {
-  let h = 0;
-  for (const c of p.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return PAYERS[h % PAYERS.length];
+/** What the payer column shows for a patient with no insurance. Same word as the chart header. */
+export const CASH = "Cash";
+export const CASH_REASON = "This is a cash visit: the patient has no insurance on file. Nothing is sent to NPHIES and the patient pays the whole amount.";
+
+const todayText = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * The payer of the patient's visit, or null for a cash patient. Same rule as the chart header: the insurance card on the
+ * patient's file, unless there is none or the visit was registered as cash.
+ */
+export function insuredPayer(p: Pick<Patient, "extra">): string | null {
+  const payer = coverageView(p, todayText()).payer;
+  return payer === CASH ? null : payer;
 }
+
+/** The payer name for lists: the card's payer, or "Cash". */
+export function payerOf(p: Pick<Patient, "extra">): string {
+  return insuredPayer(p) ?? CASH;
+}
+
+export const isCashPatient = (p: Pick<Patient, "extra">): boolean => insuredPayer(p) === null;
+
+/** The part of the net amount the payer pays, 0 to 1: one less the co-pay on the card. Zero for a cash patient. */
+export function payerShareOf(p: Pick<Patient, "extra">): number {
+  if (isCashPatient(p)) return 0;
+  const copay = Number(p.extra?.insurance?.copayPercent);
+  if (!Number.isFinite(copay)) return PAYER_SHARE;
+  return Math.min(1, Math.max(0, 1 - copay / 100));
+}
+
+/** Rounds to halalas, so the payer amount here is the same figure as the insurance share on the invoice. */
+const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const percent = (share: number) => `${Math.round(share * 1000) / 10} percent`;
 
 const CLASS_FEE: Record<string, number> = { O: 350, E: 900, I: 3200 };
 
@@ -92,7 +123,7 @@ export function estimateCharge(e: Encounter): Charge {
   const rad = getRad().orders.filter((o) => o.visitNumber === e.visitNumber && o.status !== "cancelled");
   const rx = getRx().prescriptions.filter((p) => p.visitNumber === e.visitNumber);
   const labTests = lab.reduce((n, o) => n + o.codes.length, 0);
-  const rxItems = rx.reduce((n, p) => n + p.items.filter((i) => i.status !== "cancelled").length, 0);
+  const rxItems = rx.reduce((n, p) => n + p.items.filter((i) => i.status !== "cancelled" && !i.patientProvided).length, 0);
   if (labTests) lines.push({ label: `Laboratory (${labTests} test${labTests === 1 ? "" : "s"})`, amount: labTests * 85 });
   if (rad.length) lines.push({ label: `Radiology (${rad.length} exam${rad.length === 1 ? "" : "s"})`, amount: rad.length * 320 });
   if (rxItems) lines.push({ label: `Medication (${rxItems} item${rxItems === 1 ? "" : "s"})`, amount: rxItems * 40 });
@@ -120,6 +151,14 @@ export interface StepView {
 }
 
 export function stepViews(e: Encounter, s: FinState = store.get()): StepView[] {
+  const patient = getState().patients.find((x) => x.id === e.patientId);
+  if (patient && isCashPatient(patient)) {
+    const labels: [FinStep, string][] = [["eligibility", "Eligibility Check"], ["authorization", "Prior Authorization"], ["claim", "Claim"], ["payment", "Payment"]];
+    return labels.map(([step, label], i) => ({
+      step, label, status: "Not Needed", tone: "neutral" as const, action: null,
+      hint: i === 0 ? CASH_REASON : "Cash visit. The patient pays at the cashier.", secondary: null,
+    }));
+  }
   const c = caseOf(e.visitNumber, s);
   const charge = estimateCharge(e);
   const authNeeded = needsAuthorization(e, charge);
@@ -248,7 +287,12 @@ export function runFinancial(visit: string, action: FinAction): boolean {
   const e = hs.encounters.find((x) => x.visitNumber === visit);
   const p = e && hs.patients.find((x) => x.id === e.patientId);
   if (!e || !p) return false;
+  if (isCashPatient(p)) {
+    pushToast({ tone: "warn", text: "Nothing was sent to NPHIES.", detail: CASH_REASON });
+    return false;
+  }
   const payer = payerOf(p);
+  const share = payerShareOf(p);
   const charge = estimateCharge(e);
   let s = store.get();
   const refuse = s.rejectNext;
@@ -261,7 +305,7 @@ export function runFinancial(visit: string, action: FinAction): boolean {
   switch (action) {
     case "eligibility": {
       const ok = !refuse;
-      const note = ok ? `${payer}: covered. Patient pays 10 percent. Prior authorization needed for ${AUTH_FROM.toLocaleString()} SAR and above.` : `${payer}: no active policy found for this patient.`;
+      const note = ok ? `${payer}: covered. Patient pays ${percent(1 - share)}. Prior authorization needed for ${AUTH_FROM.toLocaleString()} SAR and above.` : `${payer}: no active policy found for this patient.`;
       s = push(s, visit, { kind: "eligibility-request", direction: "out", summary: `Is the patient covered by ${payer}?`, json: skeleton("eligibility-request", e, p, payer, { resourceType: "CoverageEligibilityRequest", status: "active", purpose: ["benefits", "validation"], servicedDate: at.slice(0, 10) }) });
       s = push(s, visit, { kind: "eligibility-response", direction: "in", summary: ok ? "Covered" : "Not covered", json: skeleton("eligibility-response", e, p, payer, { resourceType: "CoverageEligibilityResponse", status: "active", outcome: "complete", insurance: [{ inforce: ok }] }) });
       s = patch(s, visit, (c) => ({ ...c, eligibility: { status: ok ? "eligible" : "not-eligible", at, ref: `ELG-${hex(n)}`, note } }));
@@ -301,7 +345,7 @@ export function runFinancial(visit: string, action: FinAction): boolean {
     case "claim": {
       const status: ClaimStatus = refuse ? "rejected" : charge.total > QUESTION_FROM ? "needs-info" : charge.total > DEFERRED_FROM ? "pended" : "approved";
       const claimNumber = `CLM-${hex(n)}`;
-      const approved = status === "approved" ? Math.round(charge.total * PAYER_SHARE) : undefined;
+      const approved = status === "approved" ? money(charge.total * share) : undefined;
       const note = status === "rejected" ? "Rejected: a required item is missing or not covered." : status === "needs-info" ? "The payer needs the discharge summary before it can decide." : status === "pended" ? "The payer will answer later. Check for the answer." : `Approved ${approved!.toLocaleString()} of ${charge.total.toLocaleString()} SAR. The patient pays the rest.`;
       s = push(s, visit, { kind: "claim-request", direction: "out", summary: `Claim for ${charge.total.toLocaleString()} SAR`, json: skeleton("claim-request", e, p, payer, { resourceType: "Claim", use: "claim", status: "active", identifier: claimNumber, total: { value: charge.total, currency: "SAR" } }) });
       if (status === "needs-info") s = push(s, visit, { kind: "communication-request", direction: "in", summary: "Payer asks for the discharge summary", json: skeleton("communication-request", e, p, payer, { resourceType: "CommunicationRequest", status: "active", payload: [{ contentString: "Please send the discharge summary." }] }) });
@@ -312,7 +356,7 @@ export function runFinancial(visit: string, action: FinAction): boolean {
       break;
     }
     case "answer": {
-      const approved = Math.round(charge.total * PAYER_SHARE);
+      const approved = money(charge.total * share);
       const note = `Approved ${approved.toLocaleString()} of ${charge.total.toLocaleString()} SAR after your answer.`;
       s = push(s, visit, { kind: "communication", direction: "out", summary: "Discharge summary sent to the payer", json: skeleton("communication", e, p, payer, { resourceType: "Communication", status: "completed", payload: [{ contentString: "Discharge summary attached." }] }) });
       s = push(s, visit, { kind: "claim-response", direction: "in", summary: "Approved", json: skeleton("claim-response", e, p, payer, { resourceType: "ClaimResponse", use: "claim", outcome: "complete" }) });
@@ -322,7 +366,7 @@ export function runFinancial(visit: string, action: FinAction): boolean {
       break;
     }
     case "poll-claim": {
-      const approved = Math.round(charge.total * PAYER_SHARE);
+      const approved = money(charge.total * share);
       const note = `Approved ${approved.toLocaleString()} of ${charge.total.toLocaleString()} SAR after review.`;
       s = push(s, visit, { kind: "poll-request", direction: "out", summary: "Any answers waiting for us?", json: skeleton("poll-request", e, p, payer, { resourceType: "Task", status: "requested", code: "poll" }) });
       s = push(s, visit, { kind: "claim-response", direction: "in", summary: "Approved", json: skeleton("claim-response", e, p, payer, { resourceType: "ClaimResponse", use: "claim", outcome: "complete" }) });
@@ -340,7 +384,7 @@ export function runFinancial(visit: string, action: FinAction): boolean {
     }
     case "poll-payment": {
       const cl = caseOf(visit, s).claim;
-      const amount = cl?.approved ?? Math.round(charge.total * PAYER_SHARE);
+      const amount = cl?.approved ?? money(charge.total * share);
       const batch = `PB-${hex(n)}`;
       s = push(s, visit, { kind: "poll-request", direction: "out", summary: "Any payment advice for us?", json: skeleton("poll-request", e, p, payer, { resourceType: "Task", status: "requested", code: "poll", input: "payment-reconciliation" }) });
       s = push(s, visit, { kind: "payment-reconciliation", direction: "in", summary: `Payer paid ${amount.toLocaleString()} SAR`, json: skeleton("payment-reconciliation", e, p, payer, { resourceType: "PaymentReconciliation", status: "active", outcome: "complete", paymentAmount: { value: amount, currency: "SAR" }, identifier: batch }) });
@@ -368,11 +412,15 @@ export function runFinancial(visit: string, action: FinAction): boolean {
 export interface FinVisit {
   enc: Encounter;
   patient: Patient;
+  /** The card's payer, or "Cash". */
   payer: string;
+  /** True for a cash visit: listed so the cashier sees it, but nothing can be sent to NPHIES. */
+  cash: boolean;
   charge: Charge;
   authNeeded: boolean;
 }
 
+/** Every billable visit. Cash visits are in the list (the invoice worklist needs them) with `cash` set and no steps to run. */
 export function financialVisits(): FinVisit[] {
   const hs = getState();
   const out: FinVisit[] = [];
@@ -381,7 +429,8 @@ export function financialVisits(): FinVisit[] {
     const patient = hs.patients.find((p) => p.id === enc.patientId);
     if (!patient) continue;
     const charge = estimateCharge(enc);
-    out.push({ enc, patient, payer: payerOf(patient), charge, authNeeded: needsAuthorization(enc, charge) });
+    const cash = isCashPatient(patient);
+    out.push({ enc, patient, payer: payerOf(patient), cash, charge, authNeeded: !cash && needsAuthorization(enc, charge) });
   }
   return out;
 }

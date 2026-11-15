@@ -428,14 +428,9 @@ export function approveRequest(id: string, a: ApprovalInput, now: number = Date.
       bedId: eventId === "A01" ? bedId : undefined,
       expectedAdmitAt: eventId === "A05" ? a.admitAt : undefined,
       reserveBedId: eventId === "A05" ? bedId : undefined,
+      // The admitting diagnosis goes in the admit or pre-admit message itself (DG1).
+      dx: dx.length ? dx : undefined,
     });
-    // quickCreate takes no diagnosis, so the admitting diagnosis is saved on the visit after the message.
-    // It then shows as a change not sent yet, and goes out with the next update (A08).
-    if (out.ok && out.entry && dx.length) {
-      updateEncounter(out.entry.visitNumber, (e) => {
-        for (const d of dx) if (!e.dx.some((x) => x.code === d.code)) e.dx.push(d);
-      });
-    }
   }
   if (!out.ok || !out.entry) return { ok: false, errors: ["The admission could not be saved. See the message on screen."] };
 

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { BedDouble, CircleCheck, CreditCard, IdCard, Printer, Search, Siren, Stethoscope, TriangleAlert, Upload, UserPlus } from "lucide-react";
+import { Baby, BedDouble, CircleAlert, CircleCheck, CreditCard, IdCard, Printer, Search, ShieldAlert, Siren, Stethoscope, TriangleAlert, Upload, UserPlus } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
 import { ErQuickRegistration } from "@/components/ErQuickRegistration";
 import { PatientFlagBadges, PatientNameAr } from "@/components/PatientBanner";
@@ -13,12 +13,15 @@ import type { CtasLevel, EdData, PatientExtra } from "@/lib/model";
 import { canSetTriage, currentUser } from "@/lib/session";
 import { COMPLAINT_SAMPLES, DOCTORS, MARITAL, NATIONALITIES, SERVICES, countryCode as nationalityCode, countryLabel } from "@/lib/reference-data";
 import {
-  DUPLICATE_REASON_LABEL, INTERPRETER_LANGUAGES, ageLabel, buildFlags, coverageOutcome, findDuplicates, validateRegistration,
+  ACTIVITY_LEVELS, ADMISSION_SPECIALTIES, ADMISSION_TYPES, DUPLICATE_REASON_LABEL, INTERPRETER_LANGUAGES, PATIENT_CONDITIONS, SAUDI_REGIONS, TITLES, UNKNOWN_NAME,
+  ageLabel, buildFlags, coverageOutcome, defaultTitle, fetchHealthId, findDuplicates, listName, validateRegistration,
   type CoverageOutcome, type DuplicateMatch, type RegField, type VisitChoice,
 } from "@/lib/registration";
-import { hijri, isExpired, lookupById, retrieveIdCard, retrieveInsurance, REGISTRY, type IdCard as IdCardData, type InsuranceCard } from "@/lib/registry";
+import { registrationCard } from "@/lib/coverage";
+import { dobFromAge } from "@/lib/er-register";
+import { hijri, isExpired, lookupById, retrieveIdCard, REGISTRY, type IdCard as IdCardData, type InsuranceCard } from "@/lib/registry";
 import { navigate } from "@/lib/router";
-import { bedLabel, freeBeds, nextHealthId, nowLocal, patientName, registerPatient, useHis } from "@/lib/store";
+import { bedLabel, freeBeds, nextHealthId, nowLocal, patientName, registerPatient, updateEncounter, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 
 type Lang = "en" | "ar";
@@ -81,6 +84,20 @@ function FF({ name, error, children, ...field }: { name?: RegField; error?: stri
         {error && <span role="alert" className="text-xs font-medium leading-snug text-destructive">{error}</span>}
       </Field>
     </div>
+  );
+}
+
+/** A header option such as Confidential Patient: a checkbox shown as a pill. */
+function Toggle({ checked, onChange, icon, label, hint, tone }: { checked: boolean; onChange: (v: boolean) => void; icon: React.ReactNode; label: string; hint?: string; tone: "warn" | "info" }) {
+  return (
+    <label className={cn(
+      "flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-ring",
+      checked ? (tone === "warn" ? "border-warn/60 bg-warn/12" : "border-move/50 bg-move/10") : "border-border bg-card hover:bg-muted",
+    )}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-4 accent-[var(--primary)]" />
+      <span className={cn("shrink-0", checked ? (tone === "warn" ? "text-warn" : "text-move") : "text-muted-foreground")}>{icon}</span>
+      <span>{label}{hint && <span className="ms-1.5 text-xs font-normal text-muted-foreground">{hint}</span>}</span>
+    </label>
   );
 }
 
@@ -177,6 +194,21 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   const [arrival, setArrival] = React.useState<EdData["arrivalMode"]>("Walk-in");
   const [ctas, setCtas] = React.useState<CtasLevel | undefined>(undefined);
   const [bedId, setBedId] = React.useState("");
+  // Inpatient admission details
+  const [admissionType, setAdmissionType] = React.useState("");
+  const [patientCondition, setPatientCondition] = React.useState("");
+  const [expectedStay, setExpectedStay] = React.useState("");
+  const [activityLevel, setActivityLevel] = React.useState("");
+  const [admissionSpecialty, setAdmissionSpecialty] = React.useState("");
+  // Profile options in the header: confidential, newborn, unknown or unconscious
+  const [confidential, setConfidential] = React.useState(false);
+  const [nickName, setNickName] = React.useState("");
+  const [newborn, setNewborn] = React.useState(false);
+  const [parentId, setParentId] = React.useState("");
+  const [unknown, setUnknown] = React.useState(false);
+  const [approxAge, setApproxAge] = React.useState("");
+  /** The title the clerk picked. Until then it follows the sex and marital status. */
+  const [titleChoice, setTitleChoice] = React.useState<string | null>(null);
   // Names
   const [first, setFirst] = React.useState("");
   const [second, setSecond] = React.useState("");
@@ -209,7 +241,10 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   const [idExpiry, setIdExpiry] = React.useState("");
   const [copyNo, setCopyNo] = React.useState("");
   const [addressType, setAddressType] = React.useState("Home");
-  const [addressText, setAddressText] = React.useState("");
+  const [region, setRegion] = React.useState("");
+  const [city, setCity] = React.useState("");
+  const [address1, setAddress1] = React.useState("");
+  const [address2, setAddress2] = React.useState("");
   const [shortCode, setShortCode] = React.useState("");
   // Contact
   const [homePhone, setHomePhone] = React.useState("");
@@ -230,6 +265,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   const [isolation, setIsolation] = React.useState(false);
   // Registry, cards
   const [healthId, setHealthId] = React.useState("");
+  const [healthIdNote, setHealthIdNote] = React.useState<{ ok: boolean; text: string } | null>(null);
   const [found, setFound] = React.useState<"" | "found" | "none">("");
   const [ins, setIns] = React.useState<InsuranceCard | null>(null);
   /** The coverage check was run for this ID number. */
@@ -266,6 +302,10 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   }, [failedSaves]);
 
   const beds = freeBeds(state);
+  const title = titleChoice ?? defaultTitle(sex, marital, newborn);
+  /** Unknown or unconscious applies to an emergency visit only, as in the HIS. */
+  const isUnknown = unknown && visit === "E";
+  const parents = state.patients.filter((x) => !x.mergedInto);
   const outcome = checked ? coverageOutcome(ins, today) : null;
   /** A "no insurance" answer matters only when the clerk asked for an insurance visit. */
   const stops = (o: CoverageOutcome | null, pay: string) => !!o && o.blocking && (o.kind !== "no-insurance" || pay === "Insurance");
@@ -273,6 +313,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
 
   function chooseVisit(v: VisitChoice) {
     setVisit(v);
+    if (v !== "E") setUnknown(false);
     if (v === "O") setService("OPD");
     if (v === "E") setService("ER");
     if (v === "I") setService(DOCTORS.find((d) => d.id === attending)?.service ?? "MED");
@@ -307,8 +348,9 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   }
 
   /** The coverage check. The answer is shown in plain words, and a visit that is not covered waits for the clerk to choose. */
-  function runCoverageCheck(): { card: InsuranceCard | null; outcome: CoverageOutcome } {
-    const card = retrieveInsurance(idNumber) ?? null;
+  function runCoverageCheck(patientId?: string): { card: InsuranceCard | null; outcome: CoverageOutcome } {
+    // A patient who already has a file here is checked against the primary active coverage on that file.
+    const card = registrationCard({ idNumber, patientId, healthId }, today, state.patients);
     const o = coverageOutcome(card, today);
     setIns(card); setChecked(true); setCashChosen(false); setFixNote(false);
     audit("view", "Insurance eligibility check", { detail: card ? `${card.payer}: ${o.title}` : o.title });
@@ -349,6 +391,23 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
     goTo("coverage");
   }
 
+  function fetchHealthIdFromRegistry() {
+    const a = fetchHealthId(idNumber, dob, today);
+    if (a.ok) {
+      setHealthId(a.healthId);
+      setHealthIdNote({ ok: true, text: t("Health ID returned by the national registry.", "تم استلام رقم الهوية الصحية من السجل الوطني.") });
+    } else {
+      setHealthIdNote({ ok: false, text: a.message });
+    }
+    audit("view", "National registry Health ID lookup", { detail: `ID ${idNumber.slice(0, 3)}*******: ${a.ok ? "returned" : "not returned"}` });
+  }
+
+  function chooseUnknown(on: boolean) {
+    if (on) chooseVisit("E");
+    setUnknown(on);
+    setShowErrors(false);
+  }
+
   function retrieveIdentityCard() {
     const c = retrieveIdCard(idNumber);
     if (!c) {
@@ -361,6 +420,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
 
   const problems = validateRegistration({
     idNumber, healthId, first, family, dob, mobile, email, shortCode, consent, visit, bedId, dnr, dnrDoctor, dnrDate, interpreter, language, today,
+    addressLine1: address1, title, confidential, nickName, newborn, parentId, unknown: isUnknown, admissionType, patientCondition, expectedStay,
   });
   const errs: Partial<Record<RegField, string>> = {};
   for (const p of problems) {
@@ -377,10 +437,21 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   }
 
   function createVisit(patientId: string): Outcome {
-    if (visit === "I") return quickCreate("A01", { patientId, attending, service, reason, referring, bedId, admitClass: "I" });
+    if (visit === "I") {
+      const method = ADMISSION_TYPES.find((a) => a.label === admissionType)?.method;
+      const out = quickCreate("A01", { patientId, attending, service, reason, referring, bedId, admitClass: "I", admissionMethod: method });
+      if (out.entry) {
+        const stay = expectedStay.trim() ? Number(expectedStay) : undefined;
+        updateEncounter(out.entry.visitNumber, (e) => {
+          e.admission = { admissionType, patientCondition, expectedStayDays: stay, activityLevel: activityLevel || undefined, specialty: admissionSpecialty || undefined };
+        }, { touch: false });
+      }
+      return out;
+    }
     const out = quickCreate("A04", { patientId, attending, service: visit === "E" ? "ER" : service, reason, referring, cls: visit === "E" ? "E" : "O" });
     if (visit === "E" && out.entry) {
       startEd(out.entry.visitNumber, arrival);
+      if (isUnknown) updateEncounter(out.entry.visitNumber, (e) => { if (e.ed) e.ed = { ...e.ed, temporaryId: true }; }, { touch: false });
       if (ctas && canSetTriage()) saveTriage(out.entry.visitNumber, { ctas, ctasWhy: "Level chosen at registration", arrivalMode: arrival, complaint: reason.trim() || undefined, area: defaultArea(ctas), triageNurse: currentUser().name }, undefined, "Quick triage at registration");
     }
     return out;
@@ -390,16 +461,19 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
   function trySave(p: Pending = {}, opts: { cash?: boolean } = {}) {
     setShowErrors(true);
     if (problems.length) { setFailedSaves((x) => x + 1); return; }
+    // Nothing is known about an unknown patient: no duplicate check, and emergency care does not wait for the payer.
+    if (isUnknown) { commit(p, null, null); return; }
 
     if (!p.existingId && !p.dupReason) {
-      const matches = findDuplicates({ idNumber, healthId, given: first, family, givenAr: firstAr, familyAr, dob, mobile }, state.patients);
+      const matches = findDuplicates({ idNumber, healthId, given: first, family, givenAr: firstAr, familyAr, dob, mobile }, state.patients.filter((x) => !x.mergedInto));
       if (matches.length) { setDupReason(""); setDups(matches); return; }
     }
 
     let card = ins;
     let o = outcome;
     // An insurance visit is never saved without asking the payer first.
-    if (visit !== "none" && payType === "Insurance" && !checked) ({ card, outcome: o } = runCoverageCheck());
+    // A visit on a file that already exists is checked against the primary active coverage on that file.
+    if (visit !== "none" && payType === "Insurance" && (!checked || (p.existingId && !opts.cash))) ({ card, outcome: o } = runCoverageCheck(p.existingId));
     const cash = opts.cash || (cashChosen && o === outcome);
     if (visit !== "none" && o && stops(o, payType) && !cash) {
       pending.current = p;
@@ -415,26 +489,40 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
       dnr, dnrDoctor: DOCTORS.filter((d) => d.id === dnrDoctor).map((d) => `Dr. ${d.given} ${d.family}`)[0] ?? "", dnrDate, interpreter, language, fallRisk, isolation,
     });
     // A visit the payer does not cover is a cash visit. The clerk has already agreed to that above.
-    const pay = o?.blocking ? "Cash" : payType;
+    const pay = o?.blocking || isUnknown ? "Cash" : payType;
     let patientId = p.existingId ?? "";
     if (!patientId) {
+      const parent = newborn ? state.patients.find((x) => x.id === parentId) : undefined;
       const extra: PatientExtra = {
         secondName: second.trim(), thirdName: third.trim(),
         nameAr: { first: firstAr.trim(), second: secondAr.trim(), third: thirdAr.trim(), family: familyAr.trim() },
         religion, bloodGroup: blood, fileStatus, socialStatus: social, placeOfBirth: birthPlace, occupation, employeeNo,
-        idType, idNumber, idIssuer: issuer, idIssueDate: idIssue, idExpiry, idCopyNo: copyNo, addressType, addressText,
+        idType, idNumber, idIssuer: issuer, idIssueDate: idIssue, idExpiry, idCopyNo: copyNo, addressType,
+        addressText: [address1.trim(), address2.trim(), city, region].filter(Boolean).join(", ") || undefined,
         homePhone, mobile, otherPhone, countryCode, areaCode, relationName: relName, relationPhone: relPhone, email,
         mainFileNo: `MF-${1000 + n}`, registrationNo: `REG-${today.slice(0, 4)}-${1000 + n}`, visitPayType: pay,
         insurance: card ?? undefined, archive, flags,
         coverageDecision: o?.blocking && visit !== "none" && stops(o, payType) ? `${o.title}. Continued as a cash patient.` : undefined,
+        title: title || undefined, nickName: confidential ? nickName.trim() : undefined,
+        newborn: newborn || undefined, parentId: parent?.id, unknown: isUnknown || undefined,
+        region: region || undefined, city: city || undefined, addressLine1: address1.trim() || undefined, addressLine2: address2.trim() || undefined,
       };
+      if (isUnknown) extra.fileStatus = "Temporary File";
+      const ageYears = approxAge.trim() ? Number(approxAge) : NaN;
       const created = registerPatient({
-        healthId: healthId.trim(), given: first.trim(), family: family.trim(), dob, sex, nationality, maritalStatus: marital,
-        address: shortCode, consentAt: new Date().toISOString(), extra,
+        // An unknown patient gets a test Health ID, as at the quick emergency registration. The details are completed later.
+        healthId: isUnknown && !healthId.trim() ? nextHealthId() : healthId.trim(),
+        given: isUnknown ? first.trim() || UNKNOWN_NAME.given : first.trim(),
+        family: isUnknown ? family.trim() || UNKNOWN_NAME.family : family.trim(),
+        dob: dob || (isUnknown ? dobFromAge(Number.isFinite(ageYears) ? ageYears : undefined, undefined) : dob),
+        sex, nationality: isUnknown && !idNumber ? "999" : nationality, maritalStatus: isUnknown ? "U" : marital,
+        address: shortCode, consentAt: isUnknown && !consent ? undefined : new Date().toISOString(), extra,
+        confidential: confidential || undefined,
       });
       patientId = created.id;
       const flagWords = [flags?.dnr && "Do Not Resuscitate", flags?.isolation && "Isolation", flags?.fallRisk && "Fall Risk", flags?.interpreter && "Needs Interpreter"].filter(Boolean).join(", ");
-      audit("create", `Patient file ${created.mrn}`, { patient: patientName(created), detail: `Registered. Payment: ${pay}.${flagWords ? ` Flags: ${flagWords}.` : ""}` });
+      const kind = [confidential && "Confidential", newborn && `Newborn of ${parent?.mrn ?? "a parent on file"}`, isUnknown && "Unknown or unconscious"].filter(Boolean).join(", ");
+      audit("create", `Patient file ${created.mrn}`, { patient: listName(created), detail: `Registered.${kind ? ` ${kind}.` : ""} Payment: ${pay}.${flagWords ? ` Flags: ${flagWords}.` : ""}` });
       if (p.dupReason) {
         audit("create", "Registered as new after duplicate warning", {
           patient: patientName(created),
@@ -517,7 +605,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
       {/* Language switch and ID lookup */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-start gap-2">
-          <FF name="idNumber" error={errs.idNumber} required label={t("ID (Iqama) Number", "رقم الهوية")} hl7={tag("PID-3 via registry")}>
+          <FF name="idNumber" error={errs.idNumber} required={!isUnknown && !newborn} label={t("ID (Iqama) Number", "رقم الهوية")} hl7={tag("PID-3 via registry")}>
             <Input className="w-full font-mono sm:w-56" value={idNumber} onChange={(e) => onIdChange(e.target.value)} placeholder={t("10 digits", "10 أرقام")} inputMode="numeric" aria-label="ID number" aria-invalid={!!errs.idNumber} dir="ltr" />
           </FF>
           <Button className="mt-[1.625rem] h-10" onClick={() => lookup()} disabled={idNumber.length !== 10}><Search className="size-4" />{t("Look Up Patient", "بحث عن المريض")}</Button>
@@ -540,6 +628,31 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
           <button key={r.idNumber} type="button" onClick={() => onIdChange(r.idNumber)} className="me-2 font-mono text-move underline">{r.idNumber}</button>
         ))}
       </p>
+      <div role="group" aria-label={t("Profile Options", "خيارات الملف")} className="mt-4 flex flex-wrap gap-2">
+        <Toggle checked={isUnknown} onChange={chooseUnknown} icon={<CircleAlert className="size-4" />} tone="warn"
+          label={t("Unknown / Unconscious", "مجهول / فاقد الوعي")} hint={t("Emergency only", "للطوارئ فقط")} />
+        <Toggle checked={confidential} onChange={(v) => setConfidential(v)} icon={<ShieldAlert className="size-4" />} tone="warn" label={t("Confidential Patient", "مريض سري")} />
+        <Toggle checked={newborn} onChange={(v) => setNewborn(v)} icon={<Baby className="size-4" />} tone="info" label={t("Newborn", "مولود")} />
+      </div>
+      {isUnknown && (
+        <div role="status" className="mt-3 rounded-lg border border-warn/50 bg-warn/10 px-4 py-3 text-sm">
+          <p className="font-semibold">{t("Unconscious Mode: only the title and the sex are required.", "وضع فاقد الوعي: اللقب والجنس فقط مطلوبان.")}</p>
+          <p className="mt-0.5">{t("The name is saved as Unknown Patient and a test Health ID is given. Complete the details when the patient can be identified.", "يحفظ الاسم كمريض مجهول ويعطى رقم هوية صحية تجريبي. أكمل البيانات عند التعرف على المريض.")}</p>
+          <Field className="mt-3 max-w-48" label={t("Approximate Age (Years)", "العمر التقريبي")} hint={t("Used for the date of birth when it is not known.", "يستخدم لتاريخ الميلاد عند عدم معرفته.")}>
+            <Input type="number" min={0} max={120} value={approxAge} onChange={(e) => setApproxAge(e.target.value)} />
+          </Field>
+        </div>
+      )}
+      {newborn && (
+        <div className="mt-3 max-w-md">
+          <FF name="parentId" error={errs.parentId} required={!isUnknown} label={t("Parent", "ولي الأمر")} hint={t("Pick the mother or father from the patients on file. A newborn may have no ID number yet.", "اختر الأم أو الأب من المرضى المسجلين. قد لا يكون للمولود رقم هوية بعد.")}>
+            <Select value={parentId} onChange={(e) => setParentId(e.target.value)} aria-invalid={!!errs.parentId}>
+              <option value="">{t("Select", "اختر")}</option>
+              {parents.map((x) => <option key={x.id} value={x.id}>{listName(x)}, {x.mrn}</option>)}
+            </Select>
+          </FF>
+        </div>
+      )}
       <RequiredNote className="mt-3" />
 
       {showErrors && problems.length > 0 && (
@@ -597,6 +710,31 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
                   </Select>
                 </FF>
               )}
+              {visit === "I" && (
+                <>
+                  <FF name="admissionType" error={errs.admissionType} required label={t("Admission Type", "نوع التنويم")} hl7={tag("PV1-4")}>
+                    <Select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} aria-invalid={!!errs.admissionType}>
+                      <option value="">{t("Select", "اختر")}</option>
+                      {ADMISSION_TYPES.map((a) => <option key={a.label} value={a.label}>{a.label}</option>)}
+                    </Select>
+                  </FF>
+                  <FF name="patientCondition" error={errs.patientCondition} required label={t("Patient Condition", "حالة المريض")} hl7={hisOnly}>
+                    <Select value={patientCondition} onChange={(e) => setPatientCondition(e.target.value)} aria-invalid={!!errs.patientCondition}>
+                      <option value="">{t("Select", "اختر")}</option>
+                      {PATIENT_CONDITIONS.map((x) => <option key={x}>{x}</option>)}
+                    </Select>
+                  </FF>
+                  <FF name="expectedStay" error={errs.expectedStay} label={t("Expected Stay (Days)", "مدة الإقامة المتوقعة (أيام)")} hl7={hisOnly}>
+                    <Input type="number" min={1} max={365} step={1} value={expectedStay} onChange={(e) => setExpectedStay(e.target.value)} placeholder={t("For example 3", "مثال 3")} aria-invalid={!!errs.expectedStay} />
+                  </FF>
+                  <Field label={t("Activity Level", "مستوى النشاط")} hl7={hisOnly}>
+                    <Select value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)}><option value="">{t("Select", "اختر")}</option>{ACTIVITY_LEVELS.map((x) => <option key={x}>{x}</option>)}</Select>
+                  </Field>
+                  <Field label={t("Admission Specialty", "تخصص التنويم")} hl7={hisOnly}>
+                    <Select value={admissionSpecialty} onChange={(e) => setAdmissionSpecialty(e.target.value)}><option value="">{t("Select", "اختر")}</option>{ADMISSION_SPECIALTIES.map((x) => <option key={x}>{x}</option>)}</Select>
+                  </Field>
+                </>
+              )}
               {visit === "E" && (
                 <Field label={t("Arrival Mode", "وسيلة الوصول")} hl7={tag("ZPV1-18")}>
                   <Select value={arrival} onChange={(e) => setArrival(e.target.value as EdData["arrivalMode"])}>{ARRIVAL_MODES.map((m) => <option key={m}>{m}</option>)}</Select>
@@ -627,12 +765,26 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
       </Sec>
 
       <Sec title={t("Patient Name", "إسم المريض")}>
-        <Group title={t("Name (English)", "الإسم بالإنجليزية")}>
+        <Grid>
+          <FF name="title" error={errs.title} required={isUnknown} label={t("Title", "اللقب")} hl7={hisOnly} hint={titleChoice === null ? t("Filled from the sex and marital status.", "يملأ من الجنس والحالة الاجتماعية.") : undefined}>
+            <Select value={title} onChange={(e) => setTitleChoice(e.target.value)} aria-invalid={!!errs.title}>
+              <option value="">{t("Select", "اختر")}</option>
+              {TITLES.map((x) => <option key={x}>{x}</option>)}
+            </Select>
+          </FF>
+          {confidential && (
+            <FF name="nickName" error={errs.nickName} required label={t("Nick Name (Confidential ID)", "الاسم المستعار")} hl7={hisOnly} hint={t("Shown on lists instead of the name.", "يظهر في القوائم بدل الاسم.")}>
+              <Input value={nickName} onChange={(e) => setNickName(e.target.value)} placeholder={t("Pseudonym or alias", "اسم مستعار")} aria-invalid={!!errs.nickName} />
+            </FF>
+          )}
+        </Grid>
+        {isUnknown && <p className="mt-3 text-sm text-muted-foreground">{t("Leave the name empty to save it as Unknown Patient.", "اترك الاسم فارغا ليحفظ كمريض مجهول.")}</p>}
+        <Group title={t("Name (English)", "الإسم بالإنجليزية")} className="mt-5 border-t border-border pt-5">
           <Grid>
-            <FF name="first" error={errs.first} required label="First" hl7={tag("PID-5.2")}><Input value={first} onChange={(e) => setFirst(e.target.value)} dir="ltr" aria-invalid={!!errs.first} /></FF>
+            <FF name="first" error={errs.first} required={!isUnknown} label="First" hl7={tag("PID-5.2")}><Input value={first} onChange={(e) => setFirst(e.target.value)} dir="ltr" aria-invalid={!!errs.first} /></FF>
             <Field label="Father" hl7={tag("PID-5.3")}><Input value={second} onChange={(e) => setSecond(e.target.value)} dir="ltr" /></Field>
             <Field label="Grandfather" hl7={tag("PID-5.3")}><Input value={third} onChange={(e) => setThird(e.target.value)} dir="ltr" /></Field>
-            <FF name="family" error={errs.family} required label="Family" hl7={tag("PID-5.1")}><Input value={family} onChange={(e) => setFamily(e.target.value)} dir="ltr" aria-invalid={!!errs.family} /></FF>
+            <FF name="family" error={errs.family} required={!isUnknown} label="Family" hl7={tag("PID-5.1")}><Input value={family} onChange={(e) => setFamily(e.target.value)} dir="ltr" aria-invalid={!!errs.family} /></FF>
           </Grid>
         </Group>
         <Group title={t("Name (Arabic)", "الإسم بالعربي")} className="mt-5 border-t border-border pt-5">
@@ -666,7 +818,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
 
       <Sec title={t("Demographic Details", "بيانات تفصيلية")}>
         <Grid>
-          <FF name="dob" error={errs.dob} required label={t("Date of Birth", "ت الميلاد")} hl7={tag("PID-7")}><Input type="date" value={dob} max={today} onChange={(e) => setDob(e.target.value)} aria-invalid={!!errs.dob} /></FF>
+          <FF name="dob" error={errs.dob} required={!isUnknown} label={t("Date of Birth", "ت الميلاد")} hl7={tag("PID-7")}><Input type="date" value={dob} max={today} onChange={(e) => setDob(e.target.value)} aria-invalid={!!errs.dob} /></FF>
           <Field label={t("Date of Birth (Hijri)", "تاريخ الميلاد الهجري")} hint={t("Filled from the date of birth.", "يملأ من تاريخ الميلاد.")}><Input value={hijri(dob)} disabled dir="ltr" /></Field>
           <Field label={t("Age", "العمر")} hint={t("Worked out from the date of birth.", "يحسب من تاريخ الميلاد.")}><Input value={ageLabel(dob)} disabled /></Field>
           <Field label={t("Gender", "النوع")} hl7={tag("PID-8")}>
@@ -707,14 +859,35 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
           <FF name="shortCode" error={errs.shortCode} label={t("National Address Short Code", "العنوان الوطني المختصر")} hl7={tag("PID-11")}>
             <Input className="font-mono" value={shortCode} onChange={(e) => setShortCode(e.target.value.toUpperCase())} maxLength={8} dir="ltr" aria-invalid={!!errs.shortCode} />
           </FF>
-          <Field label={t("Address", "العنوان")} hl7={hisOnly}><Input value={addressText} onChange={(e) => setAddressText(e.target.value)} /></Field>
         </Grid>
+        <Group title={t("Address", "العنوان")} className="mt-5 border-t border-border pt-5">
+          <Grid>
+            <Field label={t("State / Region", "المنطقة")} hl7={hisOnly}>
+              <Select value={region} onChange={(e) => { setRegion(e.target.value); setCity(""); }}>
+                <option value="">{t("Select", "اختر")}</option>
+                {SAUDI_REGIONS.map((r) => <option key={r.region}>{r.region}</option>)}
+              </Select>
+            </Field>
+            <Field label={t("City", "المدينة")} hl7={hisOnly} hint={region ? undefined : t("Pick the region first.", "اختر المنطقة أولا.")}>
+              <Select value={city} onChange={(e) => setCity(e.target.value)} disabled={!region}>
+                <option value="">{t("Select", "اختر")}</option>
+                {(SAUDI_REGIONS.find((r) => r.region === region)?.cities ?? []).map((c) => <option key={c}>{c}</option>)}
+              </Select>
+            </Field>
+            <FF name="addressLine1" error={errs.addressLine1} required={!isUnknown} label={t("Address Line 1", "سطر العنوان 1")} hl7={hisOnly}>
+              <Input value={address1} onChange={(e) => setAddress1(e.target.value)} placeholder={t("Street, building name", "الشارع، اسم المبنى")} aria-invalid={!!errs.addressLine1} />
+            </FF>
+            <Field label={t("Address Line 2", "سطر العنوان 2")} hl7={hisOnly}>
+              <Input value={address2} onChange={(e) => setAddress2(e.target.value)} placeholder={t("Unit, PO Box (optional)", "الوحدة، صندوق البريد (اختياري)")} />
+            </Field>
+          </Grid>
+        </Group>
         {warnings.map((w) => <p key={w} className="mt-4 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm">{w}</p>)}
       </Sec>
 
       <Sec title={t("Contact Information", "بيانات للإتصال")}>
         <Grid>
-          <FF name="mobile" error={errs.mobile} required label={t("Mobile No.", "الجوال")} hl7={hisOnly}><Input value={mobile} onChange={(e) => setMobile(e.target.value)} dir="ltr" inputMode="tel" aria-invalid={!!errs.mobile} /></FF>
+          <FF name="mobile" error={errs.mobile} required={!isUnknown} label={t("Mobile No.", "الجوال")} hl7={hisOnly}><Input value={mobile} onChange={(e) => setMobile(e.target.value)} dir="ltr" inputMode="tel" aria-invalid={!!errs.mobile} /></FF>
           <Field label={t("Country Code", "رمز الدولة")} hl7={hisOnly}><Input value={countryCode} onChange={(e) => setCountryCode(e.target.value)} dir="ltr" /></Field>
           <Field label={t("Area Code", "رمز المنطقة")} hl7={hisOnly}><Input value={areaCode} onChange={(e) => setAreaCode(e.target.value)} dir="ltr" /></Field>
           <Field label={t("Home Phone", "هاتف المنزل")} hl7={hisOnly}><Input value={homePhone} onChange={(e) => setHomePhone(e.target.value)} dir="ltr" inputMode="tel" /></Field>
@@ -830,8 +1003,13 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
 
       <Sec title={t("National Health Record", "السجل الصحي الوطني")}>
         <Grid cols={2}>
-          <FF name="healthId" error={errs.healthId} required label={t("Health ID", "رقم الهوية الصحية")} hl7={tag("PID-3")} hint={t("Issued by the NHIC Patient Registry. Test value.", "يصدر من السجل الوطني")}>
-            <div className="flex flex-wrap gap-2"><Input className="min-w-0 flex-1 font-mono" value={healthId} onChange={(e) => setHealthId(e.target.value)} dir="ltr" aria-invalid={!!errs.healthId} /><Button className="h-10" onClick={() => setHealthId(nextHealthId())}>{t("New Test ID", "رقم تجريبي")}</Button></div>
+          <FF name="healthId" error={errs.healthId} required={!isUnknown} label={t("Health ID", "رقم الهوية الصحية")} hl7={tag("PID-3")} hint={isUnknown ? t("Left empty, a test Health ID is given when you save.", "إذا ترك فارغا يعطى رقم تجريبي عند الحفظ.") : t("Issued by the NHIC Patient Registry. Fetch it with the ID number and the date of birth.", "يصدر من السجل الوطني. استرجعه برقم الهوية وتاريخ الميلاد.")}>
+            <div className="flex flex-wrap gap-2">
+              <Input className="min-w-0 flex-1 font-mono" value={healthId} onChange={(e) => { setHealthId(e.target.value); setHealthIdNote(null); }} dir="ltr" aria-invalid={!!errs.healthId} />
+              <Button className="h-10" onClick={fetchHealthIdFromRegistry} disabled={idNumber.length !== 10 || !dob}><Search className="size-4" />{t("Fetch Health ID", "استرجاع الهوية الصحية")}</Button>
+              <Button className="h-10" onClick={() => { setHealthId(nextHealthId()); setHealthIdNote(null); }}>{t("New Test ID", "رقم تجريبي")}</Button>
+            </div>
+            {healthIdNote && <span role="status" className={cn("text-xs font-medium", healthIdNote.ok ? "text-ok" : "text-warn")}>{healthIdNote.text}</span>}
           </FF>
         </Grid>
       </Sec>
@@ -841,9 +1019,10 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} aria-invalid={!!errs.consent} className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" />
           <span>
             {t("The patient has been told how their health information is used and shared with the national exchange (NPHIES), and agrees.", "تم إبلاغ المريض بكيفية استخدام معلوماته الصحية ومشاركتها مع المنصة الوطنية (نفيس) ووافق على ذلك.")}
-            <span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span><span className="sr-only"> (required)</span>
+            {!isUnknown && <><span aria-hidden="true" className="ms-0.5 font-semibold text-destructive">*</span><span className="sr-only"> (required)</span></>}
           </span>
         </label>
+        {isUnknown && <p className="mt-1 ps-6 text-xs text-muted-foreground">{t("An unconscious patient cannot agree now. Ask when the patient is awake.", "لا يستطيع المريض فاقد الوعي الموافقة الآن. اسأله عندما يستيقظ.")}</p>}
         {errs.consent && <p role="alert" className="mt-1 ps-6 text-xs font-medium text-destructive">{errs.consent}</p>}
       </div>
 

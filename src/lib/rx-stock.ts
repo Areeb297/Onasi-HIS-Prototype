@@ -1,4 +1,5 @@
 import type { Dispense, Drug } from "./rx-types";
+import { extraBatchesFor } from "./stock-store";
 
 /**
  * Pharmacy stock by batch. Made-up numbers: every drug gets two or three batches worked out from its id,
@@ -22,8 +23,12 @@ function monthEnd(from: Date, monthsAhead: number): string {
   return new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + monthsAhead + 1, 0)).toISOString().slice(0, 10);
 }
 
-/** Batches of a drug, earliest expiry first (first expiry, first out). */
-export function batchesFor(drug: Drug, dispenses: Dispense[], today: Date = new Date()): Batch[] {
+/**
+ * Batches of a drug, earliest expiry first (first expiry, first out). Stock added on the Pharmacy Stock screens (opening stock and
+ * posted goods receipts) is part of it, so it can be dispensed. A received lot that already exists adds to that batch.
+ * Pass withAdded false for the built-in batches only.
+ */
+export function batchesFor(drug: Drug, dispenses: Dispense[], today: Date = new Date(), withAdded = true): Batch[] {
   const n = parseInt(drug.id.replace(/\D/g, ""), 10) || 1;
   const prefix = drug.brand.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase();
   const num = String(n).padStart(3, "0");
@@ -35,6 +40,13 @@ export function batchesFor(drug: Drug, dispenses: Dispense[], today: Date = new 
     { lot: `${prefix}${num}B`, expiry: monthEnd(today, 9 + (n % 7)), base: size * 4 },
   ];
   if (n % 5 === 0) raw.push({ lot: `${prefix}${num}C`, expiry: monthEnd(today, 20), base: size * 2 });
+  if (withAdded) {
+    for (const x of extraBatchesFor(drug.id)) {
+      const same = raw.find((b) => b.lot.toUpperCase() === x.lot.toUpperCase());
+      if (same) same.base = round(same.base + x.base);
+      else raw.push({ lot: x.lot, expiry: x.expiry, base: x.base });
+    }
+  }
   const used = new Map<string, number>();
   for (const d of dispenses) {
     for (const l of d.lines) {

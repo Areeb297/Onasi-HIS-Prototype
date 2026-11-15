@@ -1,79 +1,85 @@
 import * as React from "react";
 import { Table, Td, Th, cn } from "@/components/ui/primitives";
+import { Legend } from "@/components/charts/viz";
+import { GlassCard } from "@/components/ui/glass";
+
+export { AXIS, GRID } from "@/components/charts/viz";
+export { MetricTile } from "@/components/charts/MetricTile";
+
+export type Column = string | { key: string; label?: string; format?: (v: unknown, row: Record<string, unknown>) => React.ReactNode; align?: "right" };
 
 /**
- * A chart in a card, with a title that states what it shows, a legend, and a Table view so the
- * numbers are never available as colour and shape only.
+ * A chart on a frosted card, with a title that states what it shows, a legend, and a Table view so the numbers
+ * never depend on colour and shape alone. `actions` holds extra switches (for example Monthly or Daily).
  */
 export function ChartCard({
-  title, note, legend, rows, columns, children, className, height = 260,
+  title, note, legend, legendShape, rows, columns, children, className, height = 260, actions, footer,
 }: {
   title: string;
-  note?: string;
+  note?: React.ReactNode;
   legend?: { label: string; color: string }[];
-  rows: Record<string, string | number>[];
-  columns: string[];
+  legendShape?: "bar" | "line";
+  rows: Record<string, unknown>[];
+  columns: Column[];
   children: React.ReactNode;
   className?: string;
-  height?: number;
+  /** Plot height in pixels, or "auto" for HTML charts that size themselves. */
+  height?: number | "auto";
+  actions?: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   const [table, setTable] = React.useState(false);
+  const cols = columns.map((c) => (typeof c === "string" ? { key: c, label: c } : { label: c.key, ...c }));
+  // A column is numeric when its values are numbers (money included). Numbers sit right, under a right-aligned heading;
+  // the first column holds the labels, stays left and takes the spare width so number columns stay close together.
+  const numeric = cols.map((c, ci) => ci > 0 && (c.align === "right" || rows.some((r) => typeof r[c.key] === "number")));
   return (
-    <section className={cn("rounded-xl border border-border bg-card", className)}>
-      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-5 pt-4">
-        <div className="min-w-0">
-          <h2 className="text-[0.9375rem] font-semibold">{title}</h2>
+    <GlassCard solid className={cn("flex min-w-0 flex-col", className)}>
+      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 px-5 pt-4">
+        <div className="min-w-[min(100%,12rem)] flex-1">
+          <h2 className="text-[0.9375rem] font-semibold leading-snug">{title}</h2>
           {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
         </div>
-        <div role="group" aria-label={`${title}: view`} className="flex shrink-0 rounded-lg border border-border bg-muted p-0.5 text-xs font-medium">
-          {(["Chart", "Table"] as const).map((v) => (
-            <button key={v} type="button" aria-pressed={(v === "Table") === table} onClick={() => setTable(v === "Table")} className={cn("rounded-md px-2 py-1", (v === "Table") === table ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-              {v}
-            </button>
-          ))}
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
+          {!table && actions}
+          <ViewSwitch value={table ? "Table" : "Chart"} onChange={(v) => setTable(v === "Table")} label={`${title}: view`} />
         </div>
       </header>
-      {legend && legend.length > 1 && !table && (
-        <ul className="flex flex-wrap gap-x-4 gap-y-1 px-5 pt-2 text-xs text-muted-foreground">
-          {legend.map((l) => (
-            <li key={l.label} className="flex items-center gap-1.5">
-              <span className="size-2.5 rounded-sm" style={{ background: l.color }} aria-hidden="true" /> {l.label}
-            </li>
-          ))}
-        </ul>
-      )}
+      {legend && legend.length > 1 && !table && <Legend items={legend} shape={legendShape} className="px-5 pt-2.5" />}
       {table ? (
-        <Table className="mt-3">
-          <thead><tr>{columns.map((c) => <Th key={c}>{c}</Th>)}</tr></thead>
+        <Table className="mt-3 max-h-[26rem] overflow-y-auto">
+          <thead className="sticky top-0">
+            <tr>{cols.map((c, ci) => <Th key={c.key} numeric={numeric[ci]} className={ci === 0 ? "w-full" : undefined}>{c.label}</Th>)}</tr>
+          </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i}>{columns.map((c) => <Td key={c} className={typeof r[c] === "number" ? "tabular-nums" : undefined}>{typeof r[c] === "number" ? (r[c] as number).toLocaleString("en-US") : r[c]}</Td>)}</tr>
+              <tr key={i}>
+                {cols.map((c, ci) => {
+                  const v = r[c.key];
+                  const isNum = typeof v === "number";
+                  return <Td key={c.key} numeric={numeric[ci]} className={numeric[ci] ? "whitespace-nowrap" : undefined}>{c.format ? c.format(v, r) : isNum ? (v as number).toLocaleString("en-US", { maximumFractionDigits: 1 }) : String(v ?? "")}</Td>;
+                })}
+              </tr>
             ))}
           </tbody>
         </Table>
       ) : (
-        <div className="px-2 pb-3 pt-2" style={{ height }}>{children}</div>
+        <div className={cn("relative px-2 pb-3 pt-2", height === "auto" ? "flex-1" : "flex flex-1 flex-col")}>{height === "auto" ? children : <div className="flex-1" style={{ minHeight: height }}>{children}</div>}</div>
       )}
-    </section>
+      {footer && !table && <div className="border-t border-border/60 px-5 py-2.5 text-xs text-muted-foreground">{footer}</div>}
+    </GlassCard>
   );
 }
 
-/** Shared look for Recharts: quiet grid and axes, tooltip on the card surface. */
-export const AXIS = { tick: { fill: "var(--muted-foreground)", fontSize: 12 }, axisLine: { stroke: "var(--border)" }, tickLine: false } as const;
-export const GRID = { stroke: "var(--border)", vertical: false } as const;
-export const TOOLTIP = {
-  contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--foreground)", fontSize: 13, padding: "8px 10px" },
-  labelStyle: { color: "var(--foreground)", fontWeight: 600, marginBottom: 2 },
-  itemStyle: { color: "var(--foreground)" },
-  cursor: { fill: "var(--muted)", opacity: 0.6 },
-} as const;
-
-export function StatTile({ label, value, note, tone }: { label: string; value: React.ReactNode; note: React.ReactNode; tone?: "ok" | "warn" | "danger" }) {
+/** A small two-or-more option switch, used for Chart and Table and for chart measures. */
+export function ViewSwitch<T extends string>({ value, onChange, label, options = ["Chart", "Table"] as unknown as T[] }: { value: T; onChange: (v: T) => void; label: string; options?: T[] }) {
   return (
-    <div className="rounded-xl border border-border bg-card px-5 py-4">
-      <div className="text-[0.8125rem] font-medium text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">{value}</div>
-      <div className={cn("mt-0.5 text-xs", tone === "danger" ? "font-medium text-destructive" : tone === "warn" ? "font-medium text-warn" : tone === "ok" ? "font-medium text-ok" : "text-muted-foreground")}>{note}</div>
+    <div role="group" aria-label={label} className="flex shrink-0 rounded-lg border border-border bg-muted/80 p-0.5 text-xs font-medium">
+      {options.map((v) => (
+        <button key={v} type="button" aria-pressed={v === value} onClick={() => onChange(v)} className={cn("rounded-md px-2 py-1 transition-colors", v === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+          {v}
+        </button>
+      ))}
     </div>
   );
 }

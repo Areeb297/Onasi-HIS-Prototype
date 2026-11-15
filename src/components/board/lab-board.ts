@@ -1,4 +1,5 @@
-import { SPECIMEN_TYPES, isPublished, leafTests, missingResults, orderNphiesState, resultNphiesState, testByCode, type LabTest } from "@/lib/lab";
+import { SPECIMEN_TYPES, awaitingVerification, isPublished, leafTests, missingResults, orderNphiesState, resultNphiesState, testByCode, type LabTest } from "@/lib/lab";
+import { isReceived, sampleOf } from "@/lib/lab-extras";
 import { lastAccepted, type LabOrder } from "@/lib/fhir/types";
 import { avg, sameLocalDay } from "./board-util";
 import { clockState, elapsedMin } from "./clock";
@@ -6,26 +7,30 @@ import type { BoardLane, BoardStage, ClockSpec, MoveCheck } from "./types";
 
 /* ---------- stages and lanes ---------- */
 
-export type LabStageId = "ordered" | "collected" | "in-progress" | "entered" | "published";
+export type LabStageId = "ordered" | "collected" | "received" | "in-progress" | "entered" | "verification" | "published";
 export type LabLaneId = "stat" | "urgent" | "routine";
 
-const STAGE_ORDER: LabStageId[] = ["ordered", "collected", "in-progress", "entered", "published"];
+const STAGE_ORDER: LabStageId[] = ["ordered", "collected", "received", "in-progress", "entered", "verification", "published"];
 
 /** Target minutes per stage and lane. Demo values, a real lab sets its own. */
 export const LAB_TARGET_MIN: Record<Exclude<LabStageId, "published">, Record<LabLaneId, number>> = {
   ordered: { stat: 10, urgent: 20, routine: 45 },
   collected: { stat: 10, urgent: 20, routine: 30 },
+  received: { stat: 5, urgent: 10, routine: 20 },
   "in-progress": { stat: 20, urgent: 40, routine: 90 },
   entered: { stat: 5, urgent: 10, routine: 20 },
+  verification: { stat: 5, urgent: 10, routine: 20 },
 };
 
 const range = (s: Exclude<LabStageId, "published">) => `Target ${LAB_TARGET_MIN[s].stat} to ${LAB_TARGET_MIN[s].routine} min`;
 
 export const LAB_STAGES: (BoardStage & { id: LabStageId })[] = [
   { id: "ordered", label: "Ordered", tone: "move", hint: "Waiting for a specimen", target: range("ordered") },
-  { id: "collected", label: "Specimen Collected", tone: "admit", hint: "On the way to the bench", target: range("collected") },
-  { id: "in-progress", label: "In Progress", tone: "update", hint: "On the analyser", target: range("in-progress") },
-  { id: "entered", label: "Results Entered", tone: "merge", hint: "Waiting for a second user to verify", target: range("entered") },
+  { id: "collected", label: "Specimen Collected", tone: "admit", hint: "Waiting to be received in the lab", target: range("collected") },
+  { id: "received", label: "Sample Received", tone: "move", hint: "At the bench, not started", target: range("received") },
+  { id: "in-progress", label: "In Progress", tone: "update", hint: "On the analyser, results being entered", target: range("in-progress") },
+  { id: "entered", label: "Results Entered", tone: "merge", hint: "All results typed, not yet sent for verification", target: range("entered") },
+  { id: "verification", label: "Result Verification", tone: "merge", hint: "Waiting for a second user to verify and release", target: range("verification") },
   { id: "published", label: "Resulted", tone: "ok", hint: "Released to the chart", limit: 4 },
 ];
 
@@ -37,12 +42,18 @@ export const LAB_LANES: (BoardLane & { id: LabLaneId })[] = [
 
 export const labLaneOf = (o: Pick<LabOrder, "priority">): LabLaneId => (o.priority === "stat" ? "stat" : o.priority === "routine" ? "routine" : "urgent");
 
-/** The stage comes from the real status. "Results Entered" is In Progress with every result typed. Cancelled orders are not on the board. */
+/**
+ * The stage comes from the real status. "Sample Received" is a collected specimen the lab has accepted at the bench (kept in lab-extras).
+ * "Results Entered" is In Progress with every result typed. "Result Verification" is results sent for verification.
+ * Cancelled orders are not on the board.
+ */
 export function labStageOf(o: LabOrder): LabStageId | null {
   switch (o.status) {
     case "received": return "ordered";
-    case "collected": return "collected";
-    case "in-progress": return missingResults(o).length ? "in-progress" : "entered";
+    case "collected": return isReceived(o) ? "received" : "collected";
+    case "in-progress":
+      if (awaitingVerification(o)) return "verification";
+      return missingResults(o).length ? "in-progress" : "entered";
     case "resulted":
     case "amended": return "published";
     default: return null;
@@ -54,12 +65,21 @@ export const stageLabelOf = (id: string) => LAB_STAGES.find((s) => s.id === id)?
 /* ---------- the rule ---------- */
 
 const SKIP: Record<string, string> = {
+  "ordered>received": "Collect the specimen first.",
   "ordered>in-progress": "Collect the specimen first.",
   "ordered>entered": "Collect the specimen and start processing before you enter results.",
+  "ordered>verification": "Collect the specimen, process it and enter the results before you send them for verification.",
   "ordered>published": "Collect the specimen, process it and enter the results before you release the result.",
-  "collected>entered": "Start processing the specimen before you enter results.",
-  "collected>published": "Start processing and enter every result before you move this to Resulted.",
-  "in-progress>published": "Enter the results before you move this to Resulted.",
+  "collected>in-progress": "Receive the sample in the lab before you start processing.",
+  "collected>entered": "Receive the sample and start processing before you enter results.",
+  "collected>verification": "Receive the sample, start processing and enter every result first.",
+  "collected>published": "Receive the sample, start processing and enter every result before you move this to Resulted.",
+  "received>entered": "Start processing the specimen before you enter results.",
+  "received>verification": "Start processing and enter every result first.",
+  "received>published": "Start processing and enter every result before you move this to Resulted.",
+  "in-progress>verification": "Enter every result before you send them for verification.",
+  "in-progress>published": "Enter the results and have a second user verify them before you move this to Resulted.",
+  "entered>published": "Send the results for verification first. A second user verifies and releases them.",
 };
 
 /** One rule for drag and for the Move menu. */
@@ -86,11 +106,13 @@ export function labStageSince(o: LabOrder, stage: LabStageId): string {
   switch (stage) {
     case "ordered": return o.orderedAt;
     case "collected": return first?.collectedAt ?? o.orderedAt;
+    case "received": return sampleOf(o)?.receivedAt ?? first?.collectedAt ?? o.orderedAt;
     case "in-progress": return first?.receivedAt ?? first?.collectedAt ?? o.orderedAt;
     case "entered": {
       const times = Object.values(o.results).map((r) => r.at).sort();
       return times[times.length - 1] ?? first?.receivedAt ?? o.orderedAt;
     }
+    case "verification": return o.submittedAt ?? first?.receivedAt ?? o.orderedAt;
     case "published": return lastAccepted(o.sends, "lab-result")?.at ?? o.orderedAt;
   }
 }
@@ -220,8 +242,10 @@ export function labStats(orders: LabOrder[], now: number): LabStats {
 
 /** Developer View: what each move runs. */
 export const LAB_MOVE_HINT: Record<string, string> = {
-  "ordered>collected": "Runs collectSpecimens. Creates the Specimen records. No NPHIES message.",
-  "collected>in-progress": "Runs startProcessing. Marks the specimens received. No NPHIES message.",
+  "ordered>collected": "Runs collectSpecimens and saves the sample details (lab-extras). Creates the Specimen records and their barcodes. No NPHIES message.",
+  "collected>received": "Runs receiveSample (lab-extras). The lab accepts the sample at the bench. No NPHIES message.",
+  "received>in-progress": "Runs startProcessing. Marks the specimens received. No NPHIES message.",
   "in-progress>entered": "Opens the result editor. saveLabResult stores each value and works out the flag. No NPHIES message yet.",
-  "entered>published": "Opens the sign-off. submitForVerification, then verifyAndReleaseLabResult by a second user. The result is final in the chart. Nothing is sent: it waits on the NPHIES Clinical page, which sends the result FHIR bundle (2.1).",
+  "entered>verification": "Opens the result editor. submitForVerification sends the results to a second user. No NPHIES message.",
+  "verification>published": "Opens the sign-off. verifyAndReleaseLabResult by a second user. The result is final in the chart. Nothing is sent: it waits on the NPHIES Clinical page, which sends the result FHIR bundle (2.1).",
 };

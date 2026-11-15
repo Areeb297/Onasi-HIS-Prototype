@@ -2,6 +2,7 @@ import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import type { RadOrder } from "@/lib/fhir/types";
 import { isRadSigned, procByCode, releaseRadReport } from "@/lib/radiology";
+import { personFromDoctor } from "@/lib/fhir/people";
 import { can } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { auditMove } from "./audit-move";
@@ -24,7 +25,8 @@ import type { CardCtx, MoveCheck, MoveResult } from "./types";
 const NEXT_ACTION: Record<RadStageId, { label: string; to?: RadStageId }> = {
   ordered: { label: "Mark Exam Done", to: "performed" },
   performed: { label: "Write Report", to: "reporting" },
-  reporting: { label: "Release Report", to: "reported" },
+  reporting: { label: "Sign Report", to: "signed" },
+  signed: { label: "Release Report", to: "reported" },
   reported: { label: "Open Report" },
 };
 
@@ -35,8 +37,7 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
   const stage = ctx.stage.id as RadStageId;
   const clock = radClock(order, stage);
   const signed = isRadSigned(order);
-  // A draft must be signed in the editor first, so the button says that and opens the report.
-  const next = stage === "reporting" && !signed ? { label: "Sign Report" } : NEXT_ACTION[stage];
+  const next = NEXT_ACTION[stage];
   const modality = proc?.modality ?? "DX";
   const t = TONE[ctx.lane.tone];
   const prio = order.priority === "stat" ? { tone: "cancel" as const, label: "STAT" } : order.priority === "routine" ? { tone: "muted" as const, label: "Routine" } : { tone: "merge" as const, label: "Urgent" };
@@ -47,6 +48,7 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
           <PriorityTag tone={prio.tone} label={prio.label} />
           <Tag tone={ctx.lane.tone}>{MODALITY_SHORT[modality] ?? modality}</Tag>
           {proc?.contrast && <Tag tone="merge">Contrast</Tag>}
+          {order.coverage && <Tag tone={order.coverage === "plan" ? "ok" : "muted"}>{order.coverage === "plan" ? "Insured" : "Self-Pay"}</Tag>}
           {order.report?.critical && <CriticalPulse />}
         </div>
         <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${t.soft} ${t.text}`} title={`${MODALITY_SHORT[modality] ?? modality}`}>
@@ -61,6 +63,7 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
         {proc?.short ?? order.procCode}
         {proc && <span className="text-muted-foreground"> · {REGION_SHORT[proc.region] ?? proc.region}</span>}
       </CardSubject>
+      <p className="mt-0.5 text-xs text-muted-foreground">Ordered by {personFromDoctor(order.orderedById).name}</p>
 
       <CardFoot>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -70,11 +73,12 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
             <span className="inline-flex items-center gap-1 text-xs font-medium text-ok"><CheckCircle2 className="size-3.5" aria-hidden="true" /> Report released</span>
           )}
           {stage === "reporting" && order.report && !order.report.impression.trim() && <Tag tone="merge">No impression yet</Tag>}
-          {stage === "reporting" && <Tag tone={signed ? "ok" : "update"}>{signed ? "Signed" : "Draft"}</Tag>}
+          {stage === "reporting" && <Tag tone="update">Draft</Tag>}
+          {stage === "signed" && <Tag tone="ok">Signed</Tag>}
         </div>
         {!ctx.overlay && (
           <div className="flex gap-1.5">
-            {stage === "reporting" && signed && (
+            {stage === "signed" && (
               <CardAction label="Open Report" variant="secondary" allowed={allowed} reason="Your role cannot write radiology reports." onClick={onOpen} />
             )}
             <CardAction
@@ -126,6 +130,10 @@ export function RadBoard({
       onOpenEditor(o.id, "Write the findings and the impression. The card moves to Reporting as soon as you type.");
       return "deferred";
     }
+    if (to === "signed") {
+      onOpenEditor(o.id, "A radiologist must sign the report. Check the text, then press Sign Report.");
+      return "deferred";
+    }
     if (to === "reported") {
       if (!isRadSigned(o)) {
         onOpenEditor(o.id, "A radiologist must sign the report before it is released. Check the text, then press Sign Report.");
@@ -169,7 +177,7 @@ export function RadBoard({
         dev={dev}
       />
       <p className="mt-2 text-xs text-muted-foreground">
-        Drag a card to the next stage, or use the arrows button on the card. The clock on Exam Done and Reporting cards counts down to the report due time.
+        Drag a card to the next stage, or use the arrows button on the card. The clock on Exam Done, Reporting and Report Signed cards counts down to the report due time.
         A report is released only after a radiologist has signed it.
       </p>
     </div>

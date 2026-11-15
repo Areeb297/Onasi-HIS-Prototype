@@ -35,6 +35,33 @@ export const PRN_REASONS = ["Pain", "Fever", "Nausea or vomiting", "Anxiety or a
 export const REASONS_FOR: Record<Exclude<DoseOutcome, "given">, string[]> = { held: HELD_REASONS, refused: REFUSED_REASONS, missed: MISSED_REASONS };
 
 export const RIGHTS = ["patient", "drug", "dose", "route", "time"] as const;
+
+/**
+ * Where on the body a dose was given, by region. A simple picker in place of the HIS body drawing.
+ * Left and right are the patient's own.
+ */
+export const SITE_REGIONS: { region: string; sites: string[] }[] = [
+  { region: "Head And Neck", sites: ["Mouth", "Under the tongue", "Left eye", "Right eye", "Both eyes", "Left ear", "Right ear", "Nose", "Neck, left external jugular", "Neck, right external jugular"] },
+  { region: "Chest", sites: ["Chest, left", "Chest, right", "Central line"] },
+  { region: "Abdomen", sites: ["Abdomen, left upper", "Abdomen, right upper", "Abdomen, left lower", "Abdomen, right lower", "Around the navel"] },
+  { region: "Left Arm", sites: ["Left deltoid", "Left upper arm, back", "Left antecubital fossa", "Left forearm", "Left back of hand"] },
+  { region: "Right Arm", sites: ["Right deltoid", "Right upper arm, back", "Right antecubital fossa", "Right forearm", "Right back of hand"] },
+  { region: "Back And Buttocks", sites: ["Upper back", "Lower back", "Left gluteal (dorsogluteal)", "Right gluteal (dorsogluteal)", "Left ventrogluteal", "Right ventrogluteal", "Rectum"] },
+  { region: "Left Leg", sites: ["Left thigh, front (vastus lateralis)", "Left thigh, outer", "Left foot"] },
+  { region: "Right Leg", sites: ["Right thigh, front (vastus lateralis)", "Right thigh, outer", "Right foot"] },
+];
+export const ALL_SITES: string[] = SITE_REGIONS.flatMap((r) => r.sites);
+export const regionOf = (site: string): string | undefined => SITE_REGIONS.find((r) => r.sites.includes(site))?.region;
+
+/** Problems seen while giving a dose. The hospital keeps its own list. */
+export const COMPLICATIONS = [
+  "Pain at the site", "Swelling or redness at the site", "Bleeding or bruising", "IV line leaked (extravasation)", "Rash or itching",
+  "Nausea or vomiting", "Dizziness", "Drop in blood pressure", "Breathing difficulty", "Allergic reaction", "Patient vomited the dose",
+  "Line blocked", "Other",
+];
+
+/** Routes where a body site is usually recorded. The site stays optional for every route. */
+export const SITE_ROUTES = new Set(["IV", "IM", "SC", "ID", "TD", "TOP"]);
 export type Right = (typeof RIGHTS)[number];
 
 /* ---------- high-alert drugs ---------- */
@@ -63,6 +90,11 @@ export interface MarOrder {
   drug: Drug;
   drugText: string;
   doseText: string;
+  /** Units per dose, and the unit: the quantity due for one dose. */
+  doseQty: number;
+  unit: string;
+  /** Route code, such as PO or IV. */
+  route: string;
   routeText: string;
   frequencyId: string;
   frequencyText: string;
@@ -107,7 +139,7 @@ export function marOrders(enc: Encounter, rx: RxState = getRx()): MarOrder[] {
       if (discharged) end = Math.min(end, discharged);
       out.push({
         itemId: item.id, rxId: p.id, rxNumber: p.number, drug, drugText: drugLabel(drug),
-        doseText: `${item.dose} ${drug.unit}`, routeText: ROUTE_LABEL[item.route] ?? item.route,
+        doseText: `${item.dose} ${drug.unit}`, doseQty: item.dose, unit: drug.unit, route: item.route, routeText: ROUTE_LABEL[item.route] ?? item.route,
         frequencyId: item.frequencyId,
         frequencyText: kind === "stat" ? "Stat (once, now)" : kind === "prn" ? `As needed${freq ? `, up to ${freq.label.toLowerCase()}` : ""}` : freq?.label ?? item.frequencyId,
         kind, status: item.status, live: item.status === "active" || item.status === "completed",
@@ -211,6 +243,17 @@ export interface AdminRecord {
   effect?: { text: string; at: string; by: string };
   /** Entered in error. The record stays in the history and the dose opens again. */
   voided?: { at: string; by: string; reason: string };
+  /* The fields below came later. All optional, so older saved records still open: no quantity means the full dose. */
+  /** Where on the body the dose was given, from SITE_REGIONS. */
+  site?: string;
+  /** Quantity due, given and wasted, in the dose unit. */
+  qtyDue?: number;
+  qtyGiven?: number;
+  qtyWasted?: number;
+  /** Problems seen while giving the dose. */
+  complications?: string[];
+  /** Set when several doses were recorded together in one dialog. */
+  batch?: string;
 }
 
 interface State {
@@ -327,6 +370,11 @@ export interface AdminInput {
   timingReason?: string;
   witness?: { name: string; staffNo: string };
   prnReason?: string;
+  site?: string;
+  /** Quantity given and wasted. Leave both out for the full dose with nothing wasted. */
+  qtyGiven?: number;
+  qtyWasted?: number;
+  complications?: string[];
 }
 
 const NAME_NOISE = new Set(["dr", "rn", "md", "pharmd", "mlt", "nurse"]);
@@ -365,12 +413,31 @@ export function checkAdmin(input: AdminInput, order: MarOrder | undefined, who: 
       else if (samePerson(w, who)) errors.push("The second nurse must be a different person.");
     }
     if (order.kind === "prn" && !input.prnReason?.trim()) errors.push("Choose why the as-needed dose is given.");
+    errors.push(...quantityErrors(input, order));
   } else {
     if (!input.reason?.trim()) errors.push(`Choose why the dose was ${OUTCOME_LABEL[input.outcome].toLowerCase()}.`);
     else if (input.reason === "Other" && !input.note?.trim()) errors.push("Write the reason in the note.");
   }
   if ((input.timingReason === "Other" || input.prnReason === "Other") && !input.note?.trim() && input.outcome === "given") errors.push("Write the reason in the note.");
-  return errors;
+  if (input.site && !ALL_SITES.includes(input.site)) errors.push("Choose the site from the list.");
+  if (input.complications?.includes("Other") && !input.note?.trim()) errors.push("You chose Other under complications. Describe it in the note.");
+  return [...new Set(errors)];
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** The quantity given and wasted must add up to the dose due. Nothing to check when both are left out. */
+export function quantityErrors(input: Pick<AdminInput, "qtyGiven" | "qtyWasted">, order: Pick<MarOrder, "doseQty" | "unit">): string[] {
+  if (input.qtyGiven === undefined && input.qtyWasted === undefined) return [];
+  const given = input.qtyGiven ?? round2(order.doseQty - (input.qtyWasted ?? 0));
+  const wasted = input.qtyWasted ?? round2(order.doseQty - given);
+  const out: string[] = [];
+  if (!Number.isFinite(given) || given <= 0) out.push("Enter the quantity given. It must be more than zero.");
+  if (!Number.isFinite(wasted) || wasted < 0) out.push("The quantity wasted cannot be below zero.");
+  if (out.length === 0 && round2(given + wasted) !== round2(order.doseQty)) {
+    out.push(`The quantity given and wasted must add up to the dose due (${order.doseQty} ${order.unit}).`);
+  }
+  return out;
 }
 
 function signedIn(): { id: string; name: string; role: string } {
@@ -393,11 +460,21 @@ export function recordDose(input: AdminInput, now: number = Date.now()): RecordR
   const s = get();
   const errors = checkAdmin(input, order, who, now, s.records);
   if (errors.length || !order) return { ok: false, errors };
+  const seq = s.seq + 1;
+  const record = buildRecord(input, order, enc, who, `MA-${seq}`, now);
+  commit({ seq, records: [...s.records, record] });
+  auditRecord(record, enc.visitNumber, enc.patientId);
+  return { ok: true, record };
+}
+
+function buildRecord(input: AdminInput, order: MarOrder, enc: Encounter, who: { name: string; role: string }, id: string, now: number, batch?: string): AdminRecord {
   const given = input.outcome === "given";
   const at = given ? input.at ?? now : now;
-  const seq = s.seq + 1;
-  const record: AdminRecord = {
-    id: `MA-${seq}`, visit: enc.visitNumber, patientId: enc.patientId, itemId: order.itemId, rxId: order.rxId,
+  const qtyGiven = input.qtyGiven ?? round2(order.doseQty - (input.qtyWasted ?? 0));
+  const qty = given ? { qtyDue: order.doseQty, qtyGiven, qtyWasted: input.qtyWasted ?? round2(order.doseQty - qtyGiven) } : {};
+  const complications = input.complications?.map((c) => c.trim()).filter(Boolean);
+  return {
+    id, visit: enc.visitNumber, patientId: enc.patientId, itemId: order.itemId, rxId: order.rxId,
     slot: input.slot !== undefined ? iso(input.slot) : undefined,
     drugText: order.drugText, doseText: order.doseText, routeText: order.routeText,
     outcome: input.outcome, at: iso(at),
@@ -409,13 +486,85 @@ export function recordDose(input: AdminInput, now: number = Date.now()): RecordR
     witness: given && order.highAlert && input.witness ? { name: input.witness.name.trim(), staffNo: input.witness.staffNo.trim() } : undefined,
     highAlert: order.highAlert ?? undefined,
     prnReason: given && order.kind === "prn" ? input.prnReason?.trim() : undefined,
+    site: given && input.site ? input.site : undefined,
+    ...qty,
+    complications: complications?.length ? complications : undefined,
+    batch,
   };
-  commit({ seq, records: [...s.records, record] });
+}
+
+function auditRecord(record: AdminRecord, visit: string, patientId: string) {
+  const qty = record.qtyWasted ? `. Given ${record.qtyGiven}, wasted ${record.qtyWasted}` : "";
   audit("create", `Medicine dose ${record.id}`, {
-    patient: enc.patientId,
-    detail: `Visit ${enc.visitNumber}. ${order.drugText}, ${OUTCOME_LABEL[input.outcome].toLowerCase()}${record.reason ? `: ${record.reason}` : ""}${record.witness ? `. Second nurse ${record.witness.name} (${record.witness.staffNo})` : ""}`,
+    patient: patientId,
+    detail: `Visit ${visit}. ${record.drugText}, ${OUTCOME_LABEL[record.outcome].toLowerCase()}${record.reason ? `: ${record.reason}` : ""}${qty}${record.site ? `. Site ${record.site}` : ""}${record.complications ? `. Complications: ${record.complications.join(", ")}` : ""}${record.witness ? `. Second nurse ${record.witness.name} (${record.witness.staffNo})` : ""}`,
   });
-  return { ok: true, record };
+}
+
+/* ---------- several doses at one hour ---------- */
+
+/** Doses with a set time due within the hour that starts at `hourStart` (ms) and not recorded yet. */
+export function dueInHour(enc: Encounter, hourStart: number, now: number = Date.now(), s: State = get(), rx: RxState = getRx()): DoseSlot[] {
+  return dosesBetween(enc, hourStart, hourStart + 60 * MIN - 1, now, s, rx).filter((d) => !d.record && d.dueAt !== null && d.order.live);
+}
+
+/** The start of the hour of a moment (ms). */
+export const hourOf = (t: number): number => { const d = new Date(t); d.setMinutes(0, 0, 0); return d.getTime(); };
+
+export type BatchProblem = { itemId: string; drugText: string; errors: string[] };
+export type BatchResult = { ok: true; records: AdminRecord[] } | { ok: false; errors: BatchProblem[] };
+
+/**
+ * Records several doses in one go, as the nurse does on a round. Every dose is checked first; if any one fails,
+ * nothing is saved, so the chart never holds half a round.
+ */
+export function recordDoses(inputs: AdminInput[], now: number = Date.now()): BatchResult {
+  const fail = (text: string): BatchResult => ({ ok: false, errors: [{ itemId: "", drugText: "", errors: [text] }] });
+  if (inputs.length === 0) return fail("Choose at least one dose to record.");
+  const visit = inputs[0].visit;
+  const enc = getState().encounters.find((e) => e.visitNumber === visit);
+  if (!enc) return fail("This visit was not found.");
+  if (!emarApplies(enc)) return fail("The medication chart is for inpatients and emergency patients.");
+  const orders = marOrders(enc);
+  const who = signedIn();
+  const s = get();
+  const problems: BatchProblem[] = [];
+  const seen = new Set<string>();
+  for (const input of inputs) {
+    const order = orders.find((o) => o.itemId === input.itemId);
+    const errors = input.visit !== visit ? ["All doses in one round must be for the same visit."] : checkAdmin(input, order, who, now, s.records);
+    const key = `${input.itemId}|${input.slot ?? "prn"}`;
+    if (seen.has(key)) errors.push("This dose is in the list twice.");
+    seen.add(key);
+    if (errors.length) problems.push({ itemId: input.itemId, drugText: order?.drugText ?? input.itemId, errors });
+  }
+  if (problems.length) return { ok: false, errors: problems };
+  const batch = inputs.length > 1 ? `RB-${s.seq + 1}` : undefined;
+  let seq = s.seq;
+  const records = inputs.map((input) => {
+    seq += 1;
+    return buildRecord(input, orders.find((o) => o.itemId === input.itemId) as MarOrder, enc, who, `MA-${seq}`, now, batch);
+  });
+  commit({ seq, records: [...s.records, ...records] });
+  for (const r of records) auditRecord(r, enc.visitNumber, enc.patientId);
+  return { ok: true, records };
+}
+
+/* ---------- month view ---------- */
+
+export interface DaySummary {
+  total: number;
+  counts: Partial<Record<DoseState, number>>;
+  /** The state that most needs a nurse's eye that day: overdue, then missed, refused, held, due, scheduled, given. */
+  worst: DoseState | null;
+}
+
+const WORST_ORDER: DoseState[] = ["overdue", "missed", "refused", "held", "due", "scheduled", "given"];
+
+export function summarizeDay(doses: Pick<DoseSlot, "state">[]): DaySummary {
+  const counts: Partial<Record<DoseState, number>> = {};
+  for (const d of doses) counts[d.state] = (counts[d.state] ?? 0) + 1;
+  return { total: doses.length, counts, worst: WORST_ORDER.find((k) => counts[k]) ?? null };
 }
 
 /** As-needed dose: how the patient responded. */

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { BadgeCheck, ChevronDown, GitMerge, IdCard, Search, ShieldCheck } from "lucide-react";
+import { BadgeCheck, ChevronDown, GitMerge, IdCard, Printer, Search, ShieldCheck } from "lucide-react";
 import { ClassBadge, StatusBadge } from "@/components/badges";
 import { Dialog } from "@/components/Dialog";
 import { Badge, Card, Empty, Input, PageHeader, Table, Td, Th, Button } from "@/components/ui/primitives";
@@ -102,7 +102,7 @@ export function PatientsPage() {
     <div>
       <PageHeader
         title="Patients"
-        subtitle="Made-up patients only. No real hospital or patient data. Pick a patient to see visits, or start an event from the Events menu."
+        subtitle="Every patient file. Search for a patient, open the visit timeline, or update the file."
         right={
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <div className="relative w-full sm:w-64">
@@ -134,21 +134,17 @@ export function PatientsPage() {
           <thead>
             <tr>
               <Th>Patient</Th>
-              <Th>Health ID</Th>
-              <Th>Age / Sex</Th>
-              <Th>Phone</Th>
+              <Th>Age, Sex And Phone</Th>
               <Th>Coverage</Th>
               <Th>Eligibility</Th>
               <Th>Current Visit</Th>
-              <Th>Status</Th>
-              <Th>Location</Th>
               <Th className="text-right">Actions</Th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <Td colSpan={10}>
+                <Td colSpan={6}>
                   <Empty>No patients match your search.</Empty>
                 </Td>
               </tr>
@@ -164,14 +160,14 @@ export function PatientsPage() {
                       {p.extra?.newborn && <Badge tone="info">Newborn</Badge>}
                     </div>
                     {!hidden && <PatientNameAr patient={p} className="text-start" />}
-                    <div className="text-xs text-muted-foreground">{p.mrn}</div>
+                    <div className="text-xs text-muted-foreground">MRN <span className="font-mono">{p.mrn}</span></div>
+                    <div className="text-xs text-muted-foreground">Health ID <span className="font-mono">{p.healthId}</span></div>
                     <PatientFlagBadges patient={p} className="mt-1" />
                   </Td>
-                  <Td className="font-mono text-xs">{p.healthId}</Td>
                   <Td>
-                    {ageLabel(p.dob) || "Not known"} / {p.sex === "M" ? "Male" : "Female"}
+                    <div className="whitespace-nowrap">{ageLabel(p.dob) || "Not known"}, {p.sex === "M" ? "Male" : "Female"}</div>
+                    <div className="font-mono text-xs whitespace-nowrap text-muted-foreground">{hidden ? "Phone hidden" : p.extra?.mobile || "No phone"}</div>
                   </Td>
-                  <Td className="font-mono text-xs whitespace-nowrap">{hidden ? "Hidden" : p.extra?.mobile || "None"}</Td>
                   <Td>
                     {primary ? (
                       <span className="block min-w-28">
@@ -185,24 +181,25 @@ export function PatientsPage() {
                   <Td><EligibilityBadge answer={eligibility} /></Td>
                   <Td>
                     {latest ? (
-                      <span className="flex items-center gap-2">
-                        <span className="font-mono text-xs">{latest.visitNumber}</span>
-                        <ClassBadge cls={latest.cls} />
+                      <span className="block">
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-xs">{latest.visitNumber}</span>
+                          <ClassBadge cls={latest.cls} />
+                          <StatusBadge status={latest.status} />
+                        </span>
+                        {latest.status === "active" && latest.bedId && <span className="mt-1 block text-xs text-muted-foreground">{bedLabel(latest.bedId)}</span>}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">None</span>
+                      <Badge>No Visit</Badge>
                     )}
                   </Td>
-                  <Td>{latest ? <StatusBadge status={latest.status} /> : <Badge>No Visit</Badge>}</Td>
-                  <Td>{latest?.status === "active" ? bedLabel(latest.bedId) : "None"}</Td>
                   <Td className="text-right">
-                    <span className="inline-flex gap-1.5">
+                    <span className="inline-flex flex-wrap justify-end gap-1.5">
                       {latest && (
                         <Button size="sm" onClick={() => navigate("/encounters", { visit: latest.visitNumber })}>
                           View Timeline
                         </Button>
                       )}
-                      <Button size="sm" onClick={() => setBand(p.id)}>Print Wristband</Button>
                       <Button size="sm" variant="primary" onClick={() => navigate("/event/A31", { patient: p.id, enc: latest?.visitNumber })}>
                         Update Identity
                       </Button>
@@ -211,6 +208,7 @@ export function PatientsPage() {
                           <Button size="sm" aria-label={`More actions for ${p.mrn}`}>More <ChevronDown className="size-4" /></Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem onClick={() => setBand(p.id)} className="gap-3 py-2 text-sm"><Printer className="size-4 text-muted-foreground" />Print Wristband</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setCoverageFor(p.id)} className="gap-3 py-2 text-sm"><ShieldCheck className="size-4 text-move" />Patient Coverage</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setEligibilityFor(p.id)} className="gap-3 py-2 text-sm"><BadgeCheck className="size-4 text-ok" />Eligibility Request</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setHealthIdFor(p.id)} className="gap-3 py-2 text-sm"><IdCard className="size-4 text-update" />National Health ID</DropdownMenuItem>

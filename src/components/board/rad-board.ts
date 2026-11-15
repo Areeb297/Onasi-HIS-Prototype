@@ -1,16 +1,16 @@
 import { lastAccepted, type RadOrder } from "@/lib/fhir/types";
-import { isRadPublished, procByCode, radOrderNphiesState, radReportNphiesState, reportMissing } from "@/lib/radiology";
+import { isRadPublished, isRadSigned, procByCode, radOrderNphiesState, radReportNphiesState, reportMissing } from "@/lib/radiology";
 import { avg, sameLocalDay } from "./board-util";
 import { clockState, elapsedMin } from "./clock";
 import type { BoardLane, BoardStage, ClockSpec, MoveCheck } from "./types";
 
 /* ---------- stages and lanes ---------- */
 
-export type RadStageId = "ordered" | "performed" | "reporting" | "reported";
+export type RadStageId = "ordered" | "performed" | "reporting" | "signed" | "reported";
 export type RadLaneId = "xray" | "ct" | "mri" | "us" | "other";
 type Prio = "stat" | "urgent" | "routine";
 
-const STAGE_ORDER: RadStageId[] = ["ordered", "performed", "reporting", "reported"];
+const STAGE_ORDER: RadStageId[] = ["ordered", "performed", "reporting", "signed", "reported"];
 
 /** Target minutes. Exam: order to exam done. Report: exam done to report published. Demo values. */
 export const RAD_EXAM_TARGET_MIN: Record<Prio, number> = { stat: 15, urgent: 60, routine: 240 };
@@ -19,7 +19,8 @@ export const RAD_REPORT_TARGET_MIN: Record<Prio, number> = { stat: 30, urgent: 1
 export const RAD_STAGES: (BoardStage & { id: RadStageId })[] = [
   { id: "ordered", label: "Ordered", tone: "move", hint: "Waiting for the exam", target: "Exam target 15 min to 4 h" },
   { id: "performed", label: "Exam Done", tone: "admit", hint: "Images taken, no report yet", target: "Report target 30 min to 24 h" },
-  { id: "reporting", label: "Reporting", tone: "update", hint: "Draft, then signed by the radiologist", target: "Report target 30 min to 24 h" },
+  { id: "reporting", label: "Reporting", tone: "update", hint: "Draft being written by the radiologist", target: "Report target 30 min to 24 h" },
+  { id: "signed", label: "Report Signed", tone: "merge", hint: "Signed by the radiologist, waiting for release", target: "Report target 30 min to 24 h" },
   { id: "reported", label: "Reported", tone: "ok", hint: "Released to the chart", limit: 4 },
 ];
 
@@ -43,7 +44,7 @@ export const reportStarted = (o: RadOrder): boolean => !!o.report && (!!o.report
 export function radStageOf(o: RadOrder): RadStageId | null {
   switch (o.status) {
     case "received": return "ordered";
-    case "performed": return reportStarted(o) ? "reporting" : "performed";
+    case "performed": return isRadSigned(o) ? "signed" : reportStarted(o) ? "reporting" : "performed";
     case "resulted":
     case "amended": return "reported";
     default: return null;
@@ -56,8 +57,11 @@ export const radStageLabel = (id: string) => RAD_STAGES.find((s) => s.id === id)
 
 const SKIP: Record<string, string> = {
   "ordered>reporting": "Mark the exam as performed before you write the report.",
+  "ordered>signed": "Perform the exam and write the report before it is signed.",
   "ordered>reported": "Perform the exam and write the report before you publish.",
-  "performed>reported": "Write the report before you move this to Reported.",
+  "performed>signed": "Write the report before it is signed.",
+  "performed>reported": "Write the report and have a radiologist sign it before you move this to Reported.",
+  "reporting>reported": "A radiologist must sign the report before it is released.",
 };
 
 export function radCanMove(o: RadOrder, from: string, to: string): MoveCheck {
@@ -72,7 +76,7 @@ export function radCanMove(o: RadOrder, from: string, to: string): MoveCheck {
       : { ok: false, reason: "An exam that was done cannot go back. If it was a mistake, cancel the order and place a new one." };
   }
   if (b - a > 1) return { ok: false, reason: SKIP[`${from}>${to}`] ?? "Move the card one stage at a time." };
-  if (to === "reported") {
+  if (to === "signed" || to === "reported") {
     const miss = reportMissing(o);
     if (miss.length) return { ok: false, reason: `Add the ${miss.join(" and the ").toLowerCase()} before you publish the report.` };
   }
@@ -84,13 +88,14 @@ export function radCanMove(o: RadOrder, from: string, to: string): MoveCheck {
 export function radStageSince(o: RadOrder, stage: RadStageId): string {
   if (stage === "ordered") return o.orderedAt;
   if (stage === "reported") return lastAccepted(o.sends, "rad-report")?.at ?? o.orderedAt;
+  if (stage === "signed") return o.report?.signedAt ?? o.study?.performedEnd ?? o.orderedAt;
   return o.study?.performedEnd ?? o.orderedAt;
 }
 
 /** Ordered counts down the exam target. Exam Done and Reporting count down the report due time. Reported has no clock. */
 export function radClock(o: RadOrder, stage: string): ClockSpec | null {
   if (stage === "ordered") return { since: o.orderedAt, targetMin: RAD_EXAM_TARGET_MIN[prioOf(o)] };
-  if (stage === "performed" || stage === "reporting") return { since: radStageSince(o, "performed"), targetMin: RAD_REPORT_TARGET_MIN[prioOf(o)] };
+  if (stage === "performed" || stage === "reporting" || stage === "signed") return { since: radStageSince(o, "performed"), targetMin: RAD_REPORT_TARGET_MIN[prioOf(o)] };
   return null;
 }
 
@@ -139,7 +144,7 @@ export function radStats(orders: RadOrder[], now: number): RadStats {
       continue;
     }
     if (st !== "reported" && prioOf(o) === "stat") statWaiting += 1;
-    if (st === "performed" || st === "reporting") awaitingReport += 1;
+    if (st === "performed" || st === "reporting" || st === "signed") awaitingReport += 1;
     const c = radClock(o, st);
     if (c && clockState(elapsedMin(c.since, now), c.targetMin) === "late") late += 1;
     const first = o.sends.find((s) => s.kind === "rad-report" && s.response.status === "accepted");
@@ -158,5 +163,6 @@ export function radStats(orders: RadOrder[], now: number): RadStats {
 export const RAD_MOVE_HINT: Record<string, string> = {
   "ordered>performed": "Opens the exam record. completeExam checks it, then creates the imaging study (study UID and accession). No NPHIES message.",
   "performed>reporting": "Opens the report editor. saveRadReport stores the text. No NPHIES message yet.",
-  "reporting>reported": "Runs releaseRadReport, which needs the radiologist signature (signRadReport). The report is final in the chart. Nothing is sent: it waits on the NPHIES Clinical page, which sends the report FHIR bundle (3.1).",
+  "reporting>signed": "Opens the report editor. signRadReport records the radiologist signature and locks the text. No NPHIES message.",
+  "signed>reported": "Runs releaseRadReport. The report is final in the chart. Nothing is sent: it waits on the NPHIES Clinical page, which sends the report FHIR bundle (3.1).",
 };

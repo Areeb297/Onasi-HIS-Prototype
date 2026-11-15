@@ -6,12 +6,14 @@ import { qrSeed, round2, zatcaClock, zatcaQrText, type Invoice, type InvoiceStat
 /** An amount in Saudi riyals with halalas (two decimals). Money.tsx rounds to whole riyals, which is not enough for tax. */
 export function Sar({ value, minus, className }: { value: number; minus?: boolean; className?: string }) {
   const v = round2(value);
+  const neg = (minus && v !== 0) || v < 0;
+  // "relative" keeps the screen-reader words inside a sideways-scrolling table, so they do not widen the page on a phone.
   return (
-    <span className={cn("inline-flex items-baseline gap-[0.18em] whitespace-nowrap tabular-nums", className)}>
-      {(minus && v !== 0) || v < 0 ? <span aria-hidden="true">-</span> : null}
+    <span className={cn("relative inline-flex items-baseline gap-[0.18em] whitespace-nowrap tabular-nums", className)}>
+      {neg && <><span aria-hidden="true">-</span><span className="sr-only">minus </span></>}
       <RiyalSign />
       <span>{Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-      <span className="sr-only">{(minus && v !== 0) || v < 0 ? " Saudi riyals off" : " Saudi riyals"}</span>
+      <span className="sr-only"> Saudi riyals</span>
     </span>
   );
 }

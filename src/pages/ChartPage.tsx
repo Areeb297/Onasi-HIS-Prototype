@@ -6,13 +6,14 @@ import { RowActions, type ActionKey } from "@/components/RowActions";
 import { VisitDischargeProgress, useVisitActions } from "@/components/VisitActions";
 import { CodeBlock } from "@/components/ui/code-block";
 import { NphiesLogo } from "@/components/NphiesLogo";
+import { ProceduresSection } from "@/components/emr/ProceduresSection";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { Timeline, type TimelineEvent } from "@/components/ui/timeline";
 import { quickSend } from "@/lib/actions";
 import { useDevMode } from "@/lib/devmode";
 import { pretty } from "@/lib/hl7";
 import type { Encounter, Patient, Vitals } from "@/lib/model";
-import { ALLERGY_SAMPLES, ALLERGY_TYPES, COMPLAINT_SAMPLES, DOCTORS, DX_SAMPLES, DX_TYPES, PR_SAMPLES, PR_TYPES } from "@/lib/reference-data";
+import { DOCTORS, PR_SAMPLES, PR_TYPES } from "@/lib/reference-data";
 import { navigate, useRoute } from "@/lib/router";
 import { EVENT_BY_ID } from "@/lib/spec";
 import { bedLabel, nowLocal, patientName, updateEncounter, useHis } from "@/lib/store";
@@ -32,6 +33,7 @@ import { EmarSection } from "@/components/emr/EmarSection";
 import { FollowUpSection } from "@/components/emr/FollowUpSection";
 import { RadiologySection } from "@/components/emr/RadiologySection";
 import { SoapSection } from "@/components/emr/SoapSection";
+import { ProgressNotesSection } from "@/components/emr/ProgressNotesSection";
 import { TheatreSection } from "@/components/emr/TheatreSection";
 import { AllergySection } from "@/components/emr/AllergySection";
 import { ComplaintsSection } from "@/components/emr/ComplaintsSection";
@@ -84,7 +86,7 @@ function GlassGate({ patient }: { patient: Patient }) {
 
 const NATIVE: Record<NativeId, (p: { enc: Encounter }) => React.ReactElement> = {
   overview: OverviewTab, complaints: ComplaintsSection, vitals: VitalsSection, diagnosis: DiagnosisSection, prescription: PrescriptionSection,
-  procedures: Procedures, allergies: AllergySection, laboratory: LabSection, radiology: RadiologySection, notes: Notes,
+  procedures: ProceduresSection, allergies: AllergySection, laboratory: LabSection, radiology: RadiologySection, notes: ProgressNotesSection,
   soap: SoapSection, documents: ClinicalDocsSection, adt: AdtMessages, surgery: TheatreSection,
   emar: EmarSection, "follow-up": FollowUpSection, consults: ConsultSection,
 };
@@ -428,40 +430,6 @@ function Procedures({ enc }: { enc: Encounter }) {
           ))}
         </tbody>
       </Table>
-    </SectionCard>
-  );
-}
-
-function Notes({ enc }: { enc: Encounter }) {
-  const [text, setText] = React.useState("");
-  return (
-    <SectionCard title="Progress Notes">
-      <div className="space-y-2 border-b border-border px-4 py-3">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={3}
-          placeholder="Write a note"
-          aria-label="Progress note"
-          className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-        <Button
-          variant="primary"
-          disabled={!text.trim()}
-          onClick={() => { updateEncounter(enc.visitNumber, (e) => { e.notes = [...e.notes, { at: nowLocal(), author: doctorName(e.attending), text: text.trim() }]; }, { touch: false }); setText(""); }}
-        >
-          Add Note
-        </Button>
-      </div>
-      <ul className="divide-y divide-border">
-        {enc.notes.length === 0 && <li><Empty>No notes yet. Notes are not part of the ADT message.</Empty></li>}
-        {[...enc.notes].reverse().map((n, i) => (
-          <li key={i} className="px-4 py-3 text-sm">
-            <div className="text-xs text-muted-foreground">{n.author} · {when(n.at)}</div>
-            <div className="mt-1">{n.text}</div>
-          </li>
-        ))}
-      </ul>
     </SectionCard>
   );
 }

@@ -413,7 +413,7 @@ export const SETUP: MasterDef[] = [
     module: "Settings",
     description: "Top level menu groups of the HIS.",
     columns: [
-      mono("code", "Module Id", true),
+      mono("code", "Module ID", true),
       text("name", "Module", true),
       text("nameArabic", "Arabic Name"),
       text("caption", "Caption"),
@@ -431,7 +431,7 @@ export const SETUP: MasterDef[] = [
     module: "Settings",
     description: "Every page in the menu with its route and permission.",
     columns: [
-      mono("pageId", "Page Id", true),
+      mono("pageId", "Page ID", true),
       text("title", "Title", true),
       text("module", "Module"),
       mono("path", "Route", true),
@@ -592,7 +592,7 @@ export const SETUP: MasterDef[] = [
     description: "Business rules that warn or block users.",
     note: "Scaffold with sample rows. Rules are listed but not evaluated.",
     columns: [
-      mono("ruleId", "Rule Id", true),
+      mono("ruleId", "Rule ID", true),
       text("name", "Rule", true),
       pick("scope", "Scope", ["Registration", "Orders", "Pharmacy", "Claims", "Discharge"], true),
       text("condition", "Condition"),
@@ -628,7 +628,7 @@ export const SETUP: MasterDef[] = [
     description: "Which data fields a rule can read.",
     note: "Scaffold with sample rows.",
     columns: [
-      mono("ruleId", "Rule Id", true),
+      mono("ruleId", "Rule ID", true),
       mono("sourceField", "Source Field", true),
       mono("ruleField", "Rule Field", true),
       pick("dataType", "Data Type", ["Text", "Number", "Date", "List"]),

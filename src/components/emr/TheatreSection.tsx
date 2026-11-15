@@ -10,7 +10,7 @@ import { navigate, useRoute } from "@/lib/router";
 import { can, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import {
-  ANAESTHESIA_TECHNICIANS, ANAESTHETISTS, POSTOP_DIAGNOSES, RECOVERY_DESTINATIONS, RECOVERY_NURSES, SURGEONS, THEATRE_NURSES, THEATRE_STAFF, WARD_NURSES,
+  ANAESTHETISTS, POSTOP_DIAGNOSES, RECOVERY_DESTINATIONS, RECOVERY_NURSES, SURGEONS, THEATRE_NURSES, THEATRE_STAFF, WARD_NURSES,
   allCases, casesForVisit, closeCase, confirmPhase, confirmSchedule, isDoctor, postponeSchedule, requestSurgery, saveAssessment, saveOpNote, savePhaseDraft,
   savePreOp, saveRecovery, saveSchedule, useTheatre, type Result,
 } from "@/lib/theatre";
@@ -19,7 +19,7 @@ import {
   PREOP_REVIEWS, PREOP_SECTIONS, RECOVERY_CHECKS, SAFETY_PHASES, SAFETY_SIGNERS, SIDES, STEPS, TEAM_ROLES, THEATRE_ROOMS, URGENCIES,
   aldreteMaxOf, aldreteTotal, caseStage, closeGate, confirmGate, currentStep, fitForSurgery, latestAldrete, nextAction, phaseUnanswered, postponeGate,
   preOpMissing, preOpNaAllowed, preOpProblems, readyForOperativeNote, recoveryDischargeGate, scheduleEnd, scheduleStatus, stepDone, stepGate,
-  validateAssessment, validateClosure, validateOpNote, validatePhase, validateRecovery, validateRequest, validateSchedule, validateScheduleDraft,
+  timingGate, validateAssessment, validateClosure, validateOpNote, validatePhase, validateRecovery, validateRequest, validateSchedule, validateScheduleDraft,
   type AldreteScores, type AssessmentResult, type CaseStage, type CloseOutcome, type CodedDx, type Gate, type OpNoteData, type PhaseId, type PreOpAnswer,
   type PreOpData, type RecoveryData, type SafetyAnswer, type SafetySigners, type ScheduleStatus, type Signer, type Stamp, type StepId, type SurgeryCase,
   type TeamMember,
@@ -236,7 +236,7 @@ function AssessmentDialog({ c, enc, onClose, report }: DialogProps) {
   const problem = validateAssessment(data);
   const needsNote = !!result && result !== "Fit";
   return (
-    <Dialog open wide onClose={onClose} title="Pre-anaesthesia Assessment" subtitle={`Step 2. ${c.request.procedure}`}
+    <Dialog open wide onClose={onClose} title="Pre-Anesthesia Assessment" subtitle={`Step 2. ${c.request.procedure}`}
       footer={<StepFooter problem={problem} onCancel={onClose} saveLabel="Save Assessment" onSave={() => result && report(saveAssessment(c.id, { ...data, result }))} />}>
       <RequiredNote className="mb-3" />
       <p className="mb-4 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"><span className="font-medium">Allergies in the chart:</span> {allergyText(enc.allergies)}</p>
@@ -424,14 +424,28 @@ function PhaseDialog({ c, enc, phase, patient, onClose, report }: DialogProps & 
     nurse: c.schedule?.circulatingNurse ? { name: c.schedule.circulatingNurse } : undefined, ...c.safetySigners,
   }));
   const data = { answers, texts, remarks: remarks || undefined, confirmedRole: role, confirmedName: team[role] ?? "", signers };
-  const problem = validatePhase(phase, data);
+  // Sign In, Time Out and Sign Out wait for the booked slot. A doctor may start early with a reason.
+  const [earlyReason, setEarlyReason] = React.useState("");
+  const timing = timingGate(c, phase);
+  const doctor = isDoctor();
+  const early = !timing.ok ? { reason: earlyReason } : undefined;
+  const timingProblem = timing.ok ? null : !doctor ? timing.reason : earlyReason.trim() ? null : "Give the reason for starting before the booked time.";
+  const problem = timingProblem ?? validatePhase(phase, data);
   const unanswered = phaseUnanswered(phase, data).length;
   const people: Record<string, readonly string[]> = { surgeon: SURGEONS, anaesthetist: ANAESTHETISTS, nurse: THEATRE_NURSES };
   return (
     <Dialog open wide onClose={onClose} title={`${def.label}: ${def.when}`} subtitle={`Surgical safety checklist. ${def.read}`}
-      footer={<DraftFooter problem={problem} onCancel={onClose} completeLabel={`Confirm ${def.label}`}
-        onDraft={() => report(savePhaseDraft(c.id, phase, data))} onComplete={() => report(confirmPhase(c.id, phase, data))} />}>
+      footer={<DraftFooter problem={problem} draftProblem={timingProblem} onCancel={onClose} completeLabel={`Confirm ${def.label}`}
+        onDraft={() => report(savePhaseDraft(c.id, phase, data, early))} onComplete={() => report(confirmPhase(c.id, phase, data, early))} />}>
       <CaseFacts c={c} enc={enc} patient={patient} />
+      {!timing.ok && (
+        <div role="alert" className="mb-4 rounded-lg border border-warn/50 bg-warn/10 p-3">
+          <p className="text-sm font-medium">{timing.reason}</p>
+          <Field label="Reason For Starting Early" required className="mt-2" hint={doctor ? "Recorded on the case with your name." : "You are not signed in as a doctor, so you cannot start early."}>
+            <Textarea rows={2} className={textareaClass} value={earlyReason} disabled={!doctor} onChange={(e) => setEarlyReason(e.target.value)} placeholder="Emergency case needs the room" />
+          </Field>
+        </div>
+      )}
       <RequiredNote className="mb-4" />
       <div className="space-y-5">
         <Group title={`${def.label} Items`} hint={`${unanswered ? `${unanswered} still to answer. ` : ""}A check answered No stops the phase until it is put right.`}>
@@ -1038,6 +1052,3 @@ export function TheatreSection({ enc }: { enc: Encounter }): React.ReactElement 
     </div>
   );
 }
-
-/* Kept for other screens that show the anaesthesia technicians list. */
-export const THEATRE_TECHNICIANS = ANAESTHESIA_TECHNICIANS;

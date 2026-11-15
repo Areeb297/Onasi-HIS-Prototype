@@ -262,3 +262,162 @@ table,
   .onasi-mark { transition: filter 0.35s ease; }
   .onasi-mark:hover, :is(button, a, span, label):hover > .onasi-mark { transform: none; }
 }
+
+/* ==========================================================================
+ * DASHBOARDS AND GLASS (appended block). Adds tokens and rules only; nothing above is changed.
+ * Colours from the Onasi Brand Guidelines v1.0: Dark Green #032C26, Minty White #DAF0E4, Mint #0CE69F, Cyan #39EDD5.
+ * Chart palettes checked with the dataviz palette validator on the card surface in both themes.
+ * ========================================================================== */
+
+/* ---------- Chart tokens (scoped to .viz) ---------- */
+.viz {
+  /* Categorical, fixed order: brand cyan, then deep teal. Validated all-pairs (CVD 15.4, normal 15.7). */
+  --viz-1: #03c1ac;
+  --viz-2: #008c78;
+  /* Neutral grey-green for "the rest" (free beds, other), and Dark Green as a neutral anchor. Not identity colours. */
+  --viz-rest: #9db0a4;
+  --viz-anchor: #032c26;
+  /* Bars: gently graded cyan. One highlighted bar at most, in deep teal, with a faint glow. */
+  --bar-from: #03c1ac;
+  --bar-to: #52fce3;
+  --hl-from: #035d53;
+  --hl-to: #05a391;
+  --hl-glow: rgba(5, 163, 145, 0.22);
+  /* Lines and sparklines: a darker cyan step so a 2px line reads on white. */
+  --viz-line: #05a391;
+  --viz-line-to: #39edd5;
+  /* Ordinal ramp (stages, age bands), light to dark, cyan. */
+  --ord-1: #03c1ac;
+  --ord-2: #05a391;
+  --ord-3: #04857a;
+  --ord-4: #016b5f;
+  --ord-5: #003f37;
+  /* Status, reserved for claim and payment state, always with an icon or label. Validated as a set. */
+  --st-good: #028a5e;
+  --st-warn: #e5a230;
+  --st-crit: #d9483f;
+  --st-wait: #9db0a4;
+  --viz-grid: #e7ebe9;
+  --viz-axis: #cfd6d3;
+  --viz-track: rgba(20, 32, 28, 0.06);
+}
+html.dark .viz {
+  --viz-1: #11ab9c;
+  --viz-2: #017a55;
+  --viz-rest: #546259;
+  --viz-anchor: #daf0e4;
+  --bar-from: #016b5f;
+  --bar-to: #05a391;
+  --hl-from: #1ddfc7;
+  --hl-to: #52fce3;
+  --hl-glow: rgba(57, 237, 213, 0.2);
+  --viz-line: #39edd5;
+  --viz-line-to: #52fce3;
+  --ord-1: #016b5f;
+  --ord-2: #05a391;
+  --ord-3: #03c1ac;
+  --ord-4: #1ddfc7;
+  --ord-5: #52fce3;
+  --st-good: #00a671;
+  --st-warn: #be8a2c;
+  --st-crit: #c9473f;
+  --st-wait: #819689;
+  --viz-grid: #1e2a27;
+  --viz-axis: #33433e;
+  --viz-track: rgba(255, 255, 255, 0.06);
+}
+
+/*
+ * ---------- Onasi glass, reusable on any page ----------
+ * Clean white frosted glass on the plain light green page: neutral white translucency, a soft neutral border, a white
+ * top highlight and a soft neutral shadow. No colour on or inside the cards; colour lives in the data and small accents.
+ *   .glass-backdrop  page container for glass cards (no colour of its own; the page stays the plain light green).
+ *   .glass-card      frosted white card: blur 20px, saturate 1.4, white top highlight, neutral hairline and shadow.
+ *   .glass-panel     the same, a little more opaque, for charts, tables and long reading.
+ *   .glass-kpi       a KPI tile: glass-card plus radius and the hover shadow.
+ *   .glass-pill      a frosted pill for segmented switches, filters and small controls.
+ *   .glass-row       a small frosted row inside a card (timeline items, list rows).
+ *   .glass-icon      an icon tile accent: Mint-to-Cyan at low opacity, outlined icon in deep green.
+ *   .glass-hover     the hover shadow on its own (the lift is a framer-motion hover in GlassCard and KpiTile).
+ * Solid fallback where backdrop-filter is missing or the user asks for reduced transparency.
+ */
+html {
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-bg-strong: rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(20, 32, 28, 0.08);
+  --glass-hi: rgba(255, 255, 255, 0.9);
+  --glass-shadow: 0 1px 2px rgba(16, 24, 22, 0.04), 0 8px 24px -14px rgba(16, 24, 22, 0.16);
+  --glass-shadow-hover: 0 2px 4px rgba(16, 24, 22, 0.05), 0 18px 36px -18px rgba(16, 24, 22, 0.26);
+  --glass-solid: #ffffff;
+  --icon-from: rgba(12, 230, 159, 0.16);
+  --icon-to: rgba(57, 237, 213, 0.2);
+  --icon-ink: #016d48;
+  --spark-from: #39edd5;
+  --spark-to: #05a391;
+}
+html.dark {
+  --glass-bg: rgba(14, 26, 23, 0.8);
+  --glass-bg-strong: rgba(12, 23, 20, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-hi: rgba(255, 255, 255, 0.05);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -16px rgba(0, 0, 0, 0.6);
+  --glass-shadow-hover: 0 20px 40px -18px rgba(0, 0, 0, 0.8);
+  --glass-solid: #0d1a17;
+  --icon-from: rgba(12, 230, 159, 0.14);
+  --icon-to: rgba(57, 237, 213, 0.14);
+  --icon-ink: #2ef0a9;
+  --spark-from: #05a391;
+  --spark-to: #52fce3;
+}
+
+.glass-backdrop { position: relative; isolation: isolate; }
+
+.glass-card,
+.glass-panel,
+.glass-kpi {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-hi), var(--glass-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+}
+.glass-panel { background: var(--glass-bg-strong); }
+.glass-kpi { border-radius: 1rem; }
+.glass-pill {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 4px 14px -10px rgba(16, 24, 22, 0.25);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+.glass-row {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(20, 32, 28, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+html.dark .glass-row { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.07); box-shadow: none; }
+.glass-icon {
+  background: linear-gradient(135deg, var(--icon-from), var(--icon-to));
+  color: var(--icon-ink);
+}
+
+.glass-hover,
+.glass-kpi { transition: box-shadow 0.25s ease; }
+.glass-hover:hover,
+.glass-kpi:hover { box-shadow: inset 0 1px 0 var(--glass-hi), var(--glass-shadow-hover); }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-card, .glass-panel, .glass-kpi, .glass-pill { background: var(--glass-solid); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-card, .glass-panel, .glass-kpi, .glass-pill { background: var(--glass-solid); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (forced-colors: active) {
+  .glass-card, .glass-panel, .glass-kpi, .glass-pill, .glass-row { border: 1px solid CanvasText; }
+}
+
+/* The one highlighted bar: a faint glow, nothing more. */
+.viz-glow { filter: drop-shadow(0 3px 6px var(--hl-glow)); }
+@media (forced-colors: active) { .viz-glow { filter: none; } }
+/* ======================== end of dashboards block ======================== */

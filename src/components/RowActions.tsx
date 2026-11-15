@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-  IconArrowBackUp, IconArrowsExchange, IconBed, IconCircleX, IconEdit, IconFolderOpen, IconLogout, IconUserCheck, IconWalk,
+  IconArrowBackUp, IconArrowsExchange, IconBed, IconCircleX, IconEdit, IconFolderOpen, IconLogout, IconUserShare, IconUserCheck, IconWalk,
 } from "@tabler/icons-react";
 import { ChevronDown } from "lucide-react";
 import { Badge, Button, cn } from "@/components/ui/primitives";
@@ -34,18 +34,24 @@ export function actionsFor(enc: Encounter): ActionDef[] {
     if (inpatient) out.push({ key: "A07", label: "Change To Outpatient", icon: ic(IconWalk, "text-move") });
     out.push({ key: "A08", label: "Send Update", icon: ic(IconEdit, "text-update"), dot: enc.dirty });
     out.push({ key: "A03", label: "Discharge", icon: ic(IconLogout, "text-cancel") });
+    out.push(MOVE);
     out.push({ key: "A11", label: inpatient ? "Cancel Admission" : "Cancel Visit", icon: ic(IconCircleX, "text-cancel") });
   }
   if (enc.status === "discharged") {
     out.push({ key: "A08", label: "Send Update", icon: ic(IconEdit, "text-update"), dot: enc.dirty });
     out.push({ key: "A13", label: "Undo Discharge", icon: ic(IconArrowBackUp, "text-update") });
+    out.push(MOVE);
   }
   if (enc.status === "preadmit") {
     out.push({ key: "A01", label: "Admit", icon: ic(IconBed, "text-ok") });
+    out.push(MOVE);
     out.push({ key: "A38", label: "Cancel Pre-Admit", icon: ic(IconCircleX, "text-cancel") });
   }
   return out;
 }
+
+/** The visit was opened on the wrong patient (A45). A correction, so it sits with the risky actions at the end of the menu. */
+const MOVE: ActionDef = { key: "A45", label: "Move Visit", icon: ic(IconUserShare, "text-merge") };
 
 /** The one step most likely to come next. It gets the colored button. Everything else goes in the More menu. */
 function suggested(enc: Encounter, list: ActionDef[]): ActionDef | undefined {
@@ -61,6 +67,8 @@ function suggested(enc: Encounter, list: ActionDef[]): ActionDef | undefined {
 }
 
 const DANGER: ActionKey[] = ["A11", "A38"];
+/** Corrections and cancellations sit apart at the end of the menu, after a line. Only the cancellations are red. */
+const LAST: ActionKey[] = ["A45", ...DANGER];
 
 export function RowActions({ enc, onAct }: { enc: Encounter; onAct: (k: ActionKey) => void }) {
   const dev = useDevMode();
@@ -93,7 +101,7 @@ export function RowActions({ enc, onAct }: { enc: Encounter; onAct: (k: ActionKe
           <DropdownMenuContent align="end" className="w-64">
             {more.map((a, i) => (
               <React.Fragment key={`${a.key}-${a.label}`}>
-                {i > 0 && DANGER.includes(a.key) && !DANGER.includes(more[i - 1].key) && <DropdownMenuSeparator />}
+                {i > 0 && LAST.includes(a.key) && !LAST.includes(more[i - 1].key) && <DropdownMenuSeparator />}
                 <DropdownMenuItem onClick={() => onAct(a.key)} className={cn("gap-3 py-2 text-sm", DANGER.includes(a.key) && "text-destructive focus:text-destructive")}>
                   {a.icon}
                   <span className="flex-1">{a.label}{code(a)}</span>
@@ -123,6 +131,7 @@ export function ActionLegend() {
     ["Undo Discharge", ic(IconArrowBackUp, "text-update"), "A13"],
     ["Cancel Visit or Admission", ic(IconCircleX, "text-cancel"), "A11"],
     ["Cancel Pre-Admit", ic(IconCircleX, "text-cancel"), "A38"],
+    ["Move Visit", ic(IconUserShare, "text-merge"), "A45"],
   ];
   return (
     <div className="mt-3 rounded-xl border border-border bg-card px-4 py-3">

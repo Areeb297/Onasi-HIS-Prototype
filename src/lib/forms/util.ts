@@ -16,8 +16,15 @@ export const multi = (key: string, label: string, options: Opts, x: Extra = {}):
 export const chk = (key: string, label: string, x: Extra = {}): FieldDef => ({ key, label, type: "checkbox", ...x });
 export const scale = (key: string, label: string, max: number, x: Extra = {}): FieldDef => ({ key, label, type: "scale", max, ...x });
 
-/** Put every field in a named section heading. */
-export const section = (name: string, ...fields: FieldDef[]): FieldDef[] => fields.map((f) => ({ ...f, section: name }));
+/**
+ * Title Case for a section heading: every word starts with a capital letter and short capital words such as APGAR or CTG stay as they are.
+ * "Female factor" becomes "Female Factor", "Pre-op checklist (if applicable)" becomes "Pre-Op Checklist (If Applicable)".
+ */
+export const titleCase = (s: string): string =>
+  s.replace(/(^|[\s(/-])([a-z])/g, (_m, pre: string, c: string) => `${pre}${c.toUpperCase()}`);
+
+/** Put every field in a named section heading. The heading is shown in Title Case. */
+export const section = (name: string, ...fields: FieldDef[]): FieldDef[] => fields.map((f) => ({ ...f, section: titleCase(name) }));
 
 /** Scored option: label with a numeric score. */
 export const so = (value: string, label: string, score: number): FieldOption => ({ value, label, score });

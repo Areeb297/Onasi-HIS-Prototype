@@ -65,7 +65,7 @@ function surgeriesPart(i: DocInput, prefix = "sx"): Part {
 const BUILDERS: Record<string, (i: DocInput) => Part> = {
   chief: (i) => {
     const c = i.enc.complaints;
-    if (c.length) return { blocks: [list(c.map((x) => (x.code ? `${x.text} (SNOMED CT ${x.code})` : x.text)))], sources: ["Encounter.complaints"] };
+    if (c.length) return { blocks: [list(c.map((x) => (x.code ? `${x.text} (${x.system === "ICD10AM" ? "ICD-10-AM" : "SNOMED CT"} ${x.code})` : x.text)))], sources: ["Encounter.complaints"] };
     return text(i.enc.reason, ["Encounter.reason"]);
   },
   referral: (i) => {

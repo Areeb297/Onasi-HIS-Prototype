@@ -148,7 +148,7 @@ export function MergePatientsDialog({ open, onClose, keepId: initialKeep }: { op
         <div role="alertdialog" aria-label="Confirm merge" className="mt-4 rounded-lg border border-warn/60 bg-warn/10 p-3 text-sm">
           <p className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4 shrink-0" />This cannot be undone here.</p>
           <ul className="mt-1.5 list-disc space-y-0.5 ps-5">
-            <li>{dupVisits.length ? `${dupVisits.length} visit${dupVisits.length === 1 ? "" : "s"} (${dupVisits.map((e) => e.visitNumber).join(", ")}) move to ${keep.mrn}.` : "The duplicate has no visits to move."}</li>
+            <li>{dupVisits.length ? `${dupVisits.length} visit${dupVisits.length === 1 ? "" : "s"} (${dupVisits.map((e) => e.visitNumber).join(", ")}) ${dupVisits.length === 1 ? "moves" : "move"} to ${keep.mrn}.` : "The duplicate has no visits to move."}</li>
             <li>{dup.mrn} is marked merged and leaves the patient lists.</li>
             <li>The duplicate's coverages that {keep.mrn} does not already have are added after its own.</li>
             <li>A merge message goes to the national platform for each visit that is not cancelled.</li>

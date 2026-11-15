@@ -85,7 +85,7 @@ const newId = () => `ai-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 
 /** What the assistant says when it does not understand, or when it is asked for help. Needs no chart. */
 export const helpText = () =>
-  ["I am a simulated assistant. I follow fixed rules and templates over the open chart.", SIM_NOTE, "", "Try one of these:", ...USE_CASES.map((u) => `- ${u.label}`)].join("\n");
+  ["I follow fixed rules and templates over the open chart. I am not a certified medical device, so a clinician must review every answer.", "", "Try one of these:", ...USE_CASES.map((u) => `- ${u.label}`)].join("\n");
 
 const bullet = (arr: string[]) => arr.map((x) => `- ${x}`).join("\n");
 const flagWord = { high: "HIGH", medium: "CHECK", info: "NOTE" } as const;

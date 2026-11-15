@@ -79,7 +79,7 @@ export function InvoicePage() {
       <PageHeader
         mark={<Button size="sm" variant="ghost" onClick={() => navigate("/invoices")} aria-label="Back to the Invoice Worklist"><ArrowLeft className="size-4" /></Button>}
         title={`Invoice #${inv.number}`}
-        subtitle={v.status === "Draft" ? "Draft: the lines follow the visit's orders until the visit ends." : v.status === "Submitted" ? "The visit has ended. The lines are fixed." : "Paid in full by the patient and the payer."}
+        subtitle={v.status === "Draft" ? "Draft: the lines follow the visit's orders until the visit ends." : v.status === "Submitted" ? "The visit has ended. The lines are fixed." : inv.insurer ? "Paid in full by the patient and the payer." : "Paid in full by the patient."}
         right={
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={sendZatca} disabled={!allowed || reported} title={!allowed ? noPerm : reported ? "Already reported." : undefined}>
@@ -97,7 +97,7 @@ export function InvoicePage() {
             <Fact label="Patient">{patientName(patient)}</Fact>
             <Fact label="MRN">{patient.mrn}</Fact>
             <Fact label="Date">{when(inv.createdAt)}</Fact>
-            <Fact label="Insurer">{inv.insurer ?? "None (cash)"}</Fact>
+            <Fact label="Payer">{inv.insurer ?? "Cash"}</Fact>
             <Fact label="Status"><InvoiceStatusBadge status={v.status} /></Fact>
           </dl>
           <div className="flex gap-6">
@@ -125,7 +125,7 @@ export function InvoicePage() {
       )}
 
       <Card className="mb-4">
-        <CardHeader title="Item Details" subtitle={insured ? `${inv.insurer} pays 90 percent. The patient pays 10 percent${inv.vat ? " plus 15 percent VAT on that share" : ""}.` : inv.vat ? "Cash visit. 15 percent VAT applies." : "Cash visit."} />
+        <CardHeader title="Item Details" subtitle={insured ? `${inv.insurer} pays ${Math.round((inv.payerShare ?? 0.9) * 1000) / 10} percent. The patient pays ${Math.round((1 - (inv.payerShare ?? 0.9)) * 1000) / 10} percent${inv.vat ? " plus 15 percent VAT on that share" : ""}.` : inv.vat ? "Cash patient with no insurance share. The patient pays the whole amount plus 15 percent VAT." : "Cash patient with no insurance share. The patient pays the whole amount."} />
         <div className="overflow-x-auto">
           <table className={cn("w-full border-collapse text-sm", insured ? "min-w-[1100px]" : "min-w-[760px]")}>
             <thead>

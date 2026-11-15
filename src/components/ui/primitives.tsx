@@ -230,17 +230,18 @@ export function Table({ children, className }: { children: React.ReactNode; clas
   );
 }
 
-export function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
+/** `numeric` right-aligns the heading so it sits over right-aligned numbers in its column. Use the same flag on the cells. */
+export function Th({ children, className, numeric }: { children?: React.ReactNode; className?: string; numeric?: boolean }) {
   return (
-    <th className={cn("border-b border-border bg-muted px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap text-foreground", className)}>
+    <th className={cn("border-b border-border bg-muted px-3 py-2.5 text-xs font-semibold whitespace-nowrap text-foreground", numeric ? "text-right" : "text-left", className)}>
       {children}
     </th>
   );
 }
 
-export function Td({ children, className, colSpan }: { children?: React.ReactNode; className?: string; colSpan?: number }) {
+export function Td({ children, className, colSpan, numeric }: { children?: React.ReactNode; className?: string; colSpan?: number; numeric?: boolean }) {
   return (
-    <td colSpan={colSpan} className={cn("border-b border-border/70 px-3 py-[var(--row-py,0.6rem)] align-middle text-foreground", className)}>
+    <td colSpan={colSpan} className={cn("border-b border-border/70 px-3 py-[var(--row-py,0.6rem)] align-middle text-foreground", numeric && "text-right tabular-nums", className)}>
       {children}
     </td>
   );

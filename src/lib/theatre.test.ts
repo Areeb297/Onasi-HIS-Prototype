@@ -91,7 +91,7 @@ describe("the steps run in order", () => {
     expect(caseStage(caseAt("opNote"))).toBe("In Recovery");
     expect(caseStage(caseAt("recovery"))).toBe("Ready To Close");
     expect(caseStage(caseAt("close"))).toBe("Closed");
-    expect(nextAction(caseAt("request"))).toBe("Pre-anaesthesia Assessment");
+    expect(nextAction(caseAt("request"))).toBe("Pre-Anesthesia Assessment");
     expect(nextAction(caseAt("schedule"))).toBe(`Pre-operative checklist, ${PREOP_ITEMS.length} left`);
     expect(nextAction(caseAt("close"))).toBe("No action needed");
   });

@@ -78,6 +78,8 @@ export interface FormDef {
   audience?: "child" | "adult";
   /** Form id of the same kind of tool for the other age group. */
   alternative?: string;
+  /** The patient sex the form is made for, for example "F" for pregnancy and labor forms. Absent means any. */
+  sex?: "F" | "M";
   /** Short forms used on the form, with their meaning. */
   legend?: [string, string][];
   /** Extra summary above the record list. */

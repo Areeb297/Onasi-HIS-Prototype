@@ -50,7 +50,7 @@ export const RCM: MasterDef[] = [
     description: "Claims already sent to payers.",
     note: RCM_NOTE,
     columns: [
-      mono("transactionId", "Transaction Id", true),
+      mono("transactionId", "Transaction ID", true),
       mono("claimNo", "Claim No"),
       text("patient", "Patient"),
       pick("payer", "Payer", PAYERS, true),
@@ -92,7 +92,7 @@ export const RCM: MasterDef[] = [
     description: "Billable visits that are ready to become claims.",
     note: RCM_NOTE,
     columns: [
-      mono("transactionId", "Transaction Id", true),
+      mono("transactionId", "Transaction ID", true),
       text("patient", "Patient", true),
       pick("payer", "Payer", PAYERS, true),
       pick("visitType", "Visit Type", ["Outpatient", "Inpatient", "Emergency", "Day Case"]),
@@ -100,7 +100,7 @@ export const RCM: MasterDef[] = [
       num("amount", "Amount (SAR)"),
       mono("claimNo", "Claim", false, "Not generated"),
       ...more(
-        mono("invoiceNo", "Inv. #"),
+        mono("invoiceNo", "Invoice Number"),
         mono("mrn", "MR Number"),
         mono("episodeNo", "Episode Number"),
         pick("claimType", "Claim Type", CLAIM_TYPES),
@@ -167,7 +167,7 @@ export const RCM: MasterDef[] = [
     description: "Fraud, waste and abuse flags raised on claims.",
     note: RCM_NOTE + " Flags are made up.",
     columns: [
-      mono("caseId", "Case Id", true),
+      mono("caseId", "Case ID", true),
       mono("claimNo", "Claim No"),
       text("provider", "Provider"),
       pick("flag", "Flag", ["Upcoding", "Duplicate billing", "Unbundling", "Excess length of stay", "Services not rendered"], true),
@@ -209,7 +209,7 @@ export const RCM: MasterDef[] = [
     description: "Denied claims, appeal deadlines and outcomes.",
     note: RCM_NOTE,
     columns: [
-      mono("denialId", "Denial Id", true),
+      mono("denialId", "Denial ID", true),
       mono("claimNo", "Claim No"),
       text("patient", "Patient"),
       pick("payer", "Payer", PAYERS, true),
@@ -321,7 +321,7 @@ export const RCM: MasterDef[] = [
       badge("status", "Status", ["Paid", "Pending", "Review"]),
       ...more(
         text("patient", "Patient"),
-        mono("claimNo", "Claim #"),
+        mono("claimNo", "Claim Number"),
         text("dateTime", "Date/Time", false, "2026-11-05 10:00"),
         pick("paymentStatus", "Payment Status", ["Paid", "Cleared"]),
         pick("paymentType", "Payment Type", ["Complete", "Partial"]),
@@ -381,7 +381,7 @@ export const RCM: MasterDef[] = [
     note: RCM_NOTE + " The response text is stored as typed and is not checked.",
     columns: [
       mono("claimNo", "Claim"),
-      mono("requestId", "Request Id", true),
+      mono("requestId", "Request ID", true),
       text("patient", "Patient"),
       pick("type", "Response Type", ["Pre-Authorization", "Claim", "Eligibility", "Communication", "Poll", "Payment", "Cancellation", "Status Check", "Batch Request"], true),
       text("dateTime", "Date Time", false, "2026-11-12 09:30"),
@@ -401,7 +401,7 @@ export const RCM: MasterDef[] = [
     description: "Files of claims loaded from other systems.",
     note: RCM_NOTE + " Files are not read.",
     columns: [
-      mono("importId", "Import Id", true),
+      mono("importId", "Import ID", true),
       text("fileName", "File Name", true),
       pick("source", "Source", ["CSV file", "Excel file", "XML file", "TPA portal"], true),
       date("importedOn", "Imported On"),

@@ -1,11 +1,11 @@
 import * as React from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { can, useSession } from "@/lib/session";
 import { useDevMode } from "@/lib/devmode";
-import { EMR_FORM_BY_ID } from "@/lib/emr-forms";
+import { EMR_FORM_BY_ID, sexProblem } from "@/lib/emr-forms";
 import { ADULT_FROM_YEARS, ageYears, allergyText, computeValues, fitsAge, fluidDays, hasScores, prefillValues, scoreOf, scoreSummary, signedMl, SHIFT_NAMES } from "@/lib/flowsheet";
 import type { Encounter } from "@/lib/model";
 import { addFormRecord, deleteFormRecord, getFormRecords, updateFormRecord, useRecords } from "@/lib/records";
@@ -156,31 +156,120 @@ function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val
 
 /* ---------- the form in a side sheet ---------- */
 
+const isEmpty = (val: Values[string] | undefined) => val === undefined || val === "" || val === false || (Array.isArray(val) && val.length === 0);
+/** Fields the user fills in. The ones the system works out or fills by itself are not counted. */
+const isEntry = (f: FieldDef) => !f.compute && !f.auto;
+
+interface FormSection {
+  name: string;
+  fields: FieldDef[];
+}
+
+/** Fields in the order of the form, grouped under their section headings. */
+function formSections(form: FormDef): FormSection[] {
+  const out: FormSection[] = [];
+  for (const f of form.fields) {
+    const name = f.section ?? "";
+    const last = out[out.length - 1];
+    if (last && last.name === name) last.fields.push(f);
+    else out.push({ name, fields: [f] });
+  }
+  return out;
+}
+
+/** How much of a list of fields is filled in, and which required ones are still empty. */
+function fillCount(fields: FieldDef[], v: Values) {
+  const entry = fields.filter(isEntry);
+  return {
+    total: entry.length,
+    filled: entry.filter((f) => !isEmpty(v[f.key])).length,
+    needed: fields.filter((f) => f.required && (v[f.key] === undefined || v[f.key] === "" || (Array.isArray(v[f.key]) && (v[f.key] as string[]).length === 0))),
+  };
+}
+
+/** A form is long when it has enough sections and fields that it is easier to work one section at a time. */
+const LONG_FORM_FIELDS = 30;
+const LONG_FORM_SECTIONS = 4;
+
 function FormSheet({
   form, open, initial, ctx, onClose, onSave,
 }: { form: FormDef; open: boolean; initial: Values; ctx: AutoContext; onClose: () => void; onSave: (v: Values) => void }) {
   const dev = useDevMode();
+  const uid = React.useId();
   const [v, setV] = React.useState<Values>(() => withAuto(form, initial, ctx));
-  React.useEffect(() => { if (open) setV(withAuto(form, initial, ctx)); }, [open, initial]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sections = React.useMemo(() => formSections(form), [form]);
+  const named = sections.filter((s) => s.name).length;
+  const long = form.fields.length >= LONG_FORM_FIELDS && named >= LONG_FORM_SECTIONS;
+  const collapsible = named >= 2;
+  /** Indexes of the sections that are folded away. A long form opens with only its first section showing. */
+  const startClosed = React.useCallback(() => new Set(long ? sections.map((_, i) => i).filter((i) => i > 0 && sections[i].name) : []), [long, sections]);
+  const [closed, setClosed] = React.useState<Set<number>>(startClosed);
+  const sectionRefs = React.useRef<(HTMLElement | null)[]>([]);
+  React.useEffect(() => {
+    if (!open) return;
+    setV(withAuto(form, initial, ctx));
+    setClosed(startClosed());
+  }, [open, initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const missing = form.fields.filter((f) => f.required && (v[f.key] === undefined || v[f.key] === "" || (Array.isArray(v[f.key]) && (v[f.key] as string[]).length === 0)));
-  const sections: { name: string; fields: FieldDef[] }[] = [];
-  for (const f of form.fields) {
-    const name = f.section ?? "";
-    const last = sections[sections.length - 1];
-    if (last && last.name === name) last.fields.push(f);
-    else sections.push({ name, fields: [f] });
-  }
+  const all = fillCount(form.fields, v);
+  const missing = all.needed;
   const score = scoreSummary(form, v);
+
+  const toggle = (i: number) => setClosed((c) => { const n = new Set(c); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  /** Opens a section and brings it to the top. With a field key, the focus goes to that field. */
+  const jump = (i: number, fieldKey?: string) => {
+    setClosed((c) => { if (!c.has(i)) return c; const n = new Set(c); n.delete(i); return n; });
+    requestAnimationFrame(() => {
+      const el = sectionRefs.current[i];
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const target = fieldKey ? el?.querySelector<HTMLElement>(`[data-field="${fieldKey}"]`) : null;
+      (target ?? el)?.scrollIntoView({ block: target ? "center" : "start", behavior: reduce ? "auto" : "smooth" });
+      const focus = target?.querySelector<HTMLElement>("input, select, textarea, button") ?? el?.querySelector<HTMLElement>("button");
+      focus?.focus({ preventScroll: true });
+    });
+  };
+  const sectionOf = (key: string) => sections.findIndex((s) => s.fields.some((f) => f.key === key));
+  const allOpen = closed.size === 0;
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
-        <SheetHeader className="border-b border-border">
+      <SheetContent className={cn("flex w-full flex-col gap-0", long ? "sm:max-w-3xl" : "sm:max-w-xl")}>
+        <SheetHeader className="border-b border-border pr-12">
           <SheetTitle>{form.title}</SheetTitle>
           <SheetDescription>{form.description ?? "Fill in the form and save it to the chart."}{dev && form.nphies ? ` NPHIES: ${form.nphies}` : ""}</SheetDescription>
         </SheetHeader>
-        <div className="flex-1 space-y-7 overflow-y-auto px-5 py-5">
+        {collapsible && (
+          <nav aria-label="Sections of this form" className="flex items-center gap-2 border-b border-border bg-muted/40 px-5 py-2">
+            <ul className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto p-0.5 [scrollbar-width:thin]">
+              {sections.map((s, i) => {
+                if (!s.name) return null;
+                const c = fillCount(s.fields, v);
+                const done = c.total > 0 && c.filled === c.total;
+                return (
+                  <li key={i} className="shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => jump(i)}
+                      aria-label={`Go to ${s.name}, ${c.filled} of ${c.total} filled${c.needed.length ? `, ${c.needed.length} still needed` : ""}`}
+                      className={cn(
+                        "flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        c.needed.length ? "border-warn/60 bg-warn/10 text-foreground" : done ? "border-ok/50 bg-ok/10 text-foreground" : "border-border bg-card text-foreground",
+                      )}
+                    >
+                      {done && <Check className="size-3.5 text-ok" aria-hidden="true" />}
+                      {s.name}
+                      <span className="tabular-nums text-muted-foreground">{c.filled}/{c.total}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setClosed(allOpen ? new Set(sections.map((_, i) => i).filter((i) => sections[i].name)) : new Set())}>
+              {allOpen ? "Collapse All" : "Expand All"}
+            </Button>
+          </nav>
+        )}
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           {form.fields.some((f) => f.required) && <RequiredNote />}
           {form.legend && form.legend.length > 0 && (
             <dl className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed" aria-label="Short forms used on this form">
@@ -190,35 +279,88 @@ function FormSheet({
               ))}
             </dl>
           )}
-          {sections.map((s, i) => (
-            <section key={i}>
-              {s.name && <h3 className="mb-4 border-b border-border pb-2 text-sm font-semibold text-foreground">{s.name}</h3>}
-              <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+          {sections.map((s, i) => {
+            const c = fillCount(s.fields, v);
+            const framed = collapsible && !!s.name;
+            const isOpen = !framed || !closed.has(i);
+            const body = (
+              <div id={`${uid}-s${i}`} className={cn("grid gap-x-4 gap-y-5 sm:grid-cols-2", framed && "px-4 pb-5 pt-4")}>
                 {s.fields.map((f) => (
-                  <Field key={f.key} label={f.label} required={f.required} hint={f.hint} hl7={dev ? f.hl7 : undefined}
-                    className={cn((f.full || f.type === "textarea" || f.type === "scale" || f.type === "radio" || f.type === "multiselect") && "sm:col-span-2")}>
-                    <FieldInput f={f} v={v} onChange={(val) => setV((x) => computeValues(form, { ...x, [f.key]: val }))} />
-                  </Field>
+                  <div key={f.key} data-field={f.key} className={cn("min-w-0", (f.full || f.type === "textarea" || f.type === "scale" || f.type === "radio" || f.type === "multiselect") && "sm:col-span-2")}>
+                    <Field label={f.label} required={f.required} hint={f.hint} hl7={dev ? f.hl7 : undefined}>
+                      <FieldInput f={f} v={v} onChange={(val) => setV((x) => computeValues(form, { ...x, [f.key]: val }))} />
+                    </Field>
+                  </div>
                 ))}
               </div>
-            </section>
-          ))}
+            );
+            if (!framed) {
+              return (
+                <section key={i} ref={(el) => { sectionRefs.current[i] = el; }} className="pb-3">
+                  {s.name && <h3 className="mb-4 border-b border-border pb-2 text-sm font-semibold text-foreground">{s.name}</h3>}
+                  {body}
+                </section>
+              );
+            }
+            return (
+              <section key={i} ref={(el) => { sectionRefs.current[i] = el; }} className="rounded-xl border border-border bg-card">
+                <h3>
+                  <button
+                    type="button"
+                    onClick={() => toggle(i)}
+                    aria-expanded={isOpen}
+                    aria-controls={`${uid}-s${i}`}
+                    className={cn("flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", isOpen && "rounded-b-none border-b border-border")}
+                  >
+                    <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", isOpen && "rotate-90")} aria-hidden="true" />
+                    <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">{s.name}</span>
+                    {c.needed.length > 0 && <Badge tone="warn">{c.needed.length} Needed</Badge>}
+                    <span className={cn("shrink-0 text-xs tabular-nums", c.total > 0 && c.filled === c.total ? "font-semibold text-ok" : "text-muted-foreground")}>
+                      {c.filled} of {c.total} filled
+                    </span>
+                  </button>
+                </h3>
+                {isOpen && body}
+              </section>
+            );
+          })}
         </div>
-        <SheetFooter className="flex-row items-center justify-between border-t border-border">
-          <span className="min-w-0 text-sm text-muted-foreground">
-            {hasScores(form) ? `${form.scoreLabel ?? "Total score"}: ` : ""}
-            {hasScores(form) && (score.complete
-              ? <strong className="text-foreground">{score.total}{score.band ? `, ${score.band.label}` : ""}</strong>
-              : <strong className="text-foreground">{score.answered === 0 ? "not scored yet" : `${score.answered} of ${score.items} items answered`}</strong>)}
-            {hasScores(form) && form.scoreAll && !score.complete && score.answered > 0 && <span className="block">Answer every item to get the total and the risk band.</span>}
-            {missing.length > 0 && <span className="block">Still needed: {missing.map((m) => m.label).join(", ")}</span>}
-          </span>
-          <span className="flex shrink-0 gap-2">
-            <Button onClick={onClose}>Cancel</Button>
-            <Button variant="primary" disabled={missing.length > 0} onClick={() => onSave(withAuto(form, v, ctx))} title={missing.length ? `Missing: ${missing.map((m) => m.label).join(", ")}` : undefined}>
-              Save
-            </Button>
-          </span>
+        <SheetFooter className="mt-0 gap-2 border-t border-border bg-background">
+          {long && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                <div className="h-full rounded-full bg-admit transition-[width] motion-reduce:transition-none" style={{ width: `${all.total ? Math.round((all.filled / all.total) * 100) : 0}%` }} />
+              </div>
+              <span className="shrink-0 tabular-nums">{all.filled} of {all.total} filled</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <span className="min-w-0 text-sm text-muted-foreground">
+              {hasScores(form) ? `${form.scoreLabel ?? "Total score"}: ` : ""}
+              {hasScores(form) && (score.complete
+                ? <strong className="text-foreground">{score.total}{score.band ? `, ${score.band.label}` : ""}</strong>
+                : <strong className="text-foreground">{score.answered === 0 ? "not scored yet" : `${score.answered} of ${score.items} items answered`}</strong>)}
+              {hasScores(form) && form.scoreAll && !score.complete && score.answered > 0 && <span className="block">Answer every item to get the total and the risk band.</span>}
+              {missing.length > 0 && (
+                <span className="block">
+                  Still needed:{" "}
+                  {missing.slice(0, 3).map((m, n) => (
+                    <React.Fragment key={m.key}>
+                      {n > 0 && ", "}
+                      <button type="button" onClick={() => jump(sectionOf(m.key), m.key)} className="rounded font-medium text-foreground underline underline-offset-2 hover:text-admit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{m.label}</button>
+                    </React.Fragment>
+                  ))}
+                  {missing.length > 3 && ` and ${missing.length - 3} more`}
+                </span>
+              )}
+            </span>
+            <span className="flex shrink-0 gap-2">
+              <Button onClick={onClose}>Cancel</Button>
+              <Button variant="primary" disabled={missing.length > 0} onClick={() => onSave(withAuto(form, v, ctx))} title={missing.length ? `Missing: ${missing.map((m) => m.label).join(", ")}` : undefined}>
+                Save
+              </Button>
+            </span>
+          </div>
         </SheetFooter>
       </SheetContent>
     </Sheet>
@@ -237,9 +379,10 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
   const patient = his.patients.find((p) => p.id === enc.patientId);
   const age = patient ? ageYears(patient.dob) : NaN;
   const rightAge = fitsAge(form, age);
+  const wrongSex = sexProblem(form, patient?.sex);
   const other = form.alternative ? EMR_FORM_BY_ID[form.alternative] : undefined;
   const ctx: AutoContext = { user: user.name, allergies: allergyText(enc.allergies) };
-  const blocked = !canWrite ? "Your role cannot add records." : !rightAge ? `This tool is not for a patient aged ${age}.` : "";
+  const blocked = !canWrite ? "Your role cannot add records." : wrongSex ? wrongSex : !rightAge ? `This tool is not for a patient aged ${age}.` : "";
   const keys = form.summaryKeys ?? form.fields.slice(0, 4).map((f) => f.key);
   const cols = keys.map((k) => form.fields.find((f) => f.key === k)).filter(Boolean) as FieldDef[];
   const scored = hasScores(form);
@@ -251,6 +394,11 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
         subtitle={dev && form.nphies ? `NPHIES: ${form.nphies}` : form.description}
         right={<Button variant="primary" disabled={!!blocked} onClick={() => setEditing({ id: null, initial: prefillValues(form) })} title={blocked || undefined}><Plus className="size-4" />Add New</Button>}
       />
+      {wrongSex && (
+        <div className="border-b border-border bg-warn/10 px-4 py-3 text-sm" role="note">
+          {wrongSex} A new record cannot be added.{records.length > 0 ? " Records saved earlier are shown below." : ""}
+        </div>
+      )}
       {!rightAge && (
         <div className="flex flex-wrap items-center gap-3 border-b border-border bg-warn/10 px-4 py-3 text-sm" role="note">
           <span>
@@ -297,7 +445,7 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
         onClose={() => setEditing(null)}
         onSave={(v) => {
           if (editing?.id) updateFormRecord(enc.visitNumber, form.id, editing.id, v, enc.patientId);
-          else addFormRecord(enc.visitNumber, form.id, v, enc.patientId);
+          else if (!wrongSex) addFormRecord(enc.visitNumber, form.id, v, enc.patientId); // a new record needs the right sex, as it needs the right age
           setEditing(null);
         }}
       />

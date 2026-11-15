@@ -164,6 +164,8 @@ export function buildOutbox(): OutboxRow[] {
   /* ---- prescriptions and dispenses ---- */
   const rx = getRx();
   for (const p of rx.prescriptions) {
+    // Medicines the patient brought from home are recorded only. They are never sent.
+    if (p.items.length > 0 && p.items.every((i) => !!i.patientProvided)) continue;
     const live = p.items.filter((i) => i.status !== "cancelled");
     if (!p.sentAt && live.length === 0) continue;
     const drugs = p.items.map((i) => getDrug(i.drugId).generic).join(", ") || "No items";

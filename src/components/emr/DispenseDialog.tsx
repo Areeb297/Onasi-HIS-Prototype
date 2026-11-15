@@ -38,7 +38,23 @@ type SecureMode = "" | "authenticated" | "override";
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 const round = (n: number) => Math.round(n * 1e4) / 1e4;
 
-export function DispenseDialog({ rx, focusItemId, onClose }: { rx: Prescription; focusItemId?: string; onClose: () => void }) {
+/**
+ * One step of a multi-drug dispense for a patient: the worklist hands the patient's ready prescriptions over one at a time.
+ * Every prescription still gets its own checks, scans and NPHIES message. The wristband scan is carried over to the next one.
+ */
+export interface DispenseQueue {
+  /** 1-based position and the number of prescriptions in the run. */
+  n: number;
+  total: number;
+  patientScan: string;
+  onScan: (value: string) => void;
+  /** This prescription was dispensed. */
+  onDone: () => void;
+  /** Leave this prescription for later and go on to the next. */
+  onSkip: () => void;
+}
+
+export function DispenseDialog({ rx, focusItemId, onClose, queue }: { rx: Prescription; focusItemId?: string; onClose: () => void; queue?: DispenseQueue }) {
   const s = useRx();
   const his = useHis();
   const dev = useDevMode();
@@ -60,7 +76,11 @@ export function DispenseDialog({ rx, focusItemId, onClose }: { rx: Prescription;
     Object.fromEntries(items.map((i) => [i.id, firstUsableBatch(batchesFor(getDrug(i.drugId), s.dispenses))?.lot ?? ""])),
   );
   const [drugScan, setDrugScan] = React.useState<Record<string, string>>({});
-  const [patientScan, setPatientScan] = React.useState("");
+  const [patientScan, setPatientScanState] = React.useState(queue?.patientScan ?? "");
+  const setPatientScan = (v: string) => {
+    setPatientScanState(v);
+    queue?.onScan(v);
+  };
   const [skip, setSkip] = React.useState(false);
   const [skipReason, setSkipReason] = React.useState("");
   const [secureMode, setSecureMode] = React.useState<SecureMode>("");
@@ -130,7 +150,8 @@ export function DispenseDialog({ rx, focusItemId, onClose }: { rx: Prescription;
           ? `Still on the worklist: ${left.map((x) => `${x.d.generic} ${x.rest} ${x.d.unit}`).join(", ")}.`
           : res.outcome.refId ? `Raqeeb reference id ${res.outcome.refId}` : "Accepted (201).",
       });
-      onClose();
+      if (queue) queue.onDone();
+      else onClose();
     } else {
       pushToast({ tone: "danger", text: "Dispense was rejected", detail: res.outcome.record.checks.find((c) => c.level === "error")?.text });
     }
@@ -146,11 +167,12 @@ export function DispenseDialog({ rx, focusItemId, onClose }: { rx: Prescription;
       open
       onClose={onClose}
       wide
-      title={`Dispense ${rx.number}`}
+      title={queue ? `Dispense ${rx.number} (${queue.n} of ${queue.total})` : `Dispense ${rx.number}`}
       subtitle={`${rx.usage === "discharge" ? "Take-home medicine at discharge" : `${rx.usage[0].toUpperCase()}${rx.usage.slice(1)} prescription`} · Prescriber ${doctor ? `Dr. ${doctor.given} ${doctor.family}` : rx.prescriberId}`}
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose}>{queue ? "Stop Here" : "Close"}</Button>
+          {queue && <Button onClick={queue.onSkip}>{queue.n < queue.total ? "Skip This Prescription" : "Skip And Finish"}</Button>}
           <span title={!canDispense ? "You do not have permission to dispense" : !ready ? needed[0] ?? Object.values(stockText).find(Boolean) ?? undefined : undefined}>
             <Button variant="primary" disabled={!ready} onClick={submit}>
               <IconSend className="size-4" />

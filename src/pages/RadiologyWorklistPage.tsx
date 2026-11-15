@@ -2,12 +2,13 @@ import * as React from "react";
 import { RotateCcw } from "lucide-react";
 import { RadBoard } from "@/components/board/RadBoard";
 import { ViewToggle, useWorklistView } from "@/components/board/ViewToggle";
+import { EMPTY_FILTER, WorklistFilters, passesDateAndPriority, type OrderFilter } from "@/components/board/WorklistFilters";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ConformancePanel, DocViewer, Gate, NphiesPill, PRIORITY_UI, RAD_STATUS_UI, StatusBadge } from "@/components/emr/fhir-ui";
 import { PatientIdStrip, ageYears } from "@/components/emr/PatientIdStrip";
 import { RadExamDialog } from "@/components/emr/RadExamDialog";
 import { ExamSummary, RadReportEditor } from "@/components/emr/RadReportEditor";
-import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { Badge, Button, Card, Empty, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { RAD_ASSUMPTIONS } from "@/lib/fhir/assumptions";
 import { personFromDoctor } from "@/lib/fhir/people";
@@ -18,6 +19,7 @@ import {
   createRadConformanceSample, isRadPublished, isRadSigned, radConformance, radOrderNphiesState, radReportNphiesState, radSendsOf,
   resetRad, setRadRejectNext, toggleRadViewed, useRad,
 } from "@/lib/radiology";
+import { resetRadExtras } from "@/lib/rad-extras";
 import { can, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 
@@ -42,7 +44,8 @@ export function RadiologyWorklistPage() {
   const dev = useDevMode();
   useSession();
   const [filter, setFilter] = React.useState<"all" | RadStatus>("all");
-  const [q, setQ] = React.useState("");
+  const [flt, setFlt] = React.useState<OrderFilter>(EMPTY_FILTER);
+  const q = flt.q;
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [view, setView] = useWorklistView("rad");
   const [editorHint, setEditorHint] = React.useState("");
@@ -51,21 +54,21 @@ export function RadiologyWorklistPage() {
   const [sampleVisit, setSampleVisit] = React.useState("");
   const canReport = can("rad.report");
 
-  const counts = (s: "all" | RadStatus) => rad.orders.filter((o) => s === "all" || o.status === s).length;
-  const rows = rad.orders
-    .filter((o) => filter === "all" || o.status === filter)
-    .filter((o) => {
-      if (!q.trim()) return true;
-      const p = his.patients.find((x) => x.id === o.patientId);
-      return `${patientName(p)} ${p?.mrn} ${o.visitNumber} ${o.id} ${procByCode(o.procCode)?.short}`.toLowerCase().includes(q.trim().toLowerCase());
-    })
-    .sort((a, b) => (PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]) || a.orderedAt.localeCompare(b.orderedAt));
-
-  const boardOrders = rad.orders.filter((o) => {
+  /** Date range, priority and search, the same for the table and the board. */
+  const matches = (o: RadOrder) => {
+    if (!passesDateAndPriority(flt, o.orderedAt, o.priority)) return false;
     if (!q.trim()) return true;
     const p = his.patients.find((x) => x.id === o.patientId);
-    return `${patientName(p)} ${p?.mrn} ${o.visitNumber} ${o.id} ${procByCode(o.procCode)?.short}`.toLowerCase().includes(q.trim().toLowerCase());
-  });
+    const doc = personFromDoctor(o.orderedById).name;
+    return `${patientName(p)} ${p?.mrn} ${o.visitNumber} ${o.id} ${procByCode(o.procCode)?.short} ${doc} ${o.priority}`.toLowerCase().includes(q.trim().toLowerCase());
+  };
+  const inRange = rad.orders.filter(matches);
+  const counts = (s: "all" | RadStatus) => inRange.filter((o) => s === "all" || o.status === s).length;
+  const rows = inRange
+    .filter((o) => filter === "all" || o.status === filter)
+    .sort((a, b) => (PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]) || a.orderedAt.localeCompare(b.orderedAt));
+
+  const boardOrders = inRange;
   const open = rad.orders.find((o) => o.id === openId);
   const openPatient = open && his.patients.find((p) => p.id === open.patientId);
   const examOrder = rad.orders.find((o) => o.id === examId && o.status === "received");
@@ -107,7 +110,7 @@ export function RadiologyWorklistPage() {
           <div className="flex flex-wrap items-center gap-2">
             <ViewToggle value={view} onChange={setView} />
             {dev && (
-              <Button variant="ghost" size="sm" onClick={() => { resetRad(); setOpenId(null); }} title="Brings back the demo orders and clears everything sent">
+              <Button variant="ghost" size="sm" onClick={() => { resetRad(); resetRadExtras(); setOpenId(null); }} title="Brings back the demo orders and clears everything sent">
                 <RotateCcw className="size-4" />
                 Reset Radiology Demo Data
               </Button>
@@ -118,11 +121,7 @@ export function RadiologyWorklistPage() {
 
       {view === "board" ? (
         <>
-          <Card className="mb-4 px-4 py-3">
-            <Field label="Patient" className="w-full sm:w-72">
-              <Input placeholder="Name, MRN, visit or exam" value={q} onChange={(e) => setQ(e.target.value)} />
-            </Field>
-          </Card>
+          <WorklistFilters value={flt} onChange={setFlt} placeholder="Patient, MRN, exam, doctor or priority" shown={boardOrders.length} total={rad.orders.length} />
           <RadBoard
             orders={boardOrders}
             onPerform={openExam}
@@ -138,6 +137,7 @@ export function RadiologyWorklistPage() {
         </>
       ) : (
         <>
+          <WorklistFilters value={flt} onChange={setFlt} placeholder="Patient, MRN, exam, doctor or priority" shown={rows.length} total={rad.orders.length} />
           <Card className="mb-4 px-4 py-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Status filter">
@@ -156,9 +156,6 @@ export function RadiologyWorklistPage() {
                   </button>
                 ))}
               </div>
-              <Field label="Patient" className="ml-auto w-56">
-                <Input placeholder="Name, MRN, visit or exam" value={q} onChange={(e) => setQ(e.target.value)} />
-              </Field>
             </div>
           </Card>
 
@@ -190,6 +187,7 @@ export function RadiologyWorklistPage() {
                         <div className="text-xs text-muted-foreground">
                           {p?.mrn} · Ordered {when(o.orderedAt)} by {personFromDoctor(o.orderedById).name}
                         </div>
+                        {o.coverage && <Badge tone={o.coverage === "plan" ? "ok" : "neutral"} className="mt-1">{o.coverage === "plan" ? "Insured" : "Self-Pay"}</Badge>}
                         {dev && <div className="font-mono text-xs text-muted-foreground">{o.id} · Visit {o.visitNumber}</div>}
                       </Td>
                       <Td>

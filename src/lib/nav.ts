@@ -54,14 +54,17 @@ export const NAV: NavGroup[] = [
   },
   {
     id: "opd", label: "OPD", icon: IconStethoscope, color: "text-admit",
-    pages: [{ id: "opd", label: "OPD Worklist", path: "/opd", perm: "patient.read" }],
+    pages: [
+      { id: "opd", label: "OPD Worklist", path: "/opd", perm: "patient.read" },
+      { id: "reclassified", label: "Reclassified To Outpatient", path: "/reclassified", perm: "patient.read" },
+    ],
   },
   {
     id: "ipd", label: "IPD", icon: IconBuildingHospital, color: "text-move",
     pages: [
       { id: "admission-requests", label: "Admission Requests", path: "/admission-requests", perm: "patient.read" },
       { id: "beds", label: "Beds", path: "/beds", perm: "patient.read" },
-      m("bed-master", "Bed Master", "patient.read"),
+      { id: "ward-view", label: "Ward View", path: "/ward-view", perm: "patient.read" },
       { id: "ipd", label: "IPD Worklist", path: "/ipd", perm: "patient.read" },
     ],
   },
@@ -84,9 +87,11 @@ export const NAV: NavGroup[] = [
   {
     id: "pharmacy", label: "Pharmacy", icon: IconPill, color: "text-ok",
     pages: [
-      m("pharmacy", "Pharmacy", "admin"),
+      { id: "pharmacy-home", label: "Pharmacy", path: "/pharmacy", perm: "rx.dispense" },
+      { id: "pharmacy-stock", label: "Stock", path: "/pharmacy/stock", perm: "rx.dispense" },
+      m("pharmacy", "Drug Master", "admin"),
       m("pharmacy-catalog-items", "Catalog Items", "admin"), m("pharmacy-generics", "Generic Medications", "admin"), m("pharmacy-brands", "Brand Medications", "admin"),
-      m("pharmacy-suppliers", "Suppliers", "admin"), m("pharmacy-locations", "Stock Locations", "admin"), m("pharmacy-grn", "Goods Receipt", "admin"),
+      m("pharmacy-suppliers", "Suppliers", "admin"), m("pharmacy-locations", "Stock Locations", "admin"),
       { id: "dispense", label: "Dispense Worklist", path: "/pharmacy/dispense", perm: "rx.dispense" },
     ],
   },
@@ -96,7 +101,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: "invoice", label: "Invoice", icon: IconFileInvoice, color: "text-merge", perm: "billing",
-    pages: [m("invoice", "Invoice", "billing"), m("contractual-discounts", "Contractual Discounts", "billing")],
+    pages: [{ id: "invoices", label: "Invoice Worklist", path: "/invoices", perm: "billing" }, m("contractual-discounts", "Contractual Discounts", "billing")],
   },
   {
     id: "rcm", label: "RCM", icon: IconCash, color: "text-ok", perm: "billing",
@@ -107,6 +112,7 @@ export const NAV: NavGroup[] = [
       m("ar-management", "AR Management", "billing"), m("payment-reconciliations", "Payment Reconciliations", "billing"),
       m("claim-import", "Claim Import", "billing"), m("refer-patient", "Refer Patient", "billing"),
       m("ar-cases", "AR Cases", "billing"), m("manual-payments", "Manual Payments", "billing"), m("manual-responses", "Manual Responses", "billing"),
+      { id: "billing", label: "Billing Worklist", path: "/billing", perm: "billing" },
       { id: "nphies-financial", label: "NPHIES Financial", path: "/nphies-financial", perm: "billing" },
     ],
   },

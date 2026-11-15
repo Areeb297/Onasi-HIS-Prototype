@@ -2,11 +2,14 @@ import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import type { LabOrder } from "@/lib/fhir/types";
 import { awaitingVerification, hasCritical, startProcessing } from "@/lib/lab";
+import { receiveSample } from "@/lib/lab-extras";
+import { personFromDoctor } from "@/lib/fhir/people";
+import { coverageLabel } from "@/lib/order-fields";
 import { can } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { auditMove } from "./audit-move";
 import { byPriorityThenAge } from "./board-util";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Printer } from "lucide-react";
 import { CardAction, CardFoot, CardSubject, PriorityTag, ProgressRing, Tag } from "./CardBits";
 import { OrderCardPatient } from "./OrderCardPatient";
 import { ClockPill } from "./ClockPill";
@@ -22,13 +25,15 @@ import type { CardCtx, MoveCheck, MoveResult } from "./types";
 
 const NEXT_ACTION: Record<LabStageId, { label: string; to?: LabStageId }> = {
   ordered: { label: "Collect Specimen", to: "collected" },
-  collected: { label: "Start Processing", to: "in-progress" },
+  collected: { label: "Receive Sample", to: "received" },
+  received: { label: "Start Processing", to: "in-progress" },
   "in-progress": { label: "Enter Results", to: "entered" },
-  entered: { label: "Send For Verification", to: "published" },
+  entered: { label: "Send For Verification", to: "verification" },
+  verification: { label: "Verify Result", to: "published" },
   published: { label: "View Or Amend" },
 };
 
-function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCtx; onOpen: () => void; allowed: boolean }) {
+function LabCard({ order, ctx, onOpen, onLabels, allowed }: { order: LabOrder; ctx: CardCtx; onOpen: () => void; onLabels: () => void; allowed: boolean }) {
   const his = useHis();
   const patient = his.patients.find((p) => p.id === order.patientId);
   const stage = ctx.stage.id as LabStageId;
@@ -37,7 +42,9 @@ function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCt
   const tubes = tubesForOrder(order);
   const chips = testChips(order);
   const waiting = awaitingVerification(order);
-  const next = stage === "entered" && waiting ? { label: "Verify Result", to: "published" as LabStageId } : NEXT_ACTION[stage];
+  const next = NEXT_ACTION[stage];
+  const hasTubes = order.specimens.length > 0 && stage !== "published";
+  const insured = order.coverage === "plan" ? "Insured" : order.coverage === "self-pay" ? "Self-Pay" : "";
   const critical = hasCritical(order);
   const filled = stage !== "ordered";
   return (
@@ -46,6 +53,7 @@ function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCt
         <div className="flex flex-wrap items-center gap-1">
           <PriorityTag tone={ctx.lane.tone} label={PRIORITY_WORD[ctx.lane.id] ?? ctx.lane.label} />
           {order.fasting === true && <Tag tone="merge">Fasting</Tag>}
+          {insured && <Tag tone={order.coverage === "plan" ? "ok" : "muted"} title={coverageLabel(order.coverage)}>{insured}</Tag>}
           {critical && <CriticalPulse />}
           {waiting && <Tag tone="update">Awaiting Verification</Tag>}
           {!waiting && order.sentBack && order.status === "in-progress" && <Tag tone="merge">Sent Back</Tag>}
@@ -59,6 +67,7 @@ function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCt
         <OrderCardPatient patient={patient} orderedAt={order.orderedAt} onOpen={ctx.overlay ? undefined : onOpen} now={ctx.now} devExtra={ctx.dev ? `${order.id} · Visit ${order.visitNumber}` : undefined} />
       </div>
       <CardSubject>{chips.slice(0, 4).join(", ")}{chips.length > 4 && ` and ${chips.length - 4} more`}</CardSubject>
+      <p className="mt-0.5 text-xs text-muted-foreground">Ordered by {personFromDoctor(order.orderedById).name}</p>
 
       <CardFoot>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -70,6 +79,17 @@ function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCt
           {stage === "in-progress" && <ProgressRing done={prog.done} total={prog.total} label="results" />}
         </div>
         {!ctx.overlay && (
+          <div className="flex items-center gap-1.5">
+            {hasTubes && (
+              <button
+                type="button"
+                onClick={onLabels}
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                title="Print the barcode labels for this sample"
+              >
+                <Printer className="size-3.5" aria-hidden="true" />Labels
+              </button>
+            )}
           <CardAction
             label={next.label}
             allowed={allowed}
@@ -77,6 +97,7 @@ function LabCard({ order, ctx, onOpen, allowed }: { order: LabOrder; ctx: CardCt
             variant={stage === "published" ? "secondary" : "primary"}
             onClick={() => (next.to ? ctx.move(next.to) : onOpen())}
           />
+          </div>
         )}
       </CardFoot>
     </div>
@@ -91,9 +112,10 @@ const PRIORITY_WORD: Record<string, string> = { stat: "STAT", urgent: "Urgent", 
  * verification sign-off.
  */
 export function LabBoard({
-  orders, onCollect, onOpenEditor, onVerify, onOpen,
+  orders, onCollect, onOpenEditor, onVerify, onOpen, onLabels,
 }: {
   orders: LabOrder[];
+  onLabels: (id: string) => void;
   onCollect: (id: string) => void;
   onOpenEditor: (id: string, hint: string) => void;
   onVerify: (id: string) => void;
@@ -120,15 +142,20 @@ export function LabBoard({
       onCollect(o.id);
       return "deferred";
     }
+    if (to === "received") return receiveSample(o);
     if (to === "in-progress") return startProcessing(o.id);
     if (to === "entered") {
       onOpenEditor(o.id, "Enter every result. The card moves to Results Entered when all of them are filled.");
       return "deferred";
     }
+    if (to === "verification") {
+      onOpenEditor(o.id, "Check the results, then press Send For Verification. A second user verifies and releases them.");
+      return "deferred";
+    }
     if (to === "published") {
       // Release is a sign-off by a second user, so the move opens a form and the card moves when that is done.
       if (awaitingVerification(o)) onVerify(o.id);
-      else onOpenEditor(o.id, "Check the results, then press Send For Verification. A second user verifies and releases them.");
+      else onOpenEditor(o.id, "Send the results for verification first. A second user verifies and releases them.");
       return "deferred";
     }
     return false;
@@ -157,7 +184,7 @@ export function LabBoard({
         label={(o) => `${nameOf(o)}, ${testChips(o).join(" ")}`}
         laneOf={labLaneOf}
         stageOf={(o) => labStageOf(o) ?? "ordered"}
-        renderCard={(o, ctx) => <LabCard order={o} ctx={ctx} allowed={allowed} onOpen={() => onOpen(o.id)} />}
+        renderCard={(o, ctx) => <LabCard order={o} ctx={ctx} allowed={allowed} onOpen={() => onOpen(o.id)} onLabels={() => onLabels(o.id)} />}
         canMove={labCanMove}
         canDrag={canDrag}
         onMove={onMove}
@@ -168,7 +195,7 @@ export function LabBoard({
       />
       <p className="mt-2 text-xs text-muted-foreground">
         Drag a card to the next stage, or use the arrows button on the card. Moves that need input open the form first. Tube caps show the container the specimen goes in.
-        Verify Result opens the sign-off, where a second user chooses Verify And Release or Send Back. Release Result is not possible before that.
+        Labels prints the barcode labels. Receive Sample is done at the lab bench. Verify Result opens the sign-off, where a second user chooses Verify And Release or Send Back.
       </p>
     </div>
   );

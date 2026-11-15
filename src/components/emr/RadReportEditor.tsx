@@ -3,6 +3,7 @@ import { PenLine } from "lucide-react";
 import { Gate } from "@/components/emr/fhir-ui";
 import { Badge, Button, Field, Hl7Tag, Input, Select, cn } from "@/components/ui/primitives";
 import { Textarea } from "@/components/ui/textarea";
+import { RadAttachmentList, RadAttachments, RadPrintButton } from "@/components/emr/RadAttachments";
 import { useDevMode } from "@/lib/devmode";
 import { procByCode, reportTemplatesFor } from "@/lib/fhir/rad-catalog";
 import type { RadOrder } from "@/lib/fhir/types";
@@ -89,6 +90,8 @@ export function RadReportView({ order }: { order: RadOrder }) {
       <div className="space-y-1.5 border-t border-border pt-2">
         <ReportSignature order={order} />
         <ExamSummary order={order} />
+        <RadAttachmentList order={order} />
+        <RadPrintButton order={order} patient={getState().patients.find((p) => p.id === order.patientId)} />
         <div className="text-xs text-muted-foreground">
           {order.study?.images ? "Images are available in PACS." : "No images are linked to this report."}
           {dev && order.study && <span className="ml-2 font-mono">Accession {order.study.accession} · Study {order.study.studyUid.slice(0, 24)}...</span>}
@@ -132,6 +135,7 @@ export function RadReportEditor({ order }: { order: RadOrder }) {
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={signed ? "ok" : "warn"}>{signed ? "Signed" : "Draft"}</Badge>
         <ReportSignature order={order} />
+        {!signed && <span className="ml-auto"><RadPrintButton order={order} patient={getState().patients.find((p) => p.id === order.patientId)} /></span>}
       </div>
 
       {published && !signed && (
@@ -201,6 +205,7 @@ export function RadReportEditor({ order }: { order: RadOrder }) {
             )}
             <p className="text-xs text-muted-foreground">Critical findings show in red on the chart.</p>
           </div>
+          <RadAttachments order={order} editable={editable} />
         </>
       )}
 

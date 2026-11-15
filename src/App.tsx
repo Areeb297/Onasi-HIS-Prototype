@@ -7,6 +7,7 @@ import { DisplayMenu } from "@/components/DisplayMenu";
 import { ToastHost } from "@/components/ToastHost";
 import { Button } from "@/components/ui/primitives";
 import { AiAssistant } from "@/components/AiAssistant";
+import { FullScreenButton } from "@/components/FullScreenButton";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sidebar, SidebarFooter, SidebarHeader, SidebarItem, SidebarNav, SidebarNested, SidebarSection, SidebarToggle, useSidebar } from "@/components/ui/sidebar";
@@ -17,7 +18,15 @@ import { CompliancePage } from "@/pages/CompliancePage";
 import { EmergencyBoard } from "@/pages/EmergencyBoard";
 import { EncountersPage } from "@/pages/EncountersPage";
 import { AccessPage, AuditPage, ConfidentialPage, RegistrationPage } from "@/pages/GovernancePages";
+import { InvoicePage } from "@/pages/InvoicePage";
+import { InvoiceWorklistPage } from "@/pages/InvoiceWorklistPage";
 import { LabWorklistPage } from "@/pages/LabWorklistPage";
+import { ReclassifiedVisitsPage } from "@/pages/ReclassifiedVisitsPage";
+import { WardViewPage } from "@/pages/WardViewPage";
+import { BillingWorklistPage } from "@/pages/BillingWorklistPage";
+import { ClaimPage } from "@/pages/ClaimPage";
+import { PharmacyHomePage } from "@/pages/PharmacyHomePage";
+import { PharmacyStockPage } from "@/pages/PharmacyStockPage";
 import { LogPage } from "@/pages/LogPage";
 import { MasterPage } from "@/pages/MasterPage";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -267,12 +276,20 @@ function Page() {
     case "/confidential": return <ConfidentialPage />;
     case "/registration": return <RegistrationPage />;
     case "/beds": return <BedBoardPage />;
+    case "/ward-view": return <WardViewPage />;
+    case "/reclassified": return <ReclassifiedVisitsPage />;
+    case "/invoices": return <InvoiceWorklistPage />;
+    case "/invoice": return <InvoicePage />;
     case "/appointments": return <AppointmentsPage />;
     case "/admission-requests": return <AdmissionRequestsPage />;
     case "/lab": return <LabWorklistPage />;
     case "/theatre": return <TheatreListPage />;
     case "/radiology": return <RadiologyWorklistPage />;
     case "/pharmacy/dispense": return <PharmacyDispensePage />;
+    case "/pharmacy": return <PharmacyHomePage />;
+    case "/pharmacy/stock": return <PharmacyStockPage />;
+    case "/billing": return <BillingWorklistPage />;
+    case "/claim": return <ClaimPage />;
     case "/audit": return <AuditPage />;
     case "/access": return <AccessPage />;
     case "/compliance": return <CompliancePage />;
@@ -337,6 +354,7 @@ export default function App() {
             </p>
             <span className="flex-1 md:hidden" />
             <DisplayMenu />
+            <FullScreenButton />
             <Button size="sm" onClick={lockScreen} title="Lock the screen" aria-label="Lock the screen"><Lock className="size-4" /><span className="hidden sm:inline">Lock</span></Button>
             <div role="group" aria-label="View" className="flex shrink-0 rounded-lg border border-border bg-muted p-0.5">
               {([[false, "HIS", " View"], [true, "Developer", " View"]] as const).map(([v, label, rest]) => (
@@ -352,7 +370,7 @@ export default function App() {
             </div>
           </div>
         </header>
-        <div className="mx-auto flex min-h-[calc(100%-3.25rem)] max-w-[1500px] flex-col px-4 pb-6 pt-5 sm:px-6">
+        <div className="mx-auto flex min-h-[calc(100%-3.25rem)] max-w-[1500px] flex-col px-4 pb-20 pt-5 sm:px-6">
           <Page />
           <div className="h-10 shrink-0" aria-hidden="true" />
           <footer className="mt-auto border-t border-border pt-4 text-xs text-muted-foreground sm:pe-40">

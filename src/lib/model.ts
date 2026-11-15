@@ -114,7 +114,23 @@ export interface Bed {
   wardName: string;
   room: string;
   bed: string;
+  /** The fields below come from Bed Setup. All optional, so older saved data still loads. HIS only, never sent. */
+  floor?: string;
+  roomType?: string;
+  bedType?: string;
+  /** Who may use the bed. Any when empty. */
+  gender?: BedGender;
+  isolation?: boolean;
+  oxygen?: boolean;
+  ventilator?: boolean;
+  monitor?: boolean;
+  /** False when the bed is inactive and cannot take a patient. Active when empty. */
+  active?: boolean;
+  notes?: string;
 }
+
+/** Gender restriction of a bed. */
+export type BedGender = "Any" | "Male" | "Female";
 
 export interface Dx {
   code: string;
@@ -222,6 +238,20 @@ export interface Note {
   at: string;
   author: string;
   text: string;
+  /** Stable id. Older notes have none; one is worked out from the note when it is first changed. HIS only. */
+  id?: string;
+  /** Role of the author, such as Physician or Nurse. HIS only. */
+  role?: string;
+  /** Last edit. HIS only. */
+  editedAt?: string;
+  editedBy?: string;
+}
+
+/** A progress note taken off the chart. It is kept, with who removed it and why, for the audit. HIS only. */
+export interface DeletedNote extends Note {
+  deletedAt: string;
+  deletedBy: string;
+  deleteReason: string;
 }
 
 export type CtasLevel = 1 | 2 | 3 | 4 | 5;
@@ -306,6 +336,10 @@ export interface Encounter {
   complaintsInactive?: Complaint[];
   vitals?: Vitals;
   notes: Note[];
+  /** Progress notes set to Inactive. Kept apart, like `dxInactive`, so readers of `notes` see active notes only. HIS only. */
+  notesInactive?: Note[];
+  /** Progress notes deleted with a reason. HIS only. */
+  notesDeleted?: DeletedNote[];
   /** Outpatient worklist step. Checking in does not send an ADT message. */
   checkedIn?: boolean;
   /** Emergency data. Only for patient class E. */
@@ -322,15 +356,86 @@ export interface Encounter {
   cancelReason?: string;
   /** Admission details taken at registration. HIS only, except the admission type, which sets PV1-4. */
   admission?: AdmissionDetails;
+  /** Sub-department (clinic or specialty unit) within the service. HIS only. Worked out from the request or appointment when empty. */
+  subDepartment?: string;
+  /** Every ward transfer with its reason, newest last. HIS only: A02 carries just the bed and the department. */
+  transferLog?: TransferEntry[];
+  /** The visit was moved from another patient's file (A45), newest last. HIS only. */
+  moves?: VisitMove[];
 }
 
-/** Inpatient admission details from the registration desk. */
+/** Inpatient admission details from the registration desk, the admit dialogs or the change to inpatient. */
 export interface AdmissionDetails {
   admissionType?: string;
   patientCondition?: string;
   expectedStayDays?: number;
   activityLevel?: string;
   specialty?: string;
+  /** The fields below are HIS only and optional, so older visits still open. */
+  attendantName?: string;
+  attendantPhone?: string;
+  attendantRelation?: string;
+  notes?: string;
+  /** Why an outpatient or emergency visit was changed to an inpatient stay (A06). */
+  conversionReason?: string;
+  convertedAt?: string;
+  convertedBy?: string;
+}
+
+/** One ward transfer (A02). HIS only. */
+export interface TransferEntry {
+  /** Local date-time. */
+  at: string;
+  by: string;
+  fromBed?: string;
+  toBed: string;
+  fromService: string;
+  toService: string;
+  fromSubDepartment?: string;
+  subDepartment?: string;
+  reason: string;
+  /** Set when the transfer was cancelled (A12). */
+  cancelledAt?: string;
+}
+
+/** A visit moved from the wrong patient to the right one (A45). HIS only. */
+export interface VisitMove {
+  /** Local date-time. */
+  at: string;
+  by: string;
+  fromPatientId: string;
+  toPatientId: string;
+  reason: string;
+  controlId?: string;
+}
+
+/** Who takes the patient home. HIS only. */
+export interface DischargeAttendant {
+  name: string;
+  phone: string;
+  relation: string;
+  idType: string;
+  idNumber: string;
+}
+
+/** The inpatient clinical summary written at discharge. HIS only. */
+export interface DischargeSummary {
+  reasonForAdmission: string;
+  admittingDiagnosis: string;
+  procedures: string;
+  findings: string;
+  /** Hospital course. */
+  course: string;
+}
+
+/** One doctor who approved the discharge. HIS only. */
+export interface DischargeApproval {
+  role: string;
+  /** Doctor id. */
+  doctor: string;
+  /** Local date-time. */
+  at: string;
+  remarks: string;
 }
 
 export type ClearanceKey = "clinical" | "pharmacy" | "nursing" | "finance";
@@ -351,7 +456,20 @@ export interface DischargeRecord {
   /** Transfer to another hospital. Recorded in the HIS only. */
   transfer?: { hospital: string; reason: string; acceptingDoctor: string; transport: string; consent: boolean };
   death?: { at: string; cause: string; certifiedBy: string };
+  /** The fields below are HIS only and optional, so discharges saved before them still open. */
+  condition?: string;
+  /** Discharge date and time as recorded by the doctor. Local date-time. Also sent as the discharge time of A03. */
+  dischargeAt?: string;
+  attendant?: DischargeAttendant;
+  summary?: DischargeSummary;
+  instructions?: string;
+  educatedBy?: string;
+  ambulance?: boolean;
+  approvals?: DischargeApproval[];
 }
+
+/** The discharge details the dialog records on top of the outcome. */
+export type DischargeDetails = Pick<DischargeRecord, "condition" | "dischargeAt" | "attendant" | "summary" | "instructions" | "educatedBy" | "ambulance" | "approvals">;
 
 /** A bed that is not free although no patient holds it. */
 export interface BedFlag { state: "cleaning" | "out"; since: string; reason?: string; by?: string }

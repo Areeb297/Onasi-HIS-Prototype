@@ -1,8 +1,10 @@
 import * as React from "react";
-import { RotateCcw, TriangleAlert } from "lucide-react";
-import { Dialog } from "@/components/Dialog";
+import { Printer, RotateCcw, TriangleAlert } from "lucide-react";
 import { LabBoard } from "@/components/board/LabBoard";
 import { ViewToggle, useWorklistView } from "@/components/board/ViewToggle";
+import { EMPTY_FILTER, WorklistFilters, passesDateAndPriority, type OrderFilter } from "@/components/board/WorklistFilters";
+import { LabBarcodeDialog } from "@/components/emr/LabBarcodeDialog";
+import { LabSampleDialog } from "@/components/emr/LabSampleDialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ConformancePanel, DocViewer, Gate, LAB_STATUS_UI, NphiesPill, PRIORITY_UI, StatusBadge } from "@/components/emr/fhir-ui";
 import { LabResultEntry } from "@/components/emr/LabResultEntry";
@@ -10,6 +12,7 @@ import { LabResultsTable } from "@/components/emr/LabResultsTable";
 import { LabVerifyDialog } from "@/components/emr/LabVerifyDialog";
 import { PatientIdStrip, ageYears } from "@/components/emr/PatientIdStrip";
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { Textarea } from "@/components/ui/textarea";
 import { useDevMode } from "@/lib/devmode";
 import { LAB_ASSUMPTIONS } from "@/lib/fhir/assumptions";
 import { SPECIMEN_TYPES, catalogRangeProblems, testByCode } from "@/lib/fhir/lab-catalog";
@@ -17,11 +20,13 @@ import { personFromDoctor } from "@/lib/fhir/people";
 import type { LabOrder, LabStatus } from "@/lib/fhir/types";
 import type { Patient } from "@/lib/model";
 import {
-  awaitingVerification, collectSpecimens, createConformanceSampleOrder, hasCritical, isPublished, labConformance, labSendsOf, leafTests, orderNphiesState,
+  awaitingVerification, createConformanceSampleOrder, hasCritical, isPublished, labConformance, labSendsOf, orderNphiesState,
   resetLab, resultNphiesState, setRejectNext, startProcessing, toggleViewed, useLab,
 } from "@/lib/lab";
+import { isReceived, notesOf, receiveSample, resetLabExtras, saveNotes, sampleOf, specimenBarcode, useLabExtras } from "@/lib/lab-extras";
+import { coverageLabel } from "@/lib/order-fields";
 import { can, useSession } from "@/lib/session";
-import { patientName, toLocalInput, useHis } from "@/lib/store";
+import { patientName, useHis } from "@/lib/store";
 
 const FILTERS: { id: "all" | LabStatus; label: string }[] = [
   { id: "all", label: "All" },
@@ -47,37 +52,45 @@ export function LabWorklistPage() {
   const dev = useDevMode();
   useSession();
   const [filter, setFilter] = React.useState<"all" | LabStatus>("all");
-  const [q, setQ] = React.useState("");
+  const [flt, setFlt] = React.useState<OrderFilter>(EMPTY_FILTER);
+  const q = flt.q;
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [view, setView] = useWorklistView("lab");
   const [editorHint, setEditorHint] = React.useState("");
   const [collectId, setCollectId] = React.useState<string | null>(null);
-  const [collectAt, setCollectAt] = React.useState(() => toLocalInput(new Date()));
+  const [detailsId, setDetailsId] = React.useState<string | null>(null);
+  const [labelsId, setLabelsId] = React.useState<string | null>(null);
   const [verifyId, setVerifyId] = React.useState<string | null>(null);
+  const extras = useLabExtras();
   const activeVisits = his.encounters.filter((e) => e.status === "active");
   const [sampleVisit, setSampleVisit] = React.useState("");
 
   const canResult = can("lab.result");
-  const counts = (s: "all" | LabStatus) => lab.orders.filter((o) => s === "all" || o.status === s).length;
-
-  const rows = lab.orders
-    .filter((o) => filter === "all" || o.status === filter)
-    .filter((o) => {
-      if (!q.trim()) return true;
-      const p = his.patients.find((x) => x.id === o.patientId);
-      return `${patientName(p)} ${p?.mrn} ${o.visitNumber} ${o.id}`.toLowerCase().includes(q.trim().toLowerCase());
-    })
-    .sort((a, b) => (PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]) || a.orderedAt.localeCompare(b.orderedAt));
-
-  const boardOrders = lab.orders.filter((o) => {
+  /** Date range, priority and search, the same for the table and the board. */
+  const matches = (o: LabOrder) => {
+    if (!passesDateAndPriority(flt, o.orderedAt, o.priority)) return false;
     if (!q.trim()) return true;
     const p = his.patients.find((x) => x.id === o.patientId);
-    return `${patientName(p)} ${p?.mrn} ${o.visitNumber} ${o.id}`.toLowerCase().includes(q.trim().toLowerCase());
-  });
+    const doc = personFromDoctor(o.orderedById).name;
+    const tests = o.codes.map((c) => testByCode(c)?.short ?? c).join(" ");
+    return `${patientName(p)} ${p?.mrn} ${o.visitNumber} ${o.id} ${doc} ${tests} ${o.priority}`.toLowerCase().includes(q.trim().toLowerCase());
+  };
+  const inRange = lab.orders.filter(matches);
+  const counts = (s: "all" | LabStatus) => inRange.filter((o) => s === "all" || o.status === s).length;
+
+  const rows = inRange
+    .filter((o) => filter === "all" || o.status === filter)
+    .sort((a, b) => (PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]) || a.orderedAt.localeCompare(b.orderedAt));
+
+  const boardOrders = inRange;
   const open = lab.orders.find((o) => o.id === openId);
   const openPatient = open && his.patients.find((p) => p.id === open.patientId);
-  const collecting = lab.orders.find((o) => o.id === collectId);
+  const collecting = lab.orders.find((o) => o.id === collectId && o.status === "received");
   const collectingPatient = collecting && his.patients.find((p) => p.id === collecting.patientId);
+  const detailing = lab.orders.find((o) => o.id === detailsId && o.specimens.length > 0);
+  const detailingPatient = detailing && his.patients.find((p) => p.id === detailing.patientId);
+  const labelling = lab.orders.find((o) => o.id === labelsId && o.specimens.length > 0);
+  const labellingPatient = labelling && his.patients.find((p) => p.id === labelling.patientId);
   const verifying = lab.orders.find((o) => o.id === verifyId && awaitingVerification(o));
   const verifyingPatient = verifying && his.patients.find((p) => p.id === verifying.patientId);
   /** The sign-off is a dialog, so the side sheet closes first. Two layers would trap the keyboard. */
@@ -100,19 +113,26 @@ export function LabWorklistPage() {
               size="sm"
               variant="primary"
               disabled={!canResult}
-              onClick={() => {
-                setCollectAt(toLocalInput(new Date()));
-                setCollectId(o.id);
-              }}
+              onClick={() => setCollectId(o.id)}
             >
               Collect Specimen
             </Button>
           </Gate>
         )}
-        {o.status === "collected" && (
+        {o.status === "collected" && !isReceived(o, extras) && (
+          <Gate allowed={canResult} reason="Your role cannot receive samples.">
+            <Button size="sm" variant="primary" disabled={!canResult} onClick={() => receiveSample(o)}>Receive Sample</Button>
+          </Gate>
+        )}
+        {o.status === "collected" && isReceived(o, extras) && (
           <Gate allowed={canResult} reason="Your role cannot process specimens.">
             <Button size="sm" variant="primary" disabled={!canResult} onClick={() => startProcessing(o.id)}>Start Processing</Button>
           </Gate>
+        )}
+        {o.specimens.length > 0 && !isPublished(o) && o.status !== "cancelled" && (
+          <Button size="sm" variant="secondary" onClick={() => setLabelsId(o.id)} title="Print the barcode labels for this sample">
+            <Printer className="size-4" />Labels
+          </Button>
         )}
         {o.status === "in-progress" && awaitingVerification(o) && (
           <Gate allowed={canResult} reason="Your role cannot verify laboratory results.">
@@ -135,7 +155,7 @@ export function LabWorklistPage() {
           <div className="flex flex-wrap items-center gap-2">
             <ViewToggle value={view} onChange={setView} />
             {dev && (
-              <Button variant="ghost" size="sm" onClick={() => { resetLab(); setOpenId(null); }} title="Brings back the demo orders and clears everything sent">
+              <Button variant="ghost" size="sm" onClick={() => { resetLab(); resetLabExtras(); setOpenId(null); }} title="Brings back the demo orders and clears everything sent">
                 <RotateCcw className="size-4" />
                 Reset Lab Demo Data
               </Button>
@@ -161,17 +181,11 @@ export function LabWorklistPage() {
 
       {view === "board" ? (
         <>
-          <Card className="mb-4 px-4 py-3">
-            <Field label="Patient" className="w-full sm:w-72">
-              <Input placeholder="Name, MRN, visit or order" value={q} onChange={(e) => setQ(e.target.value)} />
-            </Field>
-          </Card>
+          <WorklistFilters value={flt} onChange={setFlt} placeholder="Patient, MRN, test, doctor or priority" shown={boardOrders.length} total={lab.orders.length} />
           <LabBoard
             orders={boardOrders}
-            onCollect={(id) => {
-              setCollectAt(toLocalInput(new Date()));
-              setCollectId(id);
-            }}
+            onLabels={setLabelsId}
+            onCollect={setCollectId}
             onOpenEditor={(id, hint) => {
               setEditorHint(hint);
               setOpenId(id);
@@ -185,6 +199,7 @@ export function LabWorklistPage() {
         </>
       ) : (
         <>
+          <WorklistFilters value={flt} onChange={setFlt} placeholder="Patient, MRN, test, doctor or priority" shown={rows.length} total={lab.orders.length} />
           <Card className="mb-4 px-4 py-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Status filter">
@@ -203,9 +218,6 @@ export function LabWorklistPage() {
                   </button>
                 ))}
               </div>
-              <Field label="Patient" className="ml-auto w-56">
-                <Input placeholder="Name, MRN, visit or order" value={q} onChange={(e) => setQ(e.target.value)} />
-              </Field>
             </div>
           </Card>
 
@@ -236,6 +248,7 @@ export function LabWorklistPage() {
                         <div className="text-xs text-muted-foreground">
                           {p?.mrn} · Ordered {when(o.orderedAt)} by {personFromDoctor(o.orderedById).name}
                         </div>
+                        {o.coverage && <Badge tone={o.coverage === "plan" ? "ok" : "neutral"} className="mt-1">{o.coverage === "plan" ? "Insured" : "Self-Pay"}</Badge>}
                         {dev && <div className="font-mono text-xs text-muted-foreground">{o.id} · Visit {o.visitNumber}</div>}
                       </Td>
                       <Td>
@@ -249,6 +262,7 @@ export function LabWorklistPage() {
                       <Td>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <StatusBadge map={LAB_STATUS_UI} status={o.status} />
+                          {o.status === "collected" && isReceived(o, extras) && <Badge tone="admit">Sample Received</Badge>}
                           {awaitingVerification(o) && <Badge tone="update">Awaiting Verification</Badge>}
                           {!awaitingVerification(o) && o.status === "in-progress" && o.sentBack && <Badge tone="warn">Sent Back</Badge>}
                           {hasCritical(o) && <Badge tone="danger">Critical</Badge>}
@@ -268,7 +282,7 @@ export function LabWorklistPage() {
             </Table>
           </Card>
 
-          {open && openPatient && <Card className="mt-4"><OrderDetail order={open} patient={openPatient} dev={dev} onClose={() => setOpenId(null)} onVerify={() => openVerify(open.id)} /></Card>}
+          {open && openPatient && <Card className="mt-4"><OrderDetail order={open} patient={openPatient} dev={dev} onClose={() => setOpenId(null)} onVerify={() => openVerify(open.id)} onSample={() => setDetailsId(open.id)} onLabels={() => setLabelsId(open.id)} /></Card>}
         </>
       )}
 
@@ -279,7 +293,7 @@ export function LabWorklistPage() {
             <SheetDescription>Enter results for this order and send them for verification.</SheetDescription>
           </SheetHeader>
           {editorHint && <p className="mx-4 mt-10 rounded-md border border-update/40 bg-update/10 px-3 py-2 text-xs">{editorHint}</p>}
-          {open && openPatient && <div className="mt-10"><OrderDetail order={open} patient={openPatient} dev={dev} onClose={() => setOpenId(null)} onVerify={() => openVerify(open.id)} /></div>}
+          {open && openPatient && <div className="mt-10"><OrderDetail order={open} patient={openPatient} dev={dev} onClose={() => setOpenId(null)} onVerify={() => openVerify(open.id)} onSample={() => setDetailsId(open.id)} onLabels={() => setLabelsId(open.id)} /></div>}
         </SheetContent>
       </Sheet>
 
@@ -317,43 +331,9 @@ export function LabWorklistPage() {
         }
       />
 
-      <Dialog
-        open={!!collecting}
-        onClose={() => setCollectId(null)}
-        title="Collect Specimen"
-        subtitle={collecting ? `${collecting.codes.map((c) => testByCode(c)?.short).join(", ")}` : undefined}
-        footer={
-          <>
-            <Button onClick={() => setCollectId(null)}>Close</Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (collecting && collectSpecimens(collecting.id, new Date(collectAt).toISOString())) setCollectId(null);
-              }}
-            >
-              Confirm Collection
-            </Button>
-          </>
-        }
-      >
-        {collecting && (
-          <div className="space-y-3">
-            {collectingPatient && <PatientIdStrip patient={collectingPatient} visitNumber={collecting.visitNumber} />}
-            <p className="text-sm">Specimens to collect:</p>
-            <ul className="list-disc space-y-1 pl-5 text-sm">
-              {[...new Set(leafTests(collecting).map((t) => t.specimen))].map((k) => (
-                <li key={k}>
-                  {SPECIMEN_TYPES[k].display}
-                  {dev && <span className="ml-1.5 font-mono text-xs text-muted-foreground">SNOMED CT {SPECIMEN_TYPES[k].code}</span>}
-                </li>
-              ))}
-            </ul>
-            <Field label="Collected At" required hl7="Specimen.collection.collectedDateTime">
-              <Input type="datetime-local" value={collectAt} aria-required="true" onChange={(e) => setCollectAt(e.target.value)} />
-            </Field>
-          </div>
-        )}
-      </Dialog>
+      {collecting && collectingPatient && <LabSampleDialog key={collecting.id} order={collecting} patient={collectingPatient} mode="collect" onClose={() => setCollectId(null)} />}
+      {detailing && detailingPatient && <LabSampleDialog key={`${detailing.id}-details`} order={detailing} patient={detailingPatient} mode="edit" onClose={() => setDetailsId(null)} />}
+      {labelling && labellingPatient && <LabBarcodeDialog key={`${labelling.id}-labels`} order={labelling} patient={labellingPatient} onClose={() => setLabelsId(null)} />}
 
       {verifying && verifyingPatient && <LabVerifyDialog key={verifying.id} order={verifying} patient={verifyingPatient} onClose={() => setVerifyId(null)} />}
     </div>
@@ -361,7 +341,9 @@ export function LabWorklistPage() {
 }
 
 /** The open order: specimens, result entry or the read only results, and in Developer View the FHIR bundles. */
-function OrderDetail({ order: open, patient: openPatient, dev, onClose, onVerify }: { order: LabOrder; patient: Patient; dev: boolean; onClose: () => void; onVerify: () => void }) {
+function OrderDetail({ order: open, patient: openPatient, dev, onClose, onVerify, onSample, onLabels }: { order: LabOrder; patient: Patient; dev: boolean; onClose: () => void; onVerify: () => void; onSample: () => void; onLabels: () => void }) {
+  const extras = useLabExtras();
+  const rec = sampleOf(open, extras);
   return (
     <div>
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
@@ -382,14 +364,30 @@ function OrderDetail({ order: open, patient: openPatient, dev, onClose, onVerify
       </header>
       <div className="space-y-5 px-4 py-4">
         {open.specimens.length > 0 && (
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            {open.specimens.map((s) => (
-              <span key={s.id} className="rounded-md border border-border px-2 py-1">
-                {SPECIMEN_TYPES[s.key].display}
-                {dev && <span className="ml-1 font-mono">{s.id}</span>} · collected {when(s.collectedAt)}
-                {s.receivedAt && ` · received ${when(s.receivedAt)}`}
-              </span>
-            ))}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+              {open.specimens.map((s) => (
+                <span key={s.id} className="rounded-md border border-border px-2 py-1">
+                  {SPECIMEN_TYPES[s.key].display} · barcode <span className="font-mono">{specimenBarcode(s)}</span> · collected {when(s.collectedAt)}
+                  {(s.receivedAt || rec?.receivedAt) && ` · received ${when(s.receivedAt ?? rec!.receivedAt!)}`}
+                </span>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
+              {rec?.details ? (
+                <>
+                  <span>Method: {rec.details.method}</span>
+                  <span>Source: {rec.details.source}</span>
+                  <span>Care: {rec.details.care}</span>
+                  {rec.details.risk !== "Standard Precautions" ? <Badge tone="danger">{rec.details.risk}</Badge> : <span>Risk: {rec.details.risk}</span>}
+                </>
+              ) : (
+                <span className="text-muted-foreground">Sample details were not recorded for this collection.</span>
+              )}
+              {rec?.receivedBy && <span className="text-muted-foreground">Received by {rec.receivedBy}</span>}
+              <Button size="sm" variant="secondary" onClick={onSample}>Sample Details</Button>
+              {!isPublished(open) && <Button size="sm" variant="secondary" onClick={onLabels}><Printer className="size-4" />Labels</Button>}
+            </div>
           </div>
         )}
         {open.status === "in-progress" || isPublished(open) ? (
@@ -399,6 +397,7 @@ function OrderDetail({ order: open, patient: openPatient, dev, onClose, onVerify
             <LabResultsTable order={open} sex={openPatient.sex} />
           </div>
         )}
+        {(open.status === "in-progress" || isPublished(open)) && <ResultNotes key={open.id} order={open} />}
         {dev && (
           <div className="space-y-5 border-t border-border pt-4">
             <div>
@@ -411,6 +410,35 @@ function OrderDetail({ order: open, patient: openPatient, dev, onClose, onVerify
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** The overall conclusion and comments on a result, as the HIS result entry has. Kept in the HIS only: they are not part of the NPHIES result bundle. */
+function ResultNotes({ order }: { order: LabOrder }) {
+  const extras = useLabExtras();
+  const saved = notesOf(order.id, extras);
+  const canResult = can("lab.result");
+  const [conclusion, setConclusion] = React.useState(saved?.conclusion ?? "");
+  const [comments, setComments] = React.useState(saved?.comments ?? "");
+  const dirty = conclusion !== (saved?.conclusion ?? "") || comments !== (saved?.comments ?? "");
+  const locked = awaitingVerification(order) || isPublished(order);
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Conclusion And Comments</h3>
+        {saved && <span className="text-xs text-muted-foreground">Saved by {saved.by}, {when(saved.at)}</span>}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Conclusion"><Textarea rows={3} value={conclusion} disabled={!canResult || locked} onChange={(e) => setConclusion(e.target.value)} placeholder="Overall conclusion of the results" /></Field>
+        <Field label="Comments"><Textarea rows={3} value={comments} disabled={!canResult || locked} onChange={(e) => setComments(e.target.value)} placeholder="Anything the clinician should know" /></Field>
+      </div>
+      <div className="flex items-center gap-3">
+        <Gate allowed={canResult} reason="Your role cannot enter laboratory results.">
+          <Button size="sm" variant="secondary" disabled={!canResult || locked || !dirty} onClick={() => saveNotes(order.id, { conclusion: conclusion.trim(), comments: comments.trim() })}>Save Notes</Button>
+        </Gate>
+        <span className="text-xs text-muted-foreground">{locked ? "Notes are locked while the results wait for verification or after release." : "Kept in the HIS. Not sent to NPHIES."}</span>
       </div>
     </div>
   );

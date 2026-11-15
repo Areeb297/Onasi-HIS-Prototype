@@ -181,6 +181,8 @@ export function al1Severity(a: Pick<Allergy, "reactions" | "criticality" | "seve
   if (worst) return worst;
   if (a.criticality === "High") return "SV";
   if (a.criticality === "Low") return "MI";
+  if (a.criticality === "Unable To Assess") return "MO";
+  // Older records have no criticality: keep the severity they were saved with.
   return a.severity ?? "MO";
 }
 

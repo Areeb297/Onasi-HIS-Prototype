@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  addEffectNote, checkAdmin, dosesBetween, getEmar, highAlertOf, marOrders, overdueDoses, pendingState, recordDose, recordsOf, resetEmar, samePerson,
-  slotTimes, voidRecord, type AdminInput,
+  ALL_SITES, addEffectNote, checkAdmin, dosesBetween, dueInHour, getEmar, highAlertOf, hourOf, marOrders, overdueDoses, pendingState, quantityErrors,
+  recordDose, recordDoses, recordsOf, regionOf, resetEmar, samePerson, slotTimes, summarizeDay, voidRecord, type AdminInput, type AdminRecord,
 } from "./emar";
 import { getRx, resetRx, setRx } from "./rx";
 import { DRUGS } from "./rx-catalogue";
@@ -205,5 +205,116 @@ describe("recording a dose", () => {
     const who = { id: "U2", name: "Huda Alotaibi, RN" };
     expect(checkAdmin({ visit: "x", itemId: item.id, slot: at(5, 8), outcome: "given", rights: ALL_RIGHTS, at: at(5, 8) }, order, who, at(5, 8))).toEqual([]);
     expect(checkAdmin({ visit: "x", itemId: "nope", slot: at(5, 8), outcome: "given" }, undefined, who, at(5, 8))).toHaveLength(1);
+  });
+});
+
+describe("site, quantity and complications", () => {
+  it("records the site, the quantity given and wasted, and the complications", () => {
+    const item = prescribe("Metformin", { dose: 2 });
+    const res = give(item.id, at(5, 8), at(5, 8), { site: "Mouth", qtyGiven: 1.5, qtyWasted: 0.5, complications: ["Nausea or vomiting"] });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.record).toMatchObject({ site: "Mouth", qtyDue: 2, qtyGiven: 1.5, qtyWasted: 0.5, complications: ["Nausea or vomiting"] });
+    expect(regionOf("Left deltoid")).toBe("Left Arm");
+    expect(ALL_SITES.length).toBeGreaterThan(20);
+  });
+
+  it("takes the full dose when no quantity is entered", () => {
+    const item = prescribe("Metformin", { dose: 2 });
+    const res = give(item.id, at(5, 8), at(5, 8));
+    if (!res.ok) throw new Error("expected a record");
+    expect(res.record).toMatchObject({ qtyDue: 2, qtyGiven: 2, qtyWasted: 0 });
+  });
+
+  it("needs the quantity given and wasted to add up to the dose due", () => {
+    const order = { doseQty: 2, unit: "tablet" };
+    expect(quantityErrors({}, order)).toEqual([]);
+    expect(quantityErrors({ qtyGiven: 1 }, order)).toEqual([]);
+    expect(quantityErrors({ qtyGiven: 1, qtyWasted: 0.5 }, order)[0]).toMatch(/add up to the dose due \(2 tablet\)/);
+    expect(quantityErrors({ qtyGiven: 0, qtyWasted: 2 }, order)[0]).toMatch(/more than zero/);
+    expect(quantityErrors({ qtyGiven: 3 }, order).join(" ")).toMatch(/below zero/);
+    const item = prescribe("Metformin", { dose: 2 });
+    expect(give(item.id, at(5, 8), at(5, 8), { qtyGiven: 2, qtyWasted: 1 }).ok).toBe(false);
+  });
+
+  it("refuses a site that is not on the list, and Other without a note", () => {
+    const item = prescribe("Metformin");
+    expect(give(item.id, at(5, 8), at(5, 8), { site: "Elbow somewhere" }).ok).toBe(false);
+    expect(give(item.id, at(5, 8), at(5, 8), { complications: ["Other"] }).ok).toBe(false);
+    expect(give(item.id, at(5, 8), at(5, 8), { complications: ["Other"], note: "Felt faint for a minute" }).ok).toBe(true);
+  });
+
+  it("still opens a record saved before these fields existed", () => {
+    const item = prescribe("Metformin");
+    const old: AdminRecord = {
+      id: "MA-OLD", visit: inpatient().visitNumber, patientId: inpatient().patientId, itemId: item.id, rxId: "t-rx", slot: new Date(at(5, 8)).toISOString(),
+      drugText: "Metformin", doseText: "1 tablet", routeText: "Oral", outcome: "given", at: new Date(at(5, 8)).toISOString(), by: "Nurse", byRole: "Nurse",
+    };
+    getEmar().records.push(old);
+    const doses = dosesBetween(inpatient(), at(5, 0), at(5, 12), at(5, 12));
+    expect(doses[0]).toMatchObject({ state: "given" });
+    expect(doses[0].record?.qtyGiven).toBeUndefined();
+    expect(summarizeDay(doses).counts.given).toBe(1);
+  });
+});
+
+describe("recording all doses due at one hour", () => {
+  it("lists the doses due in the hour and records them together", () => {
+    const a = prescribe("Metformin");
+    const b = prescribe("Amlodipine", { frequencyId: "OD" });
+    const visit = inpatient().visitNumber;
+    const due = dueInHour(inpatient(), hourOf(at(5, 8, 25)), at(5, 8, 25));
+    expect(due.map((d) => d.order.itemId).sort()).toEqual([a.id, b.id].sort());
+    const res = recordDoses([
+      { visit, itemId: a.id, slot: at(5, 8), outcome: "given", rights: ALL_RIGHTS, at: at(5, 8, 20), site: "Mouth" },
+      { visit, itemId: b.id, slot: at(5, 8), outcome: "held", reason: "Vital signs out of range" },
+    ], at(5, 8, 25));
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.records).toHaveLength(2);
+    expect(res.records[0].batch).toBeDefined();
+    expect(res.records[0].batch).toBe(res.records[1].batch);
+    expect(dueInHour(inpatient(), hourOf(at(5, 8)), at(5, 8, 30))).toHaveLength(0);
+  });
+
+  it("saves nothing when one dose in the round fails, and keeps the high-alert rule", () => {
+    const a = prescribe("Metformin");
+    const ins = prescribe("Insulin Glargine", { frequencyId: "OD", route: "SC" });
+    const visit = inpatient().visitNumber;
+    const round = (witness?: { name: string; staffNo: string }) => recordDoses([
+      { visit, itemId: a.id, slot: at(5, 8), outcome: "given", rights: ALL_RIGHTS, at: at(5, 8) },
+      { visit, itemId: ins.id, slot: at(5, 8), outcome: "given", rights: ALL_RIGHTS, at: at(5, 8), site: "Abdomen, left lower", witness },
+    ], at(5, 8));
+    const bad = round();
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) {
+      expect(bad.errors).toHaveLength(1);
+      expect(bad.errors[0].itemId).toBe(ins.id);
+      expect(bad.errors[0].errors.join(" ")).toMatch(/second nurse/);
+    }
+    expect(getEmar().records).toHaveLength(0);
+    expect(round({ name: "Huda Alotaibi", staffNo: "N1" }).ok).toBe(false);
+    expect(round({ name: "Sara Alamri, RN", staffNo: "N200" }).ok).toBe(true);
+    expect(getEmar().records).toHaveLength(2);
+  });
+
+  it("refuses the same dose twice in one round and an empty round", () => {
+    const a = prescribe("Metformin");
+    const visit = inpatient().visitNumber;
+    const one = { visit, itemId: a.id, slot: at(5, 8), outcome: "given" as const, rights: ALL_RIGHTS, at: at(5, 8) };
+    expect(recordDoses([one, one], at(5, 8)).ok).toBe(false);
+    expect(recordDoses([], at(5, 8)).ok).toBe(false);
+  });
+});
+
+describe("month view summary", () => {
+  it("counts each state and picks the one that needs attention first", () => {
+    expect(summarizeDay([])).toEqual({ total: 0, counts: {}, worst: null });
+    const s = summarizeDay([{ state: "given" }, { state: "given" }, { state: "held" }, { state: "scheduled" }]);
+    expect(s).toEqual({ total: 4, counts: { given: 2, held: 1, scheduled: 1 }, worst: "held" });
+    expect(summarizeDay([{ state: "missed" }, { state: "overdue" }]).worst).toBe("overdue");
+    const item = prescribe("Metformin");
+    const doses = dosesBetween(inpatient(), at(5, 0), at(5, 23, 59), at(5, 12));
+    expect(summarizeDay(doses.filter((d) => d.order.itemId === item.id)).worst).toBe("overdue");
   });
 });

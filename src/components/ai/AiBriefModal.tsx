@@ -8,21 +8,15 @@ import { ASSISTANT_NAME } from "@/lib/ai/brand";
 import type { Encounter, Patient } from "@/lib/model";
 import { can } from "@/lib/session";
 
-/** Charts whose summary already opened by itself in this session. It opens once per chart, then only on request. */
-const shown = new Set<string>();
-
 /**
- * The patient summary window. It opens over the chart the first time a chart is opened, and Onasi AI writes
- * the summary inside it while the clinician watches. The button reopens it at any time.
+ * The patient summary window. It never opens by itself: the clinician opens it with the Patient Summary button,
+ * and Onasi AI writes the summary inside it while the clinician watches.
  */
 export function AiBriefModal({ enc, patient }: { enc: Encounter; patient: Patient }) {
   const [open, setOpen] = React.useState(false);
 
-  React.useEffect(() => {
-    if (!can("ai.use") || shown.has(enc.visitNumber)) return;
-    shown.add(enc.visitNumber);
-    setOpen(true);
-  }, [enc.visitNumber]);
+  // A different chart starts with the window closed.
+  React.useEffect(() => setOpen(false), [enc.visitNumber]);
 
   if (!can("ai.use")) return null;
   return (

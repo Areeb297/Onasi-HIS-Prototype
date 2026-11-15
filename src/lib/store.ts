@@ -540,6 +540,8 @@ export interface NewPatient {
   nationality: string;
   maritalStatus: string;
   address: string;
+  /** Restricted record: listed on the Confidential Patient page. */
+  confidential?: boolean;
 }
 
 /** Register a patient (demographics). nphies has no message for this alone: the data goes out inside A04. */

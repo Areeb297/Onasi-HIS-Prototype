@@ -1,7 +1,8 @@
 import { audit } from "./audit";
+import { coverageView } from "./chart-entries";
 import { createStore } from "./fhir/store-util";
 import type { Encounter, HisState, Patient } from "./model";
-import { caseOf, estimateCharge, financialVisits, getFinancial, payerOf, PAYER_SHARE, type Charge } from "./nphies-financial";
+import { caseOf, estimateCharge, financialVisits, getFinancial, PAYER_SHARE, payerShareOf, type Charge } from "./nphies-financial";
 import { FACILITY_NAME } from "./reference-data";
 import { can, currentUser } from "./session";
 import { getState, patientName } from "./store";
@@ -10,8 +11,9 @@ import { getState, patientName } from "./store";
  * Cashier invoices, one per visit, as the HIS has them: invoice worklist, invoice detail, Record Payment (new payment,
  * payment waiver, adjust payment), refund of an overpayment, receipt, and reporting to ZATCA.
  *
- * The lines come from estimateCharge in nphies-financial.ts, and the payer and the patient share from payerOf and PAYER_SHARE,
- * so this screen and NPHIES Financial always show the same amounts.
+ * The lines come from estimateCharge in nphies-financial.ts and the insured share from payerShareOf (the co-pay on the card). The payer is the
+ * patient's real coverage, read the same way as the chart header (coverageView in chart-entries.ts): a patient with no
+ * insurance card, or a visit registered as cash, has no insurance share and pays the whole amount.
  *
  * Life of an invoice:
  *  - Created the first time anyone opens it (or opens the worklist). Invoice numbers are given at creation.
@@ -104,6 +106,8 @@ export interface Invoice {
   finalizedAt?: string;
   /** Payer name, or null for a cash visit. */
   insurer: string | null;
+  /** The part of each line the payer pays, 0 to 1, from the co-pay on the card. Older invoices have none: 90 percent. */
+  payerShare?: number;
   vat: boolean;
   lines: InvoiceLine[];
   transactions: Transaction[];
@@ -148,9 +152,13 @@ export function linesFromCharge(charge: Charge): InvoiceLine[] {
   });
 }
 
-/** Payer of the visit, or null when the patient was registered as a cash patient. Same payer as NPHIES Financial. */
-export function insurerOf(p: Patient): string | null {
-  return p.extra?.visitPayType === "Cash" ? null : payerOf(p);
+/**
+ * Payer of the visit, or null for a cash patient. Same rule as the chart header: the insurance card on the patient's
+ * file, unless there is none or the visit was registered as cash.
+ */
+export function insurerOf(p: Pick<Patient, "extra">): string | null {
+  const payer = coverageView(p, new Date().toISOString().slice(0, 10)).payer;
+  return payer === "Cash" ? null : payer;
 }
 
 const finished = (e: Encounter) => e.status === "discharged" || e.status === "cancelled";
@@ -209,10 +217,10 @@ export interface InvoiceView {
   overpaid: number;
 }
 
-export function lineShares(l: InvoiceLine, insured: boolean, vat: boolean) {
+export function lineShares(l: InvoiceLine, insured: boolean, vat: boolean, payerShare: number = PAYER_SHARE) {
   const gross = round2(l.unitCost * l.units);
   const net = round2(gross - l.discount);
-  const patientAmount = insured ? round2(net * (1 - PAYER_SHARE)) : net;
+  const patientAmount = insured ? round2(net * (1 - payerShare)) : net;
   const insuranceAmount = round2(net - patientAmount);
   const patientTax = vat ? round2(patientAmount * VAT_RATE) : 0;
   const insuranceTax = 0;
@@ -238,7 +246,7 @@ export function invoiceView(inv: Invoice, insurancePaidTotal: number = payerPaid
   const insured = !!inv.insurer;
   let insLeft = round2(Math.max(0, insurancePaidTotal));
   const lines: LineView[] = inv.lines.map((l) => {
-    const s = lineShares(l, insured, inv.vat);
+    const s = lineShares(l, insured, inv.vat, inv.payerShare);
     const patientPayable = round2(s.patientAmount + s.patientTax);
     const insurancePayable = round2(s.insuranceAmount + s.insuranceTax);
     const patientPaid = allocatedTo(inv, l.key);
@@ -303,7 +311,7 @@ function trimAllocations(inv: Invoice): Invoice {
   const insured = !!inv.insurer;
   const payable: Record<string, number> = {};
   for (const l of inv.lines) {
-    const s = lineShares(l, insured, inv.vat);
+    const s = lineShares(l, insured, inv.vat, inv.payerShare);
     payable[l.key] = round2(s.patientAmount + s.patientTax);
   }
   const txs = inv.transactions.map((t) => ({ ...t, allocations: { ...t.allocations } }));
@@ -331,13 +339,19 @@ function trimAllocations(inv: Invoice): Invoice {
 
 /** Rebuilds a Draft invoice from the visit. Returns the same object when nothing changed. */
 export function refreshInvoice(inv: Invoice, enc: Encounter, p: Patient, now: number = Date.now()): Invoice {
-  if (inv.finalizedAt) return inv;
+  if (inv.finalizedAt) {
+    // The lines of a finished visit are fixed. Only the payer is put right, and only while no money has been taken,
+    // so an invoice made before the payer was read from the patient's coverage does not keep a wrong insurer.
+    const insurer = insurerOf(p);
+    return inv.insurer !== insurer && inv.transactions.length === 0 ? { ...inv, insurer, payerShare: insurer ? payerShareOf(p) : undefined } : inv;
+  }
   const lines = linesFromCharge(estimateCharge(enc));
   const insurer = insurerOf(p);
   const vat = vatAppliesToPatientShare(p);
+  const payerShare = insurer ? payerShareOf(p) : undefined;
   let next = inv;
-  if (!sameLines(inv.lines, lines) || inv.insurer !== insurer || inv.vat !== vat) {
-    next = trimAllocations({ ...inv, lines, insurer, vat });
+  if (!sameLines(inv.lines, lines) || inv.insurer !== insurer || inv.vat !== vat || inv.payerShare !== payerShare) {
+    next = trimAllocations({ ...inv, lines, insurer, vat, payerShare });
     if (inv.zatca.status === "Reported" || inv.zatca.status === "Failed") {
       next.zatca = {
         ...inv.zatca, status: "Pending", clockFrom: iso(now),

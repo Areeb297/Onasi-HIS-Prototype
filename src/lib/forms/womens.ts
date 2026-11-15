@@ -27,7 +27,7 @@ const maternalVitals = (): FieldDef[] => [
   num("spo2", "SpO2", { unit: "%", min: 0, max: 100 }),
 ];
 
-export const WOMENS_FORMS: FormDef[] = [
+const WOMENS_DEFS: FormDef[] = [
   {
     id: "infertility-assessment",
     title: "Infertility Assessment",
@@ -334,3 +334,12 @@ export const WOMENS_FORMS: FormDef[] = [
     ],
   },
 ];
+
+/** Forms that describe a baby, not the mother. They fit a patient of either sex. */
+const NEWBORN_FORMS = new Set(["newborn-ballard-score"]);
+
+/**
+ * Every other form here is for the mother or the woman being treated, so it is made for female patients only.
+ * The chart menu hides it for a male patient and the form page refuses a new record.
+ */
+export const WOMENS_FORMS: FormDef[] = WOMENS_DEFS.map((f) => (NEWBORN_FORMS.has(f.id) ? f : { ...f, sex: "F" as const }));

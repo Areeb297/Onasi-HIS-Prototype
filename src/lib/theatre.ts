@@ -5,7 +5,8 @@ import { DOCTORS } from "./reference-data";
 import { can, currentUser, roleOf } from "./session";
 import { getState } from "./store";
 import {
-  ALDRETE_PASS, aldreteTotal, closeGate, confirmGate, opNoteDone, postponeGate, preOpProblems, recoveryDischargeGate, slotText, stepGate,
+  ALDRETE_PASS, STEP_LABEL, aldreteTotal, closeGate, closureTimingProblem, confirmGate, opNoteDone, opNoteTimingProblem, postponeGate, preOpProblems,
+  recoveryDischargeGate, recoveryTimingProblem, slotText, stepGate, timingGate,
   validateAssessment, validateClosure, validateOpNote, validatePhase, validateRecovery, validateRequest, validateSchedule, validateScheduleDraft,
   type AssessmentData, type ClosureDetails, type CloseOutcome, type CodedDx, type OpNoteData, type PhaseId, type PhaseInput, type PreOpData,
   type RecoveryData, type RequestData, type SafetySigners, type ScheduleData, type Signer, type Stamp, type SurgeryCase, SAFETY_PHASES,
@@ -155,14 +156,25 @@ function save(c: SurgeryCase, action: "create" | "update", what: string, detail?
   audit(action, `Surgery case ${c.id}: ${what}`, { patient: c.patientId, detail: detail ?? `Visit ${c.visit}` });
 }
 
-/** Load a case and check the role and the gate in one place. Every step action starts here. */
-function start(id: string, step: Parameters<typeof stepGate>[1]): { c: SurgeryCase } | { error: Result } {
+/**
+ * Load a case and check the role and the gate in one place. Every step action starts here.
+ * Sign In, Time Out and Sign Out also wait for the booked slot. A doctor may start early with `early.reason`.
+ */
+function start(id: string, step: Parameters<typeof stepGate>[1], early?: { reason: string }): { c: SurgeryCase; early?: { reason: string; doctor: string } } | { error: Result } {
   const c = caseById(id);
   if (!c) return { error: fail("Surgery case not found.") };
   const no = denied(`Surgery case ${id}`, c.patientId);
   if (no) return { error: no };
   const gate = stepGate(c, step);
   if (!gate.ok) return { error: fail(gate.reason) };
+  if (step === "signIn" || step === "timeOut" || step === "signOut") {
+    const g = timingGate(c, step, new Date(), early ? { reason: early.reason, isDoctor: isDoctor() } : undefined);
+    if (!g.ok) return { error: fail(g.reason) };
+    if (early && !timingGate(c, step).ok) {
+      audit("update", `Surgery case ${id}: ${STEP_LABEL[step]} started before the booked slot`, { patient: c.patientId, detail: `Doctor ${currentUser().name}. Reason: ${early.reason.trim()}` });
+      return { c, early: { reason: early.reason.trim(), doctor: currentUser().name } };
+    }
+  }
   return { c };
 }
 
@@ -295,8 +307,8 @@ export function savePreOp(id: string, data: PreOpData, mode: SaveMode = "draft")
 }
 
 /** Save a safety checklist phase without confirming it. */
-export function savePhaseDraft(id: string, phase: PhaseId, data: PhaseInput): Result {
-  const s = start(id, phase);
+export function savePhaseDraft(id: string, phase: PhaseId, data: PhaseInput, early?: { reason: string }): Result {
+  const s = start(id, phase, early);
   if ("error" in s) return s.error;
   const { signers, ...phaseData } = data;
   const label = SAFETY_PHASES[phase].label;
@@ -304,8 +316,8 @@ export function savePhaseDraft(id: string, phase: PhaseId, data: PhaseInput): Re
   return { ok: true, id, message: `${label} saved as a draft.` };
 }
 
-export function confirmPhase(id: string, phase: PhaseId, data: PhaseInput): Result {
-  const s = start(id, phase);
+export function confirmPhase(id: string, phase: PhaseId, data: PhaseInput, early?: { reason: string }): Result {
+  const s = start(id, phase, early);
   if ("error" in s) return s.error;
   const signers = mergeSigners(s.c.safetySigners, data.signers);
   const bad = validatePhase(phase, { ...data, signers });
@@ -315,7 +327,8 @@ export function confirmPhase(id: string, phase: PhaseId, data: PhaseInput): Resu
   const label = SAFETY_PHASES[phase].label;
   const drafts = { ...s.c.phaseDrafts };
   delete drafts[phase];
-  save({ ...s.c, [phase]: { ...phaseData, done: stampNow() }, phaseDrafts: drafts, safetySigners: signers }, "update", label, `Confirmed by ${data.confirmedRole} ${data.confirmedName}`);
+  save({ ...s.c, [phase]: { ...phaseData, ...(s.early ? { earlyStart: s.early } : {}), done: stampNow() }, phaseDrafts: drafts, safetySigners: signers }, "update", label,
+    `Confirmed by ${data.confirmedRole} ${data.confirmedName}${s.early ? `. Started before the booked slot by ${s.early.doctor}: ${s.early.reason}` : ""}`);
   return { ok: true, id, message: `${label} confirmed.` };
 }
 
@@ -323,7 +336,7 @@ export function confirmPhase(id: string, phase: PhaseId, data: PhaseInput): Resu
 export function saveOpNote(id: string, data: OpNoteData, mode: SaveMode): Result {
   const s = start(id, "opNote");
   if ("error" in s) return s.error;
-  const bad = validateOpNote(data, mode);
+  const bad = validateOpNote(data, mode) ?? opNoteTimingProblem(s.c, data);
   if (bad) return fail(bad);
   const stamp = stampNow();
   const note = mode === "complete" ? { ...data, status: "Completed" as const, saved: stamp, done: stamp } : { ...data, status: "Draft" as const, saved: stamp };
@@ -343,7 +356,7 @@ export function saveOpNote(id: string, data: OpNoteData, mode: SaveMode): Result
 export function saveRecovery(id: string, data: RecoveryData, mode: SaveMode, overrideReason?: string): Result {
   const s = start(id, "recovery");
   if ("error" in s) return s.error;
-  const bad = validateRecovery(data, mode);
+  const bad = validateRecovery(data, mode) ?? recoveryTimingProblem(s.c, data);
   if (bad) return fail(bad);
   const stamp = stampNow();
   const scores = s.c.recovery?.scores ?? [];
@@ -369,7 +382,7 @@ export function closeCase(id: string, outcome: CloseOutcome, reason: string | un
   if (no) return no;
   const gate = closeGate(c, outcome, reason);
   if (!gate.ok) return fail(gate.reason);
-  const bad = validateClosure(details);
+  const bad = validateClosure(details) ?? closureTimingProblem(c, outcome, details);
   if (bad) return fail(bad);
   const d: ClosureDetails = { date: details.date, time: details.time, disposition: details.disposition, dispositionRemarks: details.dispositionRemarks?.trim() || undefined };
   save({ ...c, closed: { outcome, reason: reason?.trim() || undefined, ...d, done: stampNow() } }, "update", `closed as ${outcome}`, [reason?.trim(), `Disposition: ${d.disposition}`].filter(Boolean).join(". "));

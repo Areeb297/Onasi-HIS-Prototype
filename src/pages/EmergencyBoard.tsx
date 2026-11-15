@@ -7,6 +7,7 @@ import { useVisitActions } from "@/components/VisitActions";
 import { LevelDot, TriageSheet } from "@/components/TriageSheet";
 import { Badge, Button, PageHeader, cn } from "@/components/ui/primitives";
 import { quickSend } from "@/lib/actions";
+import { canRequestAdmission } from "@/lib/admission-requests";
 import { audit } from "@/lib/audit";
 import { useDevMode } from "@/lib/devmode";
 import {
@@ -141,6 +142,11 @@ function Card1({ enc, now, onTriage, onDispose, onChart }: { enc: Encounter; now
           </>
         )}
         {stage === "ready" && <Button size="sm" variant="primary" disabled={!can("adt.send")} onClick={onDispose}>Disposition</Button>}
+        {(stage === "treatment" || stage === "results" || stage === "ready") && canRequestAdmission() && (
+          <Button size="sm" variant="ghost" onClick={() => navigate("/admission-requests", { new: "1", patient: enc.patientId, visit: enc.visitNumber })} title="Ask for an inpatient bed. The admissions office approves the request.">
+            Request Admission
+          </Button>
+        )}
         <Button size="sm" variant="ghost" onClick={onChart} aria-label="Open chart" title="Open Chart"><FolderOpen className="size-4" /></Button>
       </div>
     </div>

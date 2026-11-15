@@ -114,7 +114,7 @@ export function ConfidentialPage() {
   const state = useHis();
   useSession();
   const entries = useAudit();
-  const list = state.patients.filter((p) => p.confidential);
+  const list = state.patients.filter((p) => p.confidential && !p.mergedInto);
   return (
     <div>
       <PageHeader title="Confidential Patient" subtitle="Restricted records. Opening a chart needs a reason (break-the-glass). Every access is audited." />

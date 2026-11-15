@@ -1,11 +1,13 @@
 import * as React from "react";
-import {
-  IconActivityHeartbeat, IconClipboardText, IconFileText, IconFlask, IconMessage2, IconNotes, IconPill, IconRadar2, IconSend,
-} from "@tabler/icons-react";
+import { IconHistory, IconId, IconMessage2, IconPaperclip, IconPill } from "@tabler/icons-react";
 import { AlertTriangle, CheckCircle2, ChevronRight, Copy, Info } from "lucide-react";
-import { Badge, Button, Card, CardHeader, Empty, cn } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardHeader, Empty, Table, Td, Th, cn } from "@/components/ui/primitives";
+import { PatientJourney } from "@/components/emr/PatientJourney";
 import { quickSend } from "@/lib/actions";
-import { attentionFor, buildTimeline, sbarFor, sbarText, type Attention, type TimelineItem, type TimelineKind } from "@/lib/chart-review";
+import {
+  CLASS_LABEL, STATUS_LABEL, activeMedicines, attachmentsOf, demographics, encounterDetails, latestHistory, patientVisits, type DetailRow,
+} from "@/lib/chart-overview";
+import { attentionFor, sbarFor, sbarText, type Attention } from "@/lib/chart-review";
 import { useCareRequests } from "@/lib/care-requests";
 import { useDocs } from "@/lib/docs";
 import { useEmar } from "@/lib/emar";
@@ -15,32 +17,17 @@ import { useRad } from "@/lib/radiology";
 import { useRx } from "@/lib/rx";
 import { useTheatre } from "@/lib/theatre";
 import { navigate } from "@/lib/router";
+import { useRecords } from "@/lib/records";
+import { DOCTORS, SERVICES } from "@/lib/reference-data";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 import { useVitals } from "@/lib/vitals";
 
 /**
- * The first screen of a chart. It answers three questions in order: what needs me now, what happened,
- * and what do I tell the next person. Everything on it is computed from the chart; nothing is typed twice.
+ * The first screen of a chart. It answers, in order: what needs me now, what do I tell the next person, who is this
+ * patient and what is this visit, what has the patient had before, and what happened. Everything on it is computed from
+ * the chart; nothing is typed twice.
  */
-
-const KIND: Record<TimelineKind, { label: string; icon: React.ElementType; color: string }> = {
-  adt: { label: "NPHIES", icon: IconSend, color: "text-move bg-move/12" },
-  vitals: { label: "Vitals", icon: IconActivityHeartbeat, color: "text-admit bg-admit/12" },
-  lab: { label: "Lab", icon: IconFlask, color: "text-update bg-update/12" },
-  rad: { label: "Imaging", icon: IconRadar2, color: "text-merge bg-merge/12" },
-  rx: { label: "Medication", icon: IconPill, color: "text-ok bg-ok/12" },
-  doc: { label: "Documents", icon: IconFileText, color: "text-move bg-move/12" },
-  note: { label: "Notes", icon: IconNotes, color: "text-foreground/80 bg-muted" },
-  form: { label: "Forms", icon: IconClipboardText, color: "text-foreground/80 bg-muted" },
-};
-
-const TONE_DOT: Record<TimelineItem["tone"], string> = {
-  ok: "bg-ok", warn: "bg-warn", danger: "bg-destructive", neutral: "bg-muted-foreground/50",
-};
-
-const fmt = (t: number) =>
-  new Date(t).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 function AttentionList({ items, onGo, onFix }: { items: Attention[]; onGo: (section: string) => void; onFix: (a: Attention) => void }) {
   if (!items.length) {
@@ -73,66 +60,6 @@ function AttentionList({ items, onGo, onFix }: { items: Attention[]; onGo: (sect
         );
       })}
     </ul>
-  );
-}
-
-function Timeline({ items, onGo }: { items: TimelineItem[]; onGo: (section: string) => void }) {
-  const kinds = React.useMemo(() => [...new Set(items.map((i) => i.kind))], [items]);
-  const [hidden, setHidden] = React.useState<Set<TimelineKind>>(new Set());
-  const shown = items.filter((i) => !hidden.has(i.kind));
-  const toggle = (k: TimelineKind) =>
-    setHidden((h) => {
-      const n = new Set(h);
-      if (n.has(k)) n.delete(k); else n.add(k);
-      return n;
-    });
-  return (
-    <>
-      <div className="flex flex-wrap gap-1.5 border-b border-border px-4 py-2.5" role="group" aria-label="Filter the timeline">
-        {kinds.map((k) => {
-          const on = !hidden.has(k);
-          const Icon = KIND[k].icon;
-          return (
-            <button
-              key={k}
-              type="button"
-              aria-pressed={on}
-              onClick={() => toggle(k)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-                on ? "border-move/40 bg-move/10 text-move" : "border-border text-muted-foreground line-through",
-              )}
-            >
-              <Icon className="size-3.5" aria-hidden="true" /> {KIND[k].label}
-            </button>
-          );
-        })}
-      </div>
-      {shown.length === 0 ? (
-        <Empty>Nothing to show. Turn a filter back on.</Empty>
-      ) : (
-        <ol className="max-h-[28rem] overflow-y-auto px-4 py-2">
-          {shown.map((i) => {
-            const Icon = KIND[i.kind].icon;
-            return (
-              <li key={i.id} className="relative flex gap-3 border-l border-border pb-3 pl-4 last:pb-0">
-                <span className={cn("absolute -left-[5px] top-1.5 size-2.5 rounded-full ring-2 ring-card", TONE_DOT[i.tone])} aria-hidden="true" />
-                <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-md", KIND[i.kind].color)} aria-hidden="true">
-                  <Icon className="size-4" />
-                </span>
-                <button type="button" onClick={() => onGo(i.section)} className="min-w-0 flex-1 rounded-md text-left hover:bg-muted/60 focus-visible:bg-muted/60">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-sm font-medium">{i.title}</span>
-                    <time className="text-xs text-muted-foreground">{fmt(i.at)}</time>
-                  </div>
-                  {i.detail && <div className={cn("text-[0.8125rem]", i.tone === "danger" ? "font-medium text-destructive" : "text-muted-foreground")}>{i.detail}</div>}
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-    </>
   );
 }
 
@@ -173,13 +100,79 @@ function Handoff({ enc, patient }: { enc: Encounter; patient: Patient }) {
   );
 }
 
+function DetailList({ rows }: { rows: DetailRow[] }) {
+  return (
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 px-4 py-4 text-sm sm:grid-cols-2">
+      {rows.map((r) => (
+        <div key={r.label} className="min-w-0">
+          <dt className="text-xs text-muted-foreground">{r.label}</dt>
+          <dd className={cn("mt-0.5 break-words", r.known ? "font-medium" : "text-muted-foreground")}>{r.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+const doctorName = (id: string) => { const d = DOCTORS.find((x) => x.id === id); return d ? `Dr. ${d.given} ${d.family}` : "None"; };
+const shortDate = (s?: string) => (s ? new Date(s).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "Not set");
+
+function EncounterHistory({ visits, current }: { visits: Encounter[]; current: string }) {
+  return (
+    <Table>
+      <thead><tr><Th>Visit</Th><Th>Date</Th><Th>Service</Th><Th>Doctor</Th><Th>Status</Th></tr></thead>
+      <tbody>
+        {visits.map((v) => {
+          const here = v.visitNumber === current;
+          return (
+            <tr key={v.visitNumber} className={cn(here && "bg-move/6")}>
+              <Td>
+                {here ? (
+                  <span className="font-mono text-sm font-medium">{v.visitNumber}</span>
+                ) : (
+                  <button type="button" onClick={() => navigate("/chart", { visit: v.visitNumber, s: "overview" })} className="font-mono text-sm font-medium text-move underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Open the chart of visit ${v.visitNumber}`}>
+                    {v.visitNumber}
+                  </button>
+                )}
+                <div className="mt-0.5 flex flex-wrap gap-1">
+                  <Badge tone="neutral">{CLASS_LABEL[v.cls]}</Badge>
+                  {here && <Badge tone="primary">Current</Badge>}
+                </div>
+              </Td>
+              <Td className="whitespace-nowrap text-xs">{shortDate(v.admitAt ?? v.expectedAdmitAt)}</Td>
+              <Td className="text-xs">{SERVICES.find((x) => x.code === v.service)?.label ?? v.service}</Td>
+              <Td className="text-xs">{doctorName(v.attending)}</Td>
+              <Td><Badge tone={v.status === "active" ? "info" : v.status === "discharged" ? "ok" : v.status === "cancelled" ? "neutral" : "warn"}>{STATUS_LABEL[v.status]}</Badge></Td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </Table>
+  );
+}
+
+function SummaryCard({ title, icon: Icon, count, onOpen, openLabel, children }: { title: string; icon: React.ElementType; count: number; onOpen: () => void; openLabel: string; children: React.ReactNode }) {
+  return (
+    <Card className="flex flex-col">
+      <CardHeader title={title} right={<span className="flex items-center gap-2"><Badge tone={count ? "info" : "neutral"}>{count}</Badge><Icon className="size-4 text-muted-foreground" aria-hidden="true" /></span>} />
+      <div className="flex-1">{children}</div>
+      <div className="border-t border-border px-4 py-2">
+        <Button size="sm" variant="ghost" onClick={onOpen}>{openLabel} <ChevronRight className="size-3.5" aria-hidden="true" /></Button>
+      </div>
+    </Card>
+  );
+}
+
 export function ChartOverview({ enc, patient, children }: { enc: Encounter; patient: Patient; children?: React.ReactNode }) {
   // Re-render when any source store changes.
-  useHis(); useLab(); useRad(); useRx(); useDocs(); useVitals(); useEmar(); useCareRequests(); useTheatre();
+  const state = useHis(); useLab(); useRad(); const rx = useRx(); useDocs(); useVitals(); useEmar(); useCareRequests(); useTheatre(); useRecords();
   const go = (s: string) => navigate("/chart", { visit: enc.visitNumber, s });
   const attention = attentionFor(enc, patient);
-  const timeline = buildTimeline(enc);
   const urgent = attention.filter((a) => a.level === "high").length;
+  const visits = patientVisits(state, patient.id);
+  const visitIds = visits.map((v) => v.visitNumber);
+  const meds = activeMedicines(enc.visitNumber, rx);
+  const history = latestHistory(visitIds);
+  const files = attachmentsOf(visitIds);
 
   return (
     <div className="space-y-4">
@@ -197,9 +190,68 @@ export function ChartOverview({ enc, patient, children }: { enc: Encounter; pati
           <Handoff enc={enc} patient={patient} />
         </Card>
       </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader title="Encounter Details" subtitle={`Visit ${enc.visitNumber}. A detail the hospital does not hold says Not recorded.`} />
+          <DetailList rows={encounterDetails(enc)} />
+        </Card>
+        <Card>
+          <CardHeader title="Demographics" right={<IconId className="size-4 text-muted-foreground" aria-hidden="true" />} />
+          <DetailList rows={demographics(patient)} />
+        </Card>
+      </div>
+
       <Card>
-        <CardHeader title="Everything That Happened" subtitle="One timeline for messages, vital signs, orders, results, notes and documents. Newest first." />
-        <Timeline items={timeline} onGo={go} />
+        <CardHeader title="Encounter History" subtitle={`All ${visits.length} visit${visits.length === 1 ? "" : "s"} of this patient, newest first. Open a visit to see its chart.`} />
+        <EncounterHistory visits={visits} current={enc.visitNumber} />
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <SummaryCard title="Active Medicines" icon={IconPill} count={meds.length} onOpen={() => go("prescription")} openLabel="Open Prescriptions">
+          {meds.length === 0 ? <Empty>No active medicines on this visit.</Empty> : (
+            <ul className="divide-y divide-border">
+              {meds.slice(0, 6).map((m) => (
+                <li key={m.id} className="px-4 py-2">
+                  <div className="text-sm font-medium">{m.drug}</div>
+                  <div className="text-xs text-muted-foreground">{m.detail}</div>
+                </li>
+              ))}
+              {meds.length > 6 && <li className="px-4 py-2 text-xs text-muted-foreground">And {meds.length - 6} more.</li>}
+            </ul>
+          )}
+        </SummaryCard>
+        <SummaryCard title="History" icon={IconHistory} count={history ? history.lines.length : 0} onOpen={() => go("medical-history")} openLabel="Open Medical History">
+          {!history ? <Empty>No medical history recorded on any visit.</Empty> : (
+            <>
+              <dl className="divide-y divide-border">
+                {history.lines.slice(0, 5).map(([k, v]) => (
+                  <div key={k} className="px-4 py-2">
+                    <dt className="text-xs text-muted-foreground">{k}</dt>
+                    <dd className="line-clamp-2 text-sm">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="px-4 pb-2 text-xs text-muted-foreground">By {history.author} on {shortDate(history.at)}{history.visit !== enc.visitNumber ? `, visit ${history.visit}` : ""}.</p>
+            </>
+          )}
+        </SummaryCard>
+        <SummaryCard title="Attachments" icon={IconPaperclip} count={files.length} onOpen={() => go("attachments")} openLabel="Open Attachments">
+          {files.length === 0 ? <Empty>No attachments on any visit.</Empty> : (
+            <ul className="divide-y divide-border">
+              {files.slice(0, 5).map((f) => (
+                <li key={f.id} className="px-4 py-2">
+                  <div className="truncate text-sm font-medium" title={f.name}>{f.name}</div>
+                  <div className="text-xs text-muted-foreground">{[f.type, f.date, f.visit !== enc.visitNumber ? `visit ${f.visit}` : ""].filter(Boolean).join(" · ")}</div>
+                </li>
+              ))}
+              {files.length > 5 && <li className="px-4 py-2 text-xs text-muted-foreground">And {files.length - 5} more.</li>}
+            </ul>
+          )}
+        </SummaryCard>
+      </div>
+
+      <Card>
+        <PatientJourney enc={enc} patient={patient} />
       </Card>
       {children}
     </div>

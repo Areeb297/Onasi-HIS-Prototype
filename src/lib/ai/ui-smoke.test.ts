@@ -57,7 +57,7 @@ describe("clinical documents and AI screens render", () => {
       const html = renderToString(h(SoapSection, { enc: enc("P001") }));
       expect(html).toContain("Electronically signed");
       expect(html).toContain("Draft With Onasi AI");
-      expect(renderToString(h(SoapSection, { enc: enc("P002") }))).toContain("No SOAP notes yet");
+      expect(renderToString(h(SoapSection, { enc: enc("P002") }))).toContain("No SOAP notes on this visit yet");
     });
 
     it(`renders AI Governance in ${view}`, () => {

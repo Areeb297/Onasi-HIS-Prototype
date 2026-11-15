@@ -11,7 +11,7 @@ export type StepId = "request" | "assessment" | "schedule" | "preop" | "signIn" 
 
 export const STEPS: { id: StepId; label: string; when?: string }[] = [
   { id: "request", label: "Surgery Request" },
-  { id: "assessment", label: "Pre-anaesthesia Assessment" },
+  { id: "assessment", label: "Pre-Anesthesia Assessment" },
   { id: "schedule", label: "Schedule" },
   { id: "preop", label: "Pre-operative Checklist" },
   { id: "signIn", label: "Sign In", when: "Before anaesthesia" },
@@ -268,6 +268,8 @@ export interface PhaseData {
   checked?: string[];
   confirmedRole: string;
   confirmedName: string;
+  /** Set when a doctor started this phase before the booked slot, with the reason. Later phases of the case follow it. */
+  earlyStart?: { reason: string; doctor: string };
 }
 
 /** What the screen sends: the phase plus the three people who sign the whole checklist. */
@@ -835,3 +837,98 @@ export function validateClosure(d: Partial<ClosureDetails> | undefined): string 
 
 /** The operative note is completed and both operation times are known, so the Operative Note document can be built and published. */
 export const readyForOperativeNote = (c: SurgeryCase): boolean => opNoteDone(c) && !!c.opNote?.start && !!c.opNote?.end;
+
+/* ---------- time of the booked slot ---------- */
+
+/** Clocks differ a little between machines and people type times by hand. */
+export const CLOCK_SLACK_MS = 2 * 60_000;
+
+const parseLocal = (day: string | undefined, time: string | undefined): Date | null => {
+  if (!day || !time || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const d = new Date(`${day}T${time}`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const parseLocalDateTime = (v: string | undefined): Date | null => {
+  if (!v || blank(v)) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/** When the booked slot starts, or null when there is no usable slot. */
+export const slotStartAt = (c: Pick<SurgeryCase, "schedule">): Date | null => parseLocal(c.schedule?.date, c.schedule?.start);
+
+const when = (d: Date): string =>
+  `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} at ${clock(d.getHours() * 60 + d.getMinutes())}`;
+
+export type TimedStep = "signIn" | "timeOut" | "signOut";
+
+/**
+ * Surgery steps from Sign In on cannot start before the booked slot. A doctor may start early, with a reason.
+ * Once Sign In was done early, the later phases follow it. Pass the override the doctor typed, if any.
+ */
+export function timingGate(c: SurgeryCase, step: TimedStep, now: Date = new Date(), override?: { reason: string; isDoctor: boolean }): Gate {
+  const slot = slotStartAt(c);
+  if (!slot) return open();
+  if (now.getTime() + CLOCK_SLACK_MS >= slot.getTime()) return open();
+  if (step !== "signIn" && c.signIn?.earlyStart) return open();
+  if (!override) return shut(`The booked slot starts on ${when(slot)}. ${STEP_LABEL[step]} cannot start before then. A doctor can start early with a reason.`);
+  if (!override.isDoctor) return shut("Only a doctor can start before the booked time.");
+  if (blank(override.reason)) return shut("Give the reason for starting before the booked time.");
+  return open();
+}
+
+/**
+ * Checks on the times typed in the operative note: not in the future, and not before the booked slot (or before Sign In,
+ * when a doctor started the case early). Returns the first problem, or null.
+ */
+export function opNoteTimingProblem(c: SurgeryCase, n: Partial<OpNoteData>, now: Date = new Date()): string | null {
+  const start = parseLocalDateTime(n.start);
+  const end = parseLocalDateTime(n.end);
+  const limit = now.getTime() + CLOCK_SLACK_MS;
+  if (start && start.getTime() > limit) return `The operation start time (${when(start)}) is in the future.`;
+  if (end && end.getTime() > limit) return `The operation end time (${when(end)}) is in the future.`;
+  const slot = slotStartAt(c);
+  const signedIn = parseLocalDateTime(c.signIn?.done.at);
+  const floor = slot && signedIn ? Math.min(slot.getTime(), signedIn.getTime()) : (slot ?? signedIn)?.getTime();
+  if (floor !== undefined) {
+    const lowest = new Date(floor);
+    if (start && start.getTime() < floor) return `The operation start time (${when(start)}) is before the booked slot (${when(lowest)}).`;
+    if (end && end.getTime() < floor) return `The operation end time (${when(end)}) is before the booked slot (${when(lowest)}).`;
+  }
+  return null;
+}
+
+/** The day the recovery times belong to: the day the operation ended, else the booked day, else today. */
+function recoveryDay(c: SurgeryCase, now: Date): string {
+  const end = c.opNote?.end;
+  if (end && /^\d{4}-\d{2}-\d{2}/.test(end)) return end.slice(0, 10);
+  return c.schedule?.date ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+/** Recovery times are HH:mm. Arrival cannot be before the operation ended, and neither time can be in the future. */
+export function recoveryTimingProblem(c: SurgeryCase, d: Partial<RecoveryData>, now: Date = new Date()): string | null {
+  const day = recoveryDay(c, now);
+  const arrival = parseLocal(day, d.arrivalTime);
+  const out = parseLocal(day, d.timeOut);
+  const limit = now.getTime() + CLOCK_SLACK_MS;
+  if (arrival && arrival.getTime() > limit) return `The arrival time (${when(arrival)}) is in the future.`;
+  if (out && out.getTime() > limit) return `The recovery Time Out (${when(out)}) is in the future.`;
+  const opEnd = parseLocalDateTime(c.opNote?.end);
+  if (arrival && opEnd && arrival.getTime() < opEnd.getTime()) return `The patient cannot arrive in recovery (${when(arrival)}) before the operation ended (${when(opEnd)}).`;
+  return null;
+}
+
+/**
+ * Closing the case. The closure time cannot be in the future or before the operation ended. A case cannot be closed as
+ * Completed while the recorded end time of the operation has not passed.
+ */
+export function closureTimingProblem(c: SurgeryCase, outcome: CloseOutcome, d: Partial<ClosureDetails> | undefined, now: Date = new Date()): string | null {
+  const opEnd = parseLocalDateTime(c.opNote?.end);
+  const limit = now.getTime() + CLOCK_SLACK_MS;
+  if (outcome === "Completed" && opEnd && opEnd.getTime() > limit) return `The case cannot be closed as Completed before the operation ended. The recorded end time is ${when(opEnd)}.`;
+  const at = parseLocal(d?.date, d?.time);
+  if (at && at.getTime() > limit) return `The closure time (${when(at)}) is in the future.`;
+  if (at && opEnd && outcome === "Completed" && at.getTime() < opEnd.getTime()) return `The closure time (${when(at)}) is before the operation ended (${when(opEnd)}).`;
+  return null;
+}

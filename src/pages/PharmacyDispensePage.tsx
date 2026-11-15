@@ -1,9 +1,9 @@
 import * as React from "react";
-import { IconChevronDown, IconClipboardCheck, IconPill, IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
+import { IconChevronDown, IconClipboardCheck, IconPill, IconPills, IconShieldCheck, IconShieldExclamation } from "@tabler/icons-react";
 import { ageSex } from "@/components/board/board-util";
 import { RxBoard } from "@/components/board/RxBoard";
 import { ViewToggle, useWorklistView } from "@/components/board/ViewToggle";
-import { DispenseDialog } from "@/components/emr/DispenseDialog";
+import { DispenseDialog, type DispenseQueue } from "@/components/emr/DispenseDialog";
 import { ConformancePanel, ControlBadge, ItemStatusBadge, MessageViewer, RxPatientStrip, VerifyBadge, VerifyTrail, fmtWhen } from "@/components/emr/RxShared";
 import { VerifyDialog } from "@/components/emr/VerifyDialog";
 import { Dialog } from "@/components/Dialog";
@@ -14,9 +14,10 @@ import { DOCTORS } from "@/lib/reference-data";
 import { fillOf, getDrug, useRx } from "@/lib/rx";
 import type { FillState } from "@/lib/rx-logic";
 import { changeDispenseLine } from "@/lib/rx-send";
-import { fmtExpiry } from "@/lib/rx-stock";
+import { batchesFor, fmtExpiry } from "@/lib/rx-stock";
 import type { Dispense, DispenseLine, Drug, Prescription, RxItem } from "@/lib/rx-types";
 import { needsPharmacist, needsPrescriber, orderLine, verifyStatusOf, type VerifyStatus } from "@/lib/rx-verify";
+import { STATUS_FILTERS, TABS, canChangeLine, dispensedRows, readyPrescriptions, readySummary, statusMatches, tabMatches, type DispensedFilter, type StatusFilter, type WorklistTab } from "@/lib/rx-worklist";
 import { can } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
@@ -57,14 +58,17 @@ export function PharmacyDispensePage() {
   const dev = useDevMode();
   const [q, setQ] = React.useState("");
   const [view, setView] = useWorklistView("rx");
-  const [filter, setFilter] = React.useState<"open" | "all">("open");
+  const [tab, setTab] = React.useState<WorklistTab>("waiting");
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
+  const [section, setSection] = React.useState<"worklist" | "dispensed">("worklist");
+  const [run, setRun] = React.useState<{ ids: string[]; i: number; scan: string } | null>(null);
   const [grouping, setGrouping] = React.useState<Grouping>("patient");
   const [dispensing, setDispensing] = React.useState<{ rxId: string; itemId?: string } | null>(null);
   const [verifying, setVerifying] = React.useState<Target | null>(null);
   const [openPatient, setOpenPatient] = React.useState<string | null>(null);
   const [lineAction, setLineAction] = React.useState<{ mode: "cancel" | "update"; d: Dispense; line: DispenseLine } | null>(null);
 
-  const rows: Row[] = s.prescriptions
+  const allRows: Row[] = s.prescriptions
     .filter((rx) => rx.sentAt)
     .sort((a, b) => (a.sentAt ?? a.authoredAt).localeCompare(b.sentAt ?? b.authoredAt))
     .flatMap((rx) => {
@@ -75,8 +79,10 @@ export function PharmacyDispensePage() {
         return { key: `${rx.id}:${item.id}`, rx, item, drug: getDrug(item.drugId), fill, verify: verifyStatusOf(item, fill.dispensedTotal), open: item.status === "active" && !fill.done, patient, enc };
       });
     })
-    .filter((r) => filter === "all" || r.open || r.item.status === "on-hold")
+    .filter((r) => statusMatches(statusFilter, r.item.status))
     .filter((r) => !q || `${patientName(r.patient)} ${r.patient?.mrn} ${r.rx.number} ${r.rx.visitNumber} ${r.drug.generic}`.toLowerCase().includes(q.toLowerCase()));
+  const tabCount = (t: WorklistTab) => allRows.filter((r) => tabMatches(t, { open: r.open, verify: r.verify, itemStatus: r.item.status })).length;
+  const rows = allRows.filter((r) => tabMatches(tab, { open: r.open, verify: r.verify, itemStatus: r.item.status }));
 
   const byPatient = new Map<string, Row[]>();
   for (const r of rows) byPatient.set(r.rx.patientId, [...(byPatient.get(r.rx.patientId) ?? []), r]);
@@ -85,16 +91,53 @@ export function PharmacyDispensePage() {
   const verifyRx = verifying ? s.prescriptions.find((p) => p.id === verifying.rxId) : undefined;
   const lastDispense = s.sends.filter((x) => x.kind === "dispense").at(-1);
   const toVerify = rows.filter((r) => r.open && needsPharmacist(r.verify)).length;
+  const dispensedCount = dispensedRows(s).length;
+  const runRx = run ? s.prescriptions.find((p) => p.id === run.ids[run.i]) : undefined;
+  const queue: DispenseQueue | undefined = run && runRx
+    ? {
+        n: run.i + 1,
+        total: run.ids.length,
+        patientScan: run.scan,
+        onScan: (v) => setRun((r) => (r ? { ...r, scan: v } : r)),
+        onDone: () => setRun((r) => (r && r.i + 1 < r.ids.length ? { ...r, i: r.i + 1 } : null)),
+        onSkip: () => setRun((r) => (r && r.i + 1 < r.ids.length ? { ...r, i: r.i + 1 } : null)),
+      }
+    : undefined;
+  const startRun = (patientId: string) => {
+    const ids = readyPrescriptions(s, patientId).map((rx) => rx.id);
+    if (ids.length) setRun({ ids, i: 0, scan: "" });
+  };
   const tableProps = { onVerify: setVerifying, onDispense: (t: Target) => setDispensing(t), onLine: setLineAction };
+  const openRx = (number: string) => {
+    setSection("worklist");
+    setTab("all");
+    setStatusFilter("all");
+    setQ(number);
+  };
 
   return (
     <div>
       <PageHeader
         title="Dispense Worklist"
         subtitle="Items sent by the doctors. Check and verify each item first. Then scan the patient wristband and the drug, and dispense in full or in part."
-        right={<ViewToggle value={view} onChange={setView} />}
+        right={section === "worklist" ? <ViewToggle value={view} onChange={setView} /> : undefined}
       />
-      {view === "board" && (
+      <div role="radiogroup" aria-label="Pharmacy section" className="mb-4 inline-flex rounded-lg border border-border bg-muted/60 p-0.5">
+        {([["worklist", "Dispense Worklist"], ["dispensed", `Dispensed (${dispensedCount})`]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={section === id}
+            onClick={() => setSection(id)}
+            className={cn("rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring", section === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {section === "dispensed" && <DispensedSection onLine={setLineAction} onOpenRx={openRx} />}
+      {section === "worklist" && view === "board" && (
         <>
           <Card className="mb-4 px-4 py-3">
             <Field label="Patient Or Prescription" className="w-full sm:w-80">
@@ -113,15 +156,27 @@ export function PharmacyDispensePage() {
           />
         </>
       )}
-      {view === "table" && (
+      {section === "worklist" && view === "table" && (
         <>
           <Card className="mb-4 px-4 py-3">
-            <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Worklist tab">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  onClick={() => setTab(t.id)}
+                  className={cn("rounded-full border px-3 py-1 text-xs font-medium", tab === t.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted")}
+                >
+                  {t.label} <span className="opacity-70">{tabCount(t.id)}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_220px]">
               <Field label="Patient, Prescription Or Drug"><Input placeholder="Name, MRN, prescription, visit or drug" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
-              <Field label="Show">
-                <Select value={filter} onChange={(e) => setFilter(e.target.value as "open" | "all")}>
-                  <option value="open">Waiting For Pharmacy</option>
-                  <option value="all">All Prescriptions</option>
+              <Field label="Item Status">
+                <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
+                  {STATUS_FILTERS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                 </Select>
               </Field>
             </div>
@@ -156,6 +211,7 @@ export function PharmacyDispensePage() {
                     const nReady = openRows.filter((r) => r.verify === "verified" && r.fill.dispensedTotal === 0).length;
                     const nPart = openRows.filter((r) => r.verify === "verified" && r.fill.dispensedTotal > 0).length;
                     const nHold = list.filter((r) => r.item.status === "on-hold").length;
+                    const ready = readySummary(s, pid);
                     const oldest = list.map((r) => r.rx.sentAt ?? r.rx.authoredAt).sort()[0];
                     return (
                       <React.Fragment key={pid}>
@@ -187,10 +243,19 @@ export function PharmacyDispensePage() {
                           </Td>
                           <Td className="whitespace-nowrap text-xs text-muted-foreground">{oldest ? fmtWhen(oldest) : ""}</Td>
                           <Td>
-                            <Button size="sm" variant={isOpen ? "secondary" : "primary"} onClick={() => setOpenPatient(isOpen ? null : pid)} aria-expanded={isOpen}>
-                              <IconChevronDown className={cn("size-4 transition-transform", !isOpen && "-rotate-90")} />
-                              {isOpen ? "Hide Items" : "Show Items"}
-                            </Button>
+                            <div className="flex flex-wrap gap-1.5">
+                              <Button size="sm" variant={isOpen ? "secondary" : "primary"} onClick={() => setOpenPatient(isOpen ? null : pid)} aria-expanded={isOpen}>
+                                <IconChevronDown className={cn("size-4 transition-transform", !isOpen && "-rotate-90")} />
+                                {isOpen ? "Hide Items" : "Show Items"}
+                              </Button>
+                              {ready.items > 1 && (
+                                <span title={!can("rx.dispense") ? "You do not have permission to dispense" : `Dispense ${ready.items} verified items on ${ready.prescriptions} ${ready.prescriptions === 1 ? "prescription" : "prescriptions"}, one prescription after the other`}>
+                                  <Button size="sm" disabled={!can("rx.dispense")} onClick={() => startRun(pid)}>
+                                    <IconPills className="size-4" />Multi-Drug Dispense ({ready.items})
+                                  </Button>
+                                </span>
+                              )}
+                            </div>
                           </Td>
                         </tr>
                         {isOpen && (
@@ -217,6 +282,7 @@ export function PharmacyDispensePage() {
       <ConformancePanel />
 
       {dispenseRx && <DispenseDialog key={`${dispenseRx.id}:${dispensing?.itemId ?? ""}`} rx={dispenseRx} focusItemId={dispensing?.itemId} onClose={() => setDispensing(null)} />}
+      {run && runRx && queue && <DispenseDialog key={`run:${runRx.id}`} rx={runRx} queue={queue} onClose={() => setRun(null)} />}
       {verifyRx && verifying && <VerifyDialog key={`${verifyRx.id}:${verifying.itemId}`} rx={verifyRx} itemId={verifying.itemId} onClose={() => setVerifying(null)} />}
       {lineAction && <LineDialog action={lineAction} onClose={() => setLineAction(null)} />}
     </div>
@@ -359,11 +425,11 @@ function ItemTable({
                                 </span>
                                 {l.status === "completed" && (
                                   <span className="flex gap-1.5">
-                                    <span title={!canDispense ? "You do not have permission to dispense" : undefined}>
-                                      <Button size="sm" disabled={!canDispense} onClick={() => onLine({ mode: "update", d, line: l })}>Update Dispense</Button>
+                                    <span title={!canDispense ? "You do not have permission to dispense" : canChangeLine(drug, l).reason || undefined}>
+                                      <Button size="sm" disabled={!canDispense || !canChangeLine(drug, l).ok} onClick={() => onLine({ mode: "update", d, line: l })}>Update Dispense</Button>
                                     </span>
-                                    <span title={!canDispense ? "You do not have permission to dispense" : undefined}>
-                                      <Button size="sm" variant="danger" disabled={!canDispense} onClick={() => onLine({ mode: "cancel", d, line: l })}>Cancel Dispense</Button>
+                                    <span title={!canDispense ? "You do not have permission to dispense" : canChangeLine(drug, l).reason || undefined}>
+                                      <Button size="sm" variant="danger" disabled={!canDispense || !canChangeLine(drug, l).ok} onClick={() => onLine({ mode: "cancel", d, line: l })}>Cancel Dispense</Button>
                                     </span>
                                   </span>
                                 )}
@@ -419,7 +485,12 @@ function LineDialog({ action, onClose }: { action: { mode: "cancel" | "update"; 
       <div className="space-y-3 text-sm">
         <RxPatientStrip rx={d} />
         {mode === "cancel" ? (
-          <p>The patient did not collect the medicine. The quantity goes back to the prescription and nphies is told the dispense is cancelled.</p>
+          <div className="space-y-1.5">
+            <p>The patient did not collect the medicine. The quantity goes back to the prescription and nphies is told the dispense is cancelled.</p>
+            <p className="rounded-md border border-ok/40 bg-ok/10 px-3 py-2 text-xs">
+              Stock goes back: {line.quantity} {drug.unit}{line.lot ? ` return to batch ${line.lot}` : " return to stock"}.
+            </p>
+          </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label={`Quantity (${drug.unit})`} required><Input type="number" min="0" step="any" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
@@ -432,3 +503,102 @@ function LineDialog({ action, onClose }: { action: { mode: "cancel" | "update"; 
     </Dialog>
   );
 }
+
+/* ---------- what was dispensed, with cancel ---------- */
+
+const DISPENSED_TABS: { id: DispensedFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "completed", label: "Completed" },
+  { id: "cancelled", label: "Cancelled" },
+];
+
+/** Every dispense that was handed out, with Update and Cancel where the rules allow. A cancelled line returns its quantity to the batch it came from. */
+function DispensedSection({ onLine, onOpenRx }: { onLine: (a: { mode: "cancel" | "update"; d: Dispense; line: DispenseLine }) => void; onOpenRx: (number: string) => void }) {
+  const s = useRx();
+  const his = useHis();
+  const dev = useDevMode();
+  const canDispense = can("rx.dispense");
+  const [f, setF] = React.useState<DispensedFilter>("all");
+  const [q, setQ] = React.useState("");
+  const rows = dispensedRows(s, f).filter((r) => {
+    if (!q.trim()) return true;
+    const p = his.patients.find((x) => x.id === r.dispense.patientId);
+    return `${patientName(p)} ${p?.mrn} ${r.rx?.number} ${r.dispense.number} ${r.drug.generic} ${r.drug.brand} ${r.line.lot ?? ""}`.toLowerCase().includes(q.trim().toLowerCase());
+  });
+  const count = (id: DispensedFilter) => dispensedRows(s, id).length;
+  return (
+    <Card>
+      <div className="space-y-3 px-4 pt-4">
+        <div>
+          <h2 className="text-lg font-semibold text-move">Dispensed Medications</h2>
+          <p className="text-sm text-muted-foreground">Everything handed to patients. Cancel a dispense to take it back: the quantity returns to the prescription and to the batch it came from, and NPHIES is told.</p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Dispensed filter">
+            {DISPENSED_TABS.map((t) => (
+              <button key={t.id} role="tab" aria-selected={f === t.id} onClick={() => setF(t.id)}
+                className={cn("rounded-full border px-3 py-1 text-xs font-medium", f === t.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted")}>
+                {t.label} <span className="opacity-70">{count(t.id)}</span>
+              </button>
+            ))}
+          </div>
+          <Field label="Patient, Drug, Prescription Or Batch" className="ml-auto w-full sm:w-72"><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, MRN, drug, dispense number or batch" /></Field>
+        </div>
+      </div>
+      <Table className="mt-3">
+        <thead className="bg-move/8">
+          <tr><Th>Medication</Th><Th>Patient</Th><Th>Quantity And Batch</Th><Th>Status</Th><Th>Dispensed</Th><Th>Actions</Th></tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && <tr><Td colSpan={6}><Empty>{dispensedCount(s) === 0 ? "Nothing has been dispensed yet." : "No dispense matches."}</Empty></Td></tr>}
+          {rows.map((r) => {
+            const p = his.patients.find((x) => x.id === r.dispense.patientId);
+            const cancelled = r.line.status === "cancelled";
+            const batch = r.line.lot ? batchesFor(r.drug, s.dispenses).find((b) => b.lot === r.line.lot) : undefined;
+            return (
+              <tr key={r.key} className="hover:bg-muted/40">
+                <Td>
+                  <div className="font-medium">{r.drug.brand} ({r.drug.generic}) {r.drug.strengthValue} {r.drug.strengthUnit}</div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    {r.rx?.number} · {r.dispense.number}
+                    <ControlBadge cls={r.drug.controlClass} />
+                  </div>
+                  {dev && <div className="font-mono text-xs text-update">{r.line.type} {r.line.identifier} v{r.line.version}</div>}
+                </Td>
+                <Td>
+                  <div className="font-semibold text-move">{patientName(p)}</div>
+                  <div className="text-xs text-muted-foreground">{p?.mrn}{dev && ` · Visit ${r.dispense.visitNumber}`}</div>
+                </Td>
+                <Td className="text-xs tabular-nums">
+                  <div className="font-medium">{r.line.quantity} {r.drug.unit}</div>
+                  <div className="text-muted-foreground">Batch {r.line.lot ?? "not recorded"}{r.line.expiry && `, expires ${fmtExpiry(r.line.expiry)}`}</div>
+                  {cancelled && <div className="text-ok">{r.line.lot ? `Returned to batch${batch ? `, ${batch.onHand} ${r.drug.unit} on hand now` : ""}` : "Returned to stock"}</div>}
+                </Td>
+                <Td><Badge tone={cancelled ? "neutral" : "ok"}>{cancelled ? "Cancelled" : "Completed"}</Badge></Td>
+                <Td className="text-xs text-muted-foreground"><div>{fmtWhen(r.dispense.handedOverAt)}</div><div>by {r.dispense.dispenser}</div></Td>
+                <Td>
+                  <div className="flex flex-wrap gap-1.5">
+                    {r.rx && <Button size="sm" variant="secondary" onClick={() => onOpenRx(r.rx!.number)}>Open Prescription</Button>}
+                    {!cancelled && (
+                      <>
+                        <span title={!canDispense ? "You do not have permission to dispense" : r.change.reason || undefined}>
+                          <Button size="sm" disabled={!canDispense || !r.change.ok} onClick={() => onLine({ mode: "update", d: r.dispense, line: r.line })}>Update</Button>
+                        </span>
+                        <span title={!canDispense ? "You do not have permission to dispense" : r.change.reason || undefined}>
+                          <Button size="sm" variant="danger" disabled={!canDispense || !r.change.ok} onClick={() => onLine({ mode: "cancel", d: r.dispense, line: r.line })}>Cancel Dispense</Button>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {!cancelled && !r.change.ok && <div className="mt-1 max-w-[220px] text-xs text-muted-foreground">{r.change.reason}</div>}
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+    </Card>
+  );
+}
+
+const dispensedCount = (s: ReturnType<typeof useRx>): number => dispensedRows(s).length;

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { leafTests, testByCode } from "@/lib/lab";
+import { receiveSample } from "@/lib/lab-extras";
+import { switchUser } from "@/lib/session";
 import type { LabOrder, RadOrder } from "@/lib/fhir/types";
 import type { Prescription, RxItem, RxState, Dispense, DispenseLine } from "@/lib/rx-types";
 import { cellKey, dropStates, groupByCell, stagesAfter } from "./board-logic";
@@ -114,8 +116,8 @@ describe("tube colours", () => {
 /* ---------- lab stages, lanes and rules ---------- */
 
 describe("lab board", () => {
-  it("has five stages and three lanes", () => {
-    expect(LAB_STAGES.map((s) => s.id)).toEqual(["ordered", "collected", "in-progress", "entered", "published"]);
+  it("has seven stages and three lanes, like the HIS board", () => {
+    expect(LAB_STAGES.map((s) => s.id)).toEqual(["ordered", "collected", "received", "in-progress", "entered", "verification", "published"]);
     expect(LAB_LANES.map((l) => l.id)).toEqual(["stat", "urgent", "routine"]);
   });
   it("puts ASAP in the urgent lane", () => {
@@ -129,9 +131,18 @@ describe("lab board", () => {
     expect(labStageOf(lab({ status: "collected" }))).toBe("collected");
     expect(labStageOf(lab({ status: "in-progress" }))).toBe("in-progress");
     expect(labStageOf(withAllResults(lab({ status: "in-progress" })))).toBe("entered");
+    expect(labStageOf(withAllResults(lab({ status: "in-progress", submittedAt: new Date().toISOString() })))).toBe("verification");
     expect(labStageOf(lab({ status: "resulted" }))).toBe("published");
     expect(labStageOf(lab({ status: "amended" }))).toBe("published");
     expect(labStageOf(lab({ status: "cancelled" }))).toBeNull();
+  });
+  it("a collected specimen moves to Sample Received once the lab has received it", () => {
+    switchUser("U9");
+    const o = lab({ id: "LO-990001", status: "collected", specimens: [{ id: "SP-990001-BLD", key: "BLD", collectedAt: "2026-11-11T08:00:00.000Z", collectedBy: "Tech" }] });
+    expect(labStageOf(o)).toBe("collected");
+    expect(receiveSample(o)).toBe(true);
+    expect(labStageOf(o)).toBe("received");
+    expect(labClock(o, "received")?.targetMin).toBe(20);
   });
   it("counts typed results", () => {
     const o = lab({ status: "in-progress", codes: ["58410-2"] });
@@ -140,13 +151,18 @@ describe("lab board", () => {
   });
   it("allows one step forward", () => {
     expect(labCanMove(lab(), "ordered", "collected")).toEqual({ ok: true });
-    expect(labCanMove(lab({ status: "collected" }), "collected", "in-progress")).toEqual({ ok: true });
+    expect(labCanMove(lab({ status: "collected" }), "collected", "received")).toEqual({ ok: true });
+    expect(labCanMove(lab({ status: "collected" }), "received", "in-progress")).toEqual({ ok: true });
     expect(labCanMove(lab({ status: "in-progress" }), "in-progress", "entered")).toEqual({ ok: true });
-    expect(labCanMove(withAllResults(lab({ status: "in-progress" })), "entered", "published")).toEqual({ ok: true });
+    expect(labCanMove(withAllResults(lab({ status: "in-progress" })), "entered", "verification")).toEqual({ ok: true });
+    expect(labCanMove(withAllResults(lab({ status: "in-progress" })), "verification", "published")).toEqual({ ok: true });
   });
   it("refuses to skip a step and says what to do first", () => {
     const skip = labCanMove(lab({ status: "in-progress" }), "in-progress", "published");
-    expect(skip).toEqual({ ok: false, reason: "Enter the results before you move this to Resulted." });
+    expect(skip).toEqual({ ok: false, reason: "Enter the results and have a second user verify them before you move this to Resulted." });
+    const receive = labCanMove(lab({ status: "collected" }), "collected", "in-progress");
+    expect(receive).toEqual({ ok: false, reason: "Receive the sample in the lab before you start processing." });
+    expect(labCanMove(withAllResults(lab({ status: "in-progress" })), "entered", "published")).toEqual({ ok: false, reason: "Send the results for verification first. A second user verifies and releases them." });
     const a = labCanMove(lab(), "ordered", "in-progress");
     expect(a.ok).toBe(false);
     expect(!a.ok && a.reason).toContain("Collect the specimen");
@@ -193,8 +209,8 @@ describe("lab board", () => {
 /* ---------- radiology ---------- */
 
 describe("radiology board", () => {
-  it("has four stages and five modality lanes", () => {
-    expect(RAD_STAGES.map((s) => s.id)).toEqual(["ordered", "performed", "reporting", "reported"]);
+  it("has five stages and five modality lanes, like the HIS board", () => {
+    expect(RAD_STAGES.map((s) => s.id)).toEqual(["ordered", "performed", "reporting", "signed", "reported"]);
     expect(RAD_LANES.map((l) => l.id)).toEqual(["xray", "ct", "mri", "us", "other"]);
   });
   it("puts each exam in the lane of its modality", () => {
@@ -211,6 +227,7 @@ describe("radiology board", () => {
     expect(radStageOf(rad({ status: "performed", study, report: report() }))).toBe("performed");
     expect(radStageOf(rad({ status: "performed", study, report: report({ findings: "Clear lungs" }) }))).toBe("reporting");
     expect(reportStarted(rad({ status: "performed", report: report({ impression: "Normal" }) }))).toBe(true);
+    expect(radStageOf(rad({ status: "performed", study, report: report({ findings: "a", impression: "b", signedAt: new Date().toISOString(), signedBy: { id: "R1", name: "Dr. Rami" } }) }))).toBe("signed");
     expect(radStageOf(rad({ status: "resulted" }))).toBe("reported");
     expect(radStageOf(rad({ status: "amended" }))).toBe("reported");
     expect(radStageOf(rad({ status: "cancelled" }))).toBeNull();
@@ -219,7 +236,10 @@ describe("radiology board", () => {
     expect(radCanMove(rad(), "ordered", "performed")).toEqual({ ok: true });
     expect(radCanMove(rad({ status: "performed", report: report() }), "performed", "reporting")).toEqual({ ok: true });
     const full = rad({ status: "performed", study, report: report({ findings: "a", impression: "b" }) });
-    expect(radCanMove(full, "reporting", "reported")).toEqual({ ok: true });
+    expect(radCanMove(full, "reporting", "signed")).toEqual({ ok: true });
+    expect(radCanMove(full, "signed", "reported")).toEqual({ ok: true });
+    const unsigned = radCanMove(full, "reporting", "reported");
+    expect(!unsigned.ok && unsigned.reason).toBe("A radiologist must sign the report before it is released.");
     const skip = radCanMove(rad(), "ordered", "reporting");
     expect(!skip.ok && skip.reason).toContain("performed");
     expect(radCanMove(rad({ status: "performed", report: report() }), "performed", "reported").ok).toBe(false);
@@ -228,7 +248,7 @@ describe("radiology board", () => {
   });
   it("needs the findings and the impression before publishing", () => {
     const half = rad({ status: "performed", study, report: report({ findings: "Clear lungs" }) });
-    const res = radCanMove(half, "reporting", "reported");
+    const res = radCanMove(half, "reporting", "signed");
     expect(res.ok).toBe(false);
     expect(!res.ok && res.reason).toContain("impression");
   });
@@ -238,6 +258,7 @@ describe("radiology board", () => {
     expect(c?.targetMin).toBe(30);
     expect(c?.since).toBe(study.performedEnd);
     expect(radClock(o, "reporting")?.targetMin).toBe(30);
+    expect(radClock(o, "signed")?.targetMin).toBe(30);
     expect(radClock(rad({ priority: "routine" }), "ordered")?.targetMin).toBe(240);
     expect(radClock(rad({ status: "resulted" }), "reported")).toBeNull();
   });
@@ -315,12 +336,13 @@ describe("board logic", () => {
     const o = lab({ status: "collected" });
     const d = dropStates(o, "collected", LAB_STAGES, labCanMove);
     expect(d.collected.state).toBe("origin");
-    expect(d["in-progress"].state).toBe("valid");
+    expect(d.received.state).toBe("valid");
+    expect(d["in-progress"].state).toBe("blocked");
     expect(d.ordered.state).toBe("blocked");
     expect(d.published.state).toBe("blocked");
     expect(d.published.reason).toBeTruthy();
   });
   it("lists the stages after a given one", () => {
-    expect(stagesAfter(LAB_STAGES, "entered").map((s) => s.id)).toEqual(["published"]);
+    expect(stagesAfter(LAB_STAGES, "entered").map((s) => s.id)).toEqual(["verification", "published"]);
   });
 });
