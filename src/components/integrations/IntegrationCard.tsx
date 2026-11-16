@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Badge, cn } from "@/components/ui/primitives";
+import { INTEGRATION_USE_CASES, UseCaseIcons } from "@/components/NphiesUseCaseIcon";
 import { fmtRelative } from "@/lib/format";
 import { MODE_LABEL, MODE_TONE, environmentOf, modeOf, type CallStats, type Integration } from "@/lib/integrations";
 
@@ -26,7 +27,8 @@ export function IntegrationCard({ item, stats, icon, selected, onSelect }: {
         </span>
         <Badge tone={MODE_TONE[mode]}>{MODE_LABEL[mode]}</Badge>
       </span>
-      <span className="mt-3 block text-xs text-muted-foreground">{item.services.join(", ")}</span>
+      {INTEGRATION_USE_CASES[item.id] && <UseCaseIcons ids={INTEGRATION_USE_CASES[item.id]} className="mt-3" />}
+      <span className={cn("block text-xs text-muted-foreground", INTEGRATION_USE_CASES[item.id] ? "mt-1.5" : "mt-3")}>{item.services.join(", ")}</span>
       <span className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-border/70 pt-3 text-xs">
         <Fact label="Environment">{environmentOf(item.id)}</Fact>
         <Fact label="Last Call">{stats.last ? fmtRelative(stats.last.at) : "None Yet"}</Fact>

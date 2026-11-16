@@ -4,6 +4,9 @@ import { IconCircleCheck, IconCircleX, IconPencil, IconSend } from "@tabler/icon
 import { CellSub, DataTable, ListPage, ListToolbar, StatFilters, useList, type Column, type FilterDef, type RowAction } from "@/components/list";
 import { CodeBlock } from "@/components/ui/code-block";
 import { NphiesLogo } from "@/components/NphiesLogo";
+import { NphiesConnectionStrip, NphiesUseCaseIcon } from "@/components/NphiesUseCaseIcon";
+import { connectionStatus, OUTBOX_USE_CASE } from "@/lib/nphies-connection";
+import { getFinancial, useFinancial } from "@/lib/nphies-financial";
 import { Badge } from "@/components/ui/primitives";
 import { useDevMode } from "@/lib/devmode";
 import { useDocs } from "@/lib/docs";
@@ -28,7 +31,7 @@ const statePill = (r: OutboxRow) => <Badge tone={r.state === "not-sent" && r.rea
 
 export function NphiesClinicalPage() {
   // Subscribe to every store the list is built from, so the page updates when something is sent or changed.
-  useHis(); useLab(); useRad(); useRx(); useVitals(); useDocs(); useSession();
+  useHis(); useLab(); useRad(); useRx(); useVitals(); useDocs(); useSession(); useFinancial();
   const dev = useDevMode();
   const [open, setOpen] = React.useState<string | null>(null);
 
@@ -55,7 +58,7 @@ export function NphiesClinicalPage() {
         </span>
       ),
     },
-    { id: "type", header: "Type", value: (r) => TYPE_LABEL[r.type], cell: (r) => <span className="whitespace-nowrap">{TYPE_LABEL[r.type]}</span> },
+    { id: "type", header: "Type", value: (r) => TYPE_LABEL[r.type], cell: (r) => <span className="flex items-center gap-2 whitespace-nowrap"><NphiesUseCaseIcon id={OUTBOX_USE_CASE[r.type]} size={18} title={TYPE_LABEL[r.type]} />{TYPE_LABEL[r.type]}</span> },
     { id: "item", header: "What Is Sent", value: (r) => r.item, cell: (r) => <span className="block max-w-md">{r.item}</span> },
     {
       id: "state", header: "Status", value: (r) => r.stateDetail,
@@ -117,6 +120,7 @@ export function NphiesClinicalPage() {
         ]} />
       }
     >
+      <NphiesConnectionStrip status={connectionStatus(all, getFinancial().cases)} className="mb-4" />
       <ListToolbar list={list} placeholder="Patient, MRN or item" />
       <DataTable
         list={list}
@@ -138,7 +142,7 @@ export function NphiesClinicalPage() {
         card={(r) => ({
           title: r.patient,
           aside: statePill(r),
-          lines: [<span key="a">{TYPE_LABEL[r.type]}: {r.item}</span>, <span key="b" className="tabular-nums">Last sent {when(r.lastAt)}</span>],
+          lines: [<span key="a" className="flex items-center gap-1.5"><NphiesUseCaseIcon id={OUTBOX_USE_CASE[r.type]} size={16} title={TYPE_LABEL[r.type]} />{TYPE_LABEL[r.type]}: {r.item}</span>, <span key="b" className="tabular-nums">Last sent {when(r.lastAt)}</span>],
         })}
         empty={{
           icon: <Send />,

@@ -6,12 +6,18 @@ import { Badge, Button, cn } from "@/components/ui/primitives";
 import { responseTimeText, TX_TYPE_LABEL, type RcmTransaction, type TxType } from "@/lib/rcm-transactions";
 import { fmtDate, fmtTime } from "./RcmUi";
 import { ActionIcon } from "@/components/ui/action-icons";
+import { NphiesUseCaseIcon, type UseCaseId } from "@/components/NphiesUseCaseIcon";
 
 const TYPE_ICON: Record<TxType, typeof IconCash> = {
   eligibility: IconUserCheck, priorauth: IconShieldCheck, claim: IconFileInvoice, communication: IconMessageCircle, poll: IconRefresh, cancel: IconCircleX, "payment-notice": IconCash,
 };
 
+/** Request types that are one of NHIC's NPHIES use cases take that use case's icon. */
+const TYPE_USE_CASE: Partial<Record<TxType, UseCaseId>> = { eligibility: "eligibility", priorauth: "prior-auth", claim: "claims", "payment-notice": "payment" };
+
 export function TxTypeIcon({ type, className }: { type: TxType; className?: string }) {
+  const uc = TYPE_USE_CASE[type];
+  if (uc) return <NphiesUseCaseIcon id={uc} size={16} className={className} title={TX_TYPE_LABEL[type]} />;
   const Icon = TYPE_ICON[type];
   return <Icon className={cn("size-4", className)} stroke={1.75} aria-hidden="true" />;
 }

@@ -16,6 +16,7 @@ import { getMasterRows, useRecords } from "@/lib/records";
 import { can, useSession } from "@/lib/session";
 import { useHis, patientName } from "@/lib/store";
 import { fmtDateTime } from "@/lib/format";
+import { NphiesUseCaseIcon } from "@/components/NphiesUseCaseIcon";
 
 const sar = (n: number) => <Money value={n} />;
 const sarText = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -235,6 +236,9 @@ function VisitSteps({ v, allowed, dev }: { v: FinVisit; allowed: boolean; dev: b
   );
 }
 
+/** Each step and its NHIC use case icon. */
+const STEP_USE_CASE = { eligibility: "eligibility", authorization: "prior-auth", claim: "claims", payment: "payment" } as const;
+
 function StepCard({ n, s, allowed, visit }: { n: number; s: StepView; allowed: boolean; visit: string }) {
   const first = finActionFor(s);
   const second = finActionFor(s, true);
@@ -242,7 +246,7 @@ function StepCard({ n, s, allowed, visit }: { n: number; s: StepView; allowed: b
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border p-3">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-semibold">{n}. {s.label}</h3>
+        <h3 className="flex items-center gap-2 text-sm font-semibold"><NphiesUseCaseIcon id={STEP_USE_CASE[s.step]} size={18} title={s.label} />{n}. {s.label}</h3>
         <Badge tone={s.tone}>{s.status}</Badge>
       </div>
       <p className="min-h-10 text-xs text-muted-foreground">{s.hint}</p>
