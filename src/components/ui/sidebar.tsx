@@ -22,10 +22,17 @@ function cn(...inputs: ClassValue[]) {
 
 const WENSITY_STYLE_ID = "wensity-sidebar-styles";
 const WENSITY_STYLES = `
+/* A visible scrollbar, so people can tell the menu scrolls; brighter on hover. */
 .sidebar-nav {
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+  scrollbar-color: rgba(218, 240, 228, 0.35) transparent;
+  scrollbar-gutter: stable;
 }
+.sidebar-nav:hover { scrollbar-color: rgba(12, 230, 159, 0.7) transparent; }
+.sidebar-nav::-webkit-scrollbar { width: 8px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(218, 240, 228, 0.35); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+.sidebar-nav:hover::-webkit-scrollbar-thumb { background-color: rgba(12, 230, 159, 0.7); }
 `;
 
 if (typeof document !== "undefined" && !document.getElementById(WENSITY_STYLE_ID)) {
