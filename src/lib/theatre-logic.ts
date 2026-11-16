@@ -927,12 +927,14 @@ function recoveryDay(c: SurgeryCase, now: Date): string {
 /** Recovery times are HH:mm. Arrival cannot be before the operation ended, and neither time can be in the future. */
 export function recoveryTimingProblem(c: SurgeryCase, d: Partial<RecoveryData>, now: Date = new Date()): string | null {
   const day = recoveryDay(c, now);
-  const arrival = parseLocal(day, d.arrivalTime);
+  let arrival = parseLocal(day, d.arrivalTime);
   const out = parseLocal(day, d.timeOut);
   const limit = now.getTime() + CLOCK_SLACK_MS;
+  const opEnd = parseLocalDateTime(c.opNote?.end);
+  // An operation that ends before midnight with arrival after it: the HH:mm belongs to the next day.
+  if (arrival && opEnd && arrival.getTime() < opEnd.getTime() && arrival.getTime() + 86_400_000 <= limit) arrival = new Date(arrival.getTime() + 86_400_000);
   if (arrival && arrival.getTime() > limit) return `The arrival time (${when(arrival)}) is in the future.`;
   if (out && out.getTime() > limit) return `The recovery Time Out (${when(out)}) is in the future.`;
-  const opEnd = parseLocalDateTime(c.opNote?.end);
   if (arrival && opEnd && arrival.getTime() < opEnd.getTime()) return `The patient cannot arrive in recovery (${when(arrival)}) before the operation ended (${when(opEnd)}).`;
   return null;
 }

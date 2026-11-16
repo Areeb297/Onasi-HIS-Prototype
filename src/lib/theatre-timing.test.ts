@@ -89,6 +89,13 @@ describe("times typed in the operative note", () => {
 describe("recovery and closing", () => {
   const done = base({ signIn: phaseDone(), opNote: { start: `${slotDay}T09:10`, end: `${slotDay}T10:20`, procedureDone: "x", findings: "y", status: "Completed", done: stamp } });
 
+  it("reads a recovery arrival after midnight as the next day", () => {
+    const late = base({ signIn: phaseDone(), opNote: { start: `${slotDay}T22:30`, end: `${slotDay}T23:50`, procedureDone: "x", findings: "y", status: "Completed", done: stamp } });
+    const nextDay = new Date(new Date(`${slotDay}T00:30`).getTime() + 86_400_000);
+    expect(recoveryTimingProblem(late, { arrivalTime: "00:10" }, nextDay)).toBeNull();
+    expect(recoveryTimingProblem(late, { arrivalTime: "23:40" }, nextDay)).toMatch(/before the operation ended/);
+  });
+
   it("keeps the recovery arrival after the operation ended and out of the future", () => {
     expect(recoveryTimingProblem(done, { arrivalTime: "10:00" }, at("12:00"))).toMatch(/before the operation ended/);
     expect(recoveryTimingProblem(done, { arrivalTime: "10:30" }, at("12:00"))).toBeNull();
