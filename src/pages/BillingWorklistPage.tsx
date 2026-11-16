@@ -211,7 +211,7 @@ export function BillingWorklistPage() {
                   <tr key={r.visit} className={cn("align-top transition-colors hover:bg-muted/40", on && "bg-[#39edd5]/[0.07] hover:bg-[#39edd5]/10")}>
                     <Td className="px-2.5"><input type="checkbox" aria-label={`Select claim for ${patientName(r.patient)}, visit ${r.visit}`} checked={on} onChange={() => toggle(r.visit)} className="mt-0.5 size-4 accent-[#035d53]" /></Td>
                     <Td className="px-1.5 tabular-nums text-muted-foreground">{(paging.page - 1) * paging.size + i + 1}</Td>
-                    <Td className="font-mono text-xs">{r.invoiceNumber ? `#${r.invoiceNumber}` : <span className="font-sans text-muted-foreground">None</span>}</Td>
+                    <Td className="font-mono text-xs">{r.invoiceNumber ? String(r.invoiceNumber) : <span className="font-sans text-muted-foreground">None</span>}</Td>
                     <Td className="min-w-40">
                       <button type="button" className="text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => navigate("/claim", { visit: r.visit })}>{patientName(r.patient)}</button>
                       <div className="mt-0.5 text-xs text-muted-foreground">MRN <span className="font-mono">{r.patient.mrn}</span></div>

@@ -5,7 +5,7 @@ import { getLab } from "./lab";
 import type { Encounter, Patient } from "./model";
 import { getRad } from "./radiology";
 import { getRx } from "./rx";
-import { can } from "./session";
+import { can, currentUser } from "./session";
 import { getState, patientName } from "./store";
 import { pushToast } from "./toast";
 
@@ -57,8 +57,12 @@ export interface FinCase {
   authorization?: { status: AuthStatus; at: string; ref: string; authNumber?: string; note: string };
   claim?: { status: ClaimStatus; at: string; ref: string; claimNumber: string; approved?: number; note: string };
   payment?: { status: PaymentStatus; at: string; ref: string; amount: number; batch: string };
+  /** Services ordered on this visit that need the payer's approval, waiting for the approvals officer to send the request. */
+  authRequests?: AuthRequest[];
   messages: FinMessage[];
 }
+
+export interface AuthRequest { id: string; service: string; at: string; by: string }
 
 interface FinState {
   cases: FinCase[];
@@ -109,7 +113,9 @@ export function payerShareOf(p: Pick<Patient, "extra">): number {
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const percent = (share: number) => `${Math.round(share * 1000) / 10} percent`;
 
-const CLASS_FEE: Record<string, number> = { O: 350, E: 900, I: 3200 };
+export const CLASS_FEE: Record<string, number> = { O: 350, E: 900, I: 3200 };
+/** Estimated price of one lab test, used for the charge estimate and the approval threshold. */
+export const LAB_TEST_FEE = 85;
 
 export interface Charge {
   total: number;
@@ -124,13 +130,83 @@ export function estimateCharge(e: Encounter): Charge {
   const rx = getRx().prescriptions.filter((p) => p.visitNumber === e.visitNumber);
   const labTests = lab.reduce((n, o) => n + o.codes.length, 0);
   const rxItems = rx.reduce((n, p) => n + p.items.filter((i) => i.status !== "cancelled" && !i.patientProvided).length, 0);
-  if (labTests) lines.push({ label: `Laboratory (${labTests} test${labTests === 1 ? "" : "s"})`, amount: labTests * 85 });
+  if (labTests) lines.push({ label: `Laboratory (${labTests} test${labTests === 1 ? "" : "s"})`, amount: labTests * LAB_TEST_FEE });
   if (rad.length) lines.push({ label: `Radiology (${rad.length} exam${rad.length === 1 ? "" : "s"})`, amount: rad.length * 320 });
   if (rxItems) lines.push({ label: `Medication (${rxItems} item${rxItems === 1 ? "" : "s"})`, amount: rxItems * 40 });
   return { total: lines.reduce((n, l) => n + l.amount, 0), lines };
 }
 
 export const needsAuthorization = (e: Encounter, c: Charge): boolean => e.cls === "I" || c.total >= AUTH_FROM;
+
+/* ---------- prior authorization at the order (CHI) ---------- */
+
+/** What is being ordered, for the approval rule. */
+export type ApprovalService =
+  | { kind: "imaging"; modality: string; label: string }
+  | { kind: "admission"; label?: string }
+  | { kind: "surgery"; label: string }
+  | { kind: "service"; label: string; price: number };
+
+/** Imaging that payers approve first: CT, MRI, nuclear medicine and PET. */
+export const APPROVAL_MODALITIES = ["CT", "MR", "NM", "PT"];
+
+/**
+ * CHI: these need the payer's approval before they are done: CT, MRI, nuclear and PET imaging, admission, surgery, and
+ * any other single service (for example a costly medicine) at or above AUTH_FROM SAR.
+ */
+export function serviceNeedsApproval(s: ApprovalService): boolean {
+  if (s.kind === "imaging") return APPROVAL_MODALITIES.includes(s.modality);
+  if (s.kind === "service") return s.price >= AUTH_FROM;
+  return true;
+}
+
+const isEmergency = (e: Encounter | undefined) => !!e && (e.cls === "E" || !!e.ed);
+
+/**
+ * The order asks for approval: for an insured patient a request is queued on NPHIES Financial for the approvals officer
+ * to send. Anyone who may place the order may queue it; sending stays with the officer. Returns null when no request is
+ * needed (cash patient, or the service needs no approval) or one already covers it.
+ */
+export function requestOrderAuthorization(visit: string, service: ApprovalService, now: number = Date.now()): AuthRequest | null {
+  if (!serviceNeedsApproval(service)) return null;
+  const enc = getState().encounters.find((e) => e.visitNumber === visit);
+  const patient = enc && getState().patients.find((p) => p.id === enc.patientId);
+  if (!enc || !patient || !insuredPayer(patient)) return null;
+  const c = caseOf(visit);
+  if (c.authorization?.status === "approved" || c.authorization?.status === "pended") return null;
+  const label = "label" in service && service.label ? service.label : service.kind === "admission" ? "Admission" : "Service";
+  if (c.authRequests?.some((r) => r.service === label)) return null;
+  const req: AuthRequest = { id: `AR-${visit}-${(c.authRequests?.length ?? 0) + 1}`, service: label, at: new Date(now).toISOString(), by: currentUser().name };
+  store.set(patch(store.get(), visit, (x) => ({ ...x, authRequests: [...(x.authRequests ?? []), req] })));
+  audit("create", `Prior authorization request ${req.id}`, { patient: patientName(patient), detail: `${label}, for the approvals officer` });
+  return req;
+}
+
+export interface ServiceGate {
+  /** True while the service must wait. The order is placed; only performing it waits. */
+  blocked: boolean;
+  /** Short status for the order: "Awaiting Approval", "Approval Due In 24 Hours", "Approval Denied", or "". */
+  label: string;
+  reason: string;
+}
+
+/**
+ * The gate a lab, imaging or theatre step asks before the service is done. Cash patients and services that need no
+ * approval are never blocked. Emergency visits are never blocked either (treat first; approval within 24 hours).
+ */
+export function serviceBlocked(o: { visitNumber: string; service: ApprovalService }): ServiceGate {
+  const open: ServiceGate = { blocked: false, label: "", reason: "" };
+  if (!serviceNeedsApproval(o.service)) return open;
+  const enc = getState().encounters.find((e) => e.visitNumber === o.visitNumber);
+  const patient = enc && getState().patients.find((p) => p.id === enc.patientId);
+  const payer = patient ? insuredPayer(patient) : null;
+  if (!payer) return open;
+  const au = caseOf(o.visitNumber).authorization;
+  if (au?.status === "approved") return open;
+  if (isEmergency(enc)) return { blocked: false, label: "Approval Due In 24 Hours", reason: `Emergency: treat first. Ask ${payer} for approval within 24 hours.` };
+  if (au?.status === "denied") return { blocked: true, label: "Approval Denied", reason: `${payer} refused the prior authorization. Ask again with more detail, or the patient pays cash.` };
+  return { blocked: true, label: "Awaiting Approval", reason: `${payer} must approve this before it is done. The approvals officer sends the request on NPHIES Financial.` };
+}
 
 export const caseOf = (visit: string, s: FinState = store.get()): FinCase => s.cases.find((c) => c.visit === visit) ?? { visit, messages: [] };
 
@@ -161,7 +237,9 @@ export function stepViews(e: Encounter, s: FinState = store.get()): StepView[] {
   }
   const c = caseOf(e.visitNumber, s);
   const charge = estimateCharge(e);
-  const authNeeded = needsAuthorization(e, charge);
+  // A service ordered on this visit that needs approval (CT, MRI, surgery...) makes the authorization required too.
+  const asked = c.authRequests ?? [];
+  const authNeeded = needsAuthorization(e, charge) || asked.length > 0;
   const out: StepView[] = [];
 
   // 1 Eligibility
@@ -182,10 +260,12 @@ export function stepViews(e: Encounter, s: FinState = store.get()): StepView[] {
   if (!elOk) auHint = "Check eligibility first.";
   else if (!authNeeded && !au) { auStatus = "Not Needed"; auHint = `The charge is under ${AUTH_FROM.toLocaleString()} SAR and this is not an inpatient visit. You may still ask.`; auAction = "Request Authorization"; }
   else if (!au || au.status === "denied" || au.status === "cancelled") {
-    auStatus = au ? (au.status === "denied" ? "Denied" : "Cancelled") : "Required";
+    auStatus = au ? (au.status === "denied" ? "Denied" : "Cancelled") : asked.length ? "Requested At Order" : "Required";
     auTone = au?.status === "denied" ? "danger" : "warn";
     auAction = au ? "Request Again" : "Request Authorization";
-    auHint = au?.note ?? "This visit needs approval before the claim.";
+    // CHI emergency exception: treat first, ask for approval within 24 hours of the emergency admission.
+    const orderedNote = asked.length ? `Ordered: ${asked.map((r) => `${r.service} by ${r.by}`).join("; ")}. ` : "";
+    auHint = au?.note ?? orderedNote + (e.cls === "E" || e.ed ? "Emergency: treat first. Request approval within 24 hours of admission." : "Request approval before the service. The service waits for the answer.");
   } else if (au.status === "pended") {
     auStatus = "Waiting For Payer"; auTone = "warn"; auHint = au.note; auAction = "Check For Answer";
     auSecond = { id: "cancel-auth", label: "Cancel Request" };
@@ -279,8 +359,9 @@ export const finActionFor = (view: StepView, secondary = false): FinAction | nul
 
 /** Runs one step for a visit. Returns false if it was not allowed. */
 export function runFinancial(visit: string, action: FinAction): boolean {
-  if (!can("billing")) {
-    pushToast({ tone: "warn", text: "Your role cannot do this.", detail: "This needs the billing permission." });
+  const right = action === "eligibility" || action === "authorization" || action === "poll-auth" || action === "cancel-auth" ? "approvals" : "billing";
+  if (!can(right)) {
+    pushToast({ tone: "warn", text: "Your role cannot do this.", detail: `This needs the ${right} permission.` });
     return false;
   }
   const hs = getState();
@@ -344,7 +425,7 @@ export function runFinancial(visit: string, action: FinAction): boolean {
     }
     case "claim": {
       const status: ClaimStatus = refuse ? "rejected" : charge.total > QUESTION_FROM ? "needs-info" : charge.total > DEFERRED_FROM ? "pended" : "approved";
-      const claimNumber = `CLM-${hex(n)}`;
+      const claimNumber = `CL${String(n).padStart(8, "0")}`; // HIS: CL{sequence:D8}
       const approved = status === "approved" ? money(charge.total * share) : undefined;
       const note = status === "rejected" ? "Rejected: a required item is missing or not covered." : status === "needs-info" ? "The payer needs the discharge summary before it can decide." : status === "pended" ? "The payer will answer later. Check for the answer." : `Approved ${approved!.toLocaleString()} of ${charge.total.toLocaleString()} SAR. The patient pays the rest.`;
       s = push(s, visit, { kind: "claim-request", direction: "out", summary: `Claim for ${charge.total.toLocaleString()} SAR`, json: skeleton("claim-request", e, p, payer, { resourceType: "Claim", use: "claim", status: "active", identifier: claimNumber, total: { value: charge.total, currency: "SAR" } }) });

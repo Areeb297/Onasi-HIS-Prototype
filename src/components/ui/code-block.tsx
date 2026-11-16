@@ -1,9 +1,11 @@
 import * as React from "react";
 import { Check, Copy, Download } from "lucide-react";
 import { Button, cn } from "./primitives";
+import { audit } from "@/lib/audit";
 
-/** Download text as a file in the browser. */
-export function downloadText(filename: string, text: string) {
+/** Download text as a file in the browser. Every download is audited here, so callers need not. */
+export function downloadText(filename: string, text: string, detail?: string) {
+  audit("download", filename, { detail });
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

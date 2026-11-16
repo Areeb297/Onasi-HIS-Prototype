@@ -5,7 +5,7 @@ import { DOCTORS } from "./reference-data";
 import { can, currentUser, roleOf } from "./session";
 import { getState } from "./store";
 import {
-  ALDRETE_PASS, STEP_LABEL, aldreteTotal, closeGate, closureTimingProblem, confirmGate, opNoteDone, opNoteTimingProblem, postponeGate, preOpProblems,
+  ALDRETE_PASS, LEGACY_THEATRE_VALUES, STEP_LABEL, fitForSurgery, aldreteTotal, closeGate, closureTimingProblem, confirmGate, opNoteDone, opNoteTimingProblem, postponeGate, preOpProblems,
   recoveryDischargeGate, recoveryTimingProblem, slotText, stepGate, timingGate,
   validateAssessment, validateClosure, validateOpNote, validatePhase, validateRecovery, validateRequest, validateSchedule, validateScheduleDraft,
   type AssessmentData, type ClosureDetails, type CloseOutcome, type CodedDx, type OpNoteData, type PhaseId, type PhaseInput, type PreOpData,
@@ -30,8 +30,19 @@ let state: State = { cases: [], seq: 1001, seeded: false };
 try {
   const raw = localStorage.getItem(KEY);
   if (raw) state = { ...state, ...(JSON.parse(raw) as Partial<State>) };
+  state.cases = state.cases.map(withHisValues);
 } catch {
   /* storage may be blocked */
+}
+
+/** Reads values saved before the lists followed the HIS lookups as their HIS value. */
+function withHisValues(c: SurgeryCase): SurgeryCase {
+  const v = <T extends string | undefined>(x: T): T => ((x && LEGACY_THEATRE_VALUES[x]) ?? x) as T;
+  return {
+    ...c,
+    assessment: c.assessment && { ...c.assessment, result: v(c.assessment.result), anaesthesia: v(c.assessment.anaesthesia) },
+    opNote: c.opNote && { ...c.opNote, anaesthesia: v(c.opNote.anaesthesia), category: v(c.opNote.category), team: c.opNote.team?.map((m) => ({ ...m, role: v(m.role) })) },
+  };
 }
 
 const listeners = new Set<() => void>();
@@ -96,7 +107,7 @@ function seedCases(): SurgeryCase[] {
     out.push({
       id: "SC-1002", visit: b.visitNumber, patientId: b.patientId,
       request: { procedure: "Right knee arthroscopy", side: "Right", surgeon: SURGEONS[4], urgency: "Elective", plannedDate: localDay(0), preopDiagnosis: "Torn meniscus, right knee", done: stamp(SURGEONS[4], 1500) },
-      assessment: { result: "Fit", asa: "II", anaesthesia: "Spinal", done: stamp(ANAESTHETISTS[0], 1200) },
+      assessment: { result: "Fit For Anesthesia", asa: "II", anaesthesia: "Spinal Anesthesia", done: stamp(ANAESTHETISTS[0], 1200) },
       schedule: { room: "Theatre 2", date: localDay(0), start: "13:00", durationMin: 60, anaesthetist: ANAESTHETISTS[0], scrubNurse: THEATRE_NURSES[1], circulatingNurse: THEATRE_NURSES[0], status: "Scheduled", done: stamp(SURGEONS[4], 1100) },
       preop: { answers: { identity: "yes", consent: "yes", anaesthesiaConsent: "yes", allergies: "yes" }, checklistDate: localDay(0), reviewed: { allergy: true }, saved: stamp("Reem Alshehri, RN", 300) },
     });
@@ -239,7 +250,7 @@ export function saveAssessment(id: string, data: AssessmentData): Result {
   const bad = validateAssessment(data);
   if (bad) return fail(bad);
   save({ ...s.c, assessment: { ...data, done: stampNow() } }, "update", "pre-anaesthesia assessment", `Result: ${data.result}`);
-  const fit = data.result === "Fit" || data.result === "Fit With High Risk";
+  const fit = fitForSurgery(data.result);
   return { ok: true, id, message: fit ? `Result: ${data.result}. The case can be scheduled.` : `Result: ${data.result}. The case cannot be scheduled yet.` };
 }
 

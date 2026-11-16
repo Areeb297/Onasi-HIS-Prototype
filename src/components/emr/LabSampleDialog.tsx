@@ -5,7 +5,7 @@ import { Badge, Button, Field, Input, RequiredNote, Select } from "@/components/
 import { useDevMode } from "@/lib/devmode";
 import { SPECIMEN_TYPES } from "@/lib/fhir/lab-catalog";
 import type { LabOrder } from "@/lib/fhir/types";
-import { collectSpecimens, getOrder, leafTests } from "@/lib/lab";
+import { collectSpecimens, getOrder, labApproval, leafTests } from "@/lib/lab";
 import {
   COLLECTION_METHODS, SAMPLE_CARE, SPECIMEN_RISKS, SPECIMEN_SOURCES, defaultSampleDetails, recordSampleDetails, sampleOf, specimenBarcode, useLabExtras,
   type SampleDetails,
@@ -36,6 +36,8 @@ export function LabSampleDialog({
   const set = (k: keyof SampleDetails) => (e: React.ChangeEvent<HTMLSelectElement>) => setD({ ...d, [k]: e.target.value });
   const opts = (list: string[], current: string) => (list.includes(current) || !current ? list : [current, ...list]);
 
+  const gate = mode === "collect" ? labApproval(order) : { blocked: false, label: "", reason: "" };
+
   function save() {
     if (mode === "collect") {
       if (!at) return;
@@ -58,12 +60,15 @@ export function LabSampleDialog({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          <Button variant="primary" disabled={mode === "collect" && !at} onClick={save}>{mode === "collect" ? "Confirm Collection" : "Save Details"}</Button>
+          <Button variant="primary" disabled={(mode === "collect" && !at) || gate.blocked} title={gate.blocked ? gate.reason : undefined} onClick={save}>{mode === "collect" ? "Confirm Collection" : "Save Details"}</Button>
         </>
       }
     >
       <div className="space-y-4">
         <PatientIdStrip patient={patient} visitNumber={order.visitNumber} />
+        {gate.label && (
+          <p role="status" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm"><span className="font-semibold">{gate.label}.</span> {gate.reason}</p>
+        )}
         <RequiredNote />
 
         <div className="space-y-2">

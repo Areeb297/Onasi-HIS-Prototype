@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { audit, setAuditIdentity } from "./audit";
+import { PERMISSION_LABELS } from "./permission-labels";
 
 /**
  * Demo session: who is signed in, what their role may do, break-the-glass access and the idle lock.
@@ -8,8 +9,10 @@ import { audit, setAuditIdentity } from "./audit";
 
 export type Permission =
   | "patient.read" | "patient.register" | "adt.send" | "emr.read" | "emr.write"
-  | "order.lab" | "order.rad" | "rx.write" | "rx.dispense" | "lab.result" | "rad.report"
-  | "docs.publish" | "confidential.read" | "audit.read" | "admin" | "ai.use" | "billing";
+  | "order.lab" | "order.rad" | "rx.write" | "rx.dispense" | "lab.result" | "rad.perform" | "rad.report"
+  | "docs.publish" | "confidential.read" | "audit.read" | "admin" | "ai.use" | "billing"
+  // Segregation of duties inside finance. Each maps to RoleMenuPermissions rows in the HIS.
+  | "cashier" | "approvals" | "coding";
 
 export interface Role {
   id: string;
@@ -26,10 +29,8 @@ export interface DemoUser {
   providerId?: string;
 }
 
-const ALL: Permission[] = [
-  "patient.read", "patient.register", "adt.send", "emr.read", "emr.write", "order.lab", "order.rad", "rx.write",
-  "rx.dispense", "lab.result", "rad.report", "docs.publish", "confidential.read", "audit.read", "admin", "ai.use", "billing",
-];
+/** Every permission, from the label list, so a new permission can never be left off the administrator. */
+const ALL = Object.keys(PERMISSION_LABELS) as Permission[];
 
 export const ROLES: Role[] = [
   { id: "physician", label: "Physician", permissions: ["patient.read", "adt.send", "emr.read", "emr.write", "order.lab", "order.rad", "rx.write", "docs.publish", "ai.use"] },
@@ -37,8 +38,17 @@ export const ROLES: Role[] = [
   { id: "registration", label: "Registration Clerk", permissions: ["patient.read", "patient.register", "adt.send"] },
   { id: "pharmacist", label: "Pharmacist", permissions: ["patient.read", "emr.read", "rx.dispense"] },
   { id: "lab", label: "Lab Technologist", permissions: ["patient.read", "lab.result"] },
-  { id: "radiologist", label: "Radiologist", permissions: ["patient.read", "emr.read", "rad.report"] },
+  // Radiologists also perform ultrasound and fluoroscopy, so they carry rad.perform as well as rad.report.
+  { id: "radiologist", label: "Radiologist", permissions: ["patient.read", "emr.read", "rad.perform", "rad.report"] },
+  // Performs the exam; never signs the report. HIS: RadiologyPermissions rows for the perform stages only.
+  { id: "rad-tech", label: "Radiology Technician", permissions: ["patient.read", "rad.perform"] },
   { id: "billing", label: "Billing Officer", permissions: ["patient.read", "billing"] },
+  // Segregation of duties: each finance role holds only its own duty, never "billing" (claims, rules, ZATCA).
+  { id: "cashier", label: "Cashier", permissions: ["patient.read", "cashier"] },
+  { id: "approvals", label: "Insurance Approvals Officer", permissions: ["patient.read", "approvals"] },
+  { id: "coder", label: "Medical Coder", permissions: ["patient.read", "emr.read", "coding"] },
+  // Admission office: assigns beds, transfers and the bed board. No registration, no chart, no billing.
+  { id: "bed-manager", label: "Bed Manager", permissions: ["patient.read", "adt.send"] },
   { id: "auditor", label: "Compliance Auditor", permissions: ["audit.read", "patient.read"] },
   { id: "admin", label: "System Administrator", permissions: ALL },
 ];
@@ -55,6 +65,13 @@ export const USERS: DemoUser[] = [
   { id: "U7", name: "Majed Aldosari", role: "billing", department: "RCM" },
   { id: "U8", name: "Reem Alghamdi", role: "auditor", department: "Compliance" },
   { id: "U9", name: "System Administrator", role: "admin", department: "IT", providerId: "A9001" },
+  // Roles every Saudi hospital has. A triage nurse is an HIS Users row with the Nurse role in the ER department.
+  { id: "U11", name: "Amal Alsubaie, RN", role: "nurse", department: "Emergency Triage" },
+  { id: "U12", name: "Turki Almutairi", role: "bed-manager", department: "Admission Office" },
+  { id: "U13", name: "Nawaf Albaqami", role: "cashier", department: "Cashier" },
+  { id: "U14", name: "Hessa Aldossary", role: "approvals", department: "Insurance Approvals" },
+  { id: "U15", name: "Rana Alharthi", role: "coder", department: "Medical Coding" },
+  { id: "U16", name: "Bandar Alshahrani, RT", role: "rad-tech", department: "Radiology" },
 ];
 
 const KEY = "onasi-emr-session-v1";
@@ -68,10 +85,17 @@ interface State {
   idleMinutes: number;
 }
 
+/** Idle lock range in minutes. It cannot be switched off: an unattended screen must lock. */
+export const IDLE_MIN = 1;
+export const IDLE_MAX = 30;
+export const clampIdle = (m: number) => (Number.isFinite(Number(m)) ? Math.min(IDLE_MAX, Math.max(IDLE_MIN, Math.round(Number(m)))) : 10);
+
 let state: State = { userId: "U1", glass: {}, locked: false, idleMinutes: 10 };
 try {
   const raw = localStorage.getItem(KEY);
-  if (raw) state = { ...state, ...(JSON.parse(raw) as Partial<State>), locked: false };
+  // A locked screen stays locked after a reload, so reloading the page is not a way past the lock.
+  if (raw) state = { ...state, ...(JSON.parse(raw) as Partial<State>) };
+  state.idleMinutes = clampIdle(state.idleMinutes);
 } catch {
   /* ignore */
 }
@@ -92,13 +116,25 @@ export const roleOf = (u: DemoUser): Role => ROLES.find((r) => r.id === u.role) 
 
 setAuditIdentity(() => ({ user: currentUser().name, role: roleOf(currentUser()).label }));
 
-export function can(p: Permission): boolean {
-  return roleOf(currentUser()).permissions.includes(p);
+/** A list means any one of them, as a menu entry several roles share (Invoice Worklist: billing or cashier). */
+export type PermissionNeed = Permission | readonly Permission[];
+export const hasNeed = (perms: readonly Permission[], need: PermissionNeed): boolean =>
+  typeof need === "string" ? perms.includes(need) : need.some((p) => perms.includes(p));
+
+export function can(p: PermissionNeed): boolean {
+  return hasNeed(roleOf(currentUser()).permissions, p);
 }
 
 export function switchUser(id: string) {
   set({ userId: id });
   audit("login", "Session", { detail: `Switched to ${currentUser().name}` });
+}
+
+/** From the lock screen: a different person signs in as themselves instead of carrying on in the locked session. */
+export function signInFromLock(id: string) {
+  audit("logout", "Session", { detail: `${currentUser().name} signed out at the lock screen` });
+  set({ userId: id, glass: {}, locked: false });
+  audit("login", "Session", { detail: `${currentUser().name} signed in at the lock screen` });
 }
 
 export function lockScreen() {
@@ -110,13 +146,15 @@ export function unlockScreen() {
   audit("unlock", "Session");
 }
 export function setIdleMinutes(m: number) {
-  set({ idleMinutes: m });
+  set({ idleMinutes: clampIdle(m) });
 }
 
 /** Break the glass: open a confidential record with a reason. Access lasts 30 minutes and is audited. */
-export function breakGlass(patientId: string, patientName: string, reason: string) {
+export function breakGlass(patientId: string, patientName: string, reason: string): boolean {
+  if (!reason.trim()) return false;
   set({ glass: { ...state.glass, [patientId]: Date.now() + 30 * 60_000 } });
-  audit("break-glass", `Confidential record ${patientName}`, { patient: patientId, detail: reason });
+  audit("break-glass", `Confidential record ${patientName}`, { patient: patientId, detail: reason.trim() });
+  return true;
 }
 export function hasGlass(patientId: string): boolean {
   return (state.glass[patientId] ?? 0) > Date.now();

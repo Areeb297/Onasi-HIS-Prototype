@@ -24,7 +24,7 @@ describe("laboratory sample extras", () => {
     const id = waiting().id;
     expect(collectSpecimens(id)).toBe(true);
     const o = getOrder(id)!;
-    expect(recordSampleDetails(o, { method: "Venipuncture", source: "Right Arm", care: "Keep On Ice", risk: "Biohazard" })).toBe(true);
+    expect(recordSampleDetails(o, { method: "Venipuncture", source: "Right Arm", care: "On Ice", risk: "Biohazard" })).toBe(true);
     expect(sampleOf(o)?.details?.source).toBe("Right Arm");
     expect(isReceived(o)).toBe(false);
     for (const s of o.specimens) expect(specimenBarcode(s)).toBe(s.id.toUpperCase());
@@ -32,7 +32,7 @@ describe("laboratory sample extras", () => {
 
     expect(receiveSample(o)).toBe(true);
     expect(isReceived(getOrder(id)!)).toBe(true);
-    expect(sampleOf(o)?.details?.care).toBe("Keep On Ice"); // receiving does not drop the details
+    expect(sampleOf(o)?.details?.care).toBe("On Ice"); // receiving does not drop the details
     expect(sampleOf(o)?.receivedBy).toBeTruthy();
   });
 

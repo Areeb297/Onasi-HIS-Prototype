@@ -5,9 +5,10 @@ import { coverageOutcome } from "./registration";
 /**
  * Rules for the chart's diagnosis, allergy and chief complaint lists, kept free of screens so they can be tested.
  *
- * Diagnosis types follow the HIS (Principal, Secondary, Admitting, Differential). The ADT messages keep their own values:
- *  - DG1-6 (A, W, F) is held in `Dx.type`: Admitting is A, Differential is W, Principal and Secondary are W while the
- *    visit is open and F once the patient is discharged.
+ * Diagnosis types follow the HIS lookup "Diagnosis Type" (Principal, Secondary, Working, Admitting, Final, Differential,
+ * Discharge; emr.Diagnosis.TypeId). The ADT messages keep their own values:
+ *  - DG1-6 (A, W, F) is held in `Dx.type`: Admitting is A, Working and Differential are W, Final and Discharge are F,
+ *    Principal and Secondary are W while the visit is open and F once the patient is discharged.
  *  - DG1-15 is 1 for the Principal diagnosis and 2 for the others. The Principal diagnosis is always kept first in
  *    the list, so documents and screens that read the first diagnosis still get the Principal one.
  *  - Older records have no `kind`. They are read as before: the first diagnosis is the Principal one,
@@ -38,11 +39,15 @@ export function searchCodes<T extends CodedTerm>(list: T[], query: string, limit
 
 export type DxKind = NonNullable<Dx["kind"]>;
 
+/** In the order of the HIS lookup "Diagnosis Type". */
 export const DX_KINDS: { code: DxKind; label: string }[] = [
   { code: "P", label: "Principal" },
   { code: "S", label: "Secondary" },
+  { code: "WK", label: "Working" },
   { code: "AD", label: "Admitting" },
+  { code: "FN", label: "Final" },
   { code: "DF", label: "Differential" },
+  { code: "DC", label: "Discharge" },
 ];
 export const dxKindLabel = (k: DxKind): string => DX_KINDS.find((x) => x.code === k)?.label ?? "Secondary";
 
@@ -56,7 +61,8 @@ export function dxKind(d: Dx, index: number): DxKind {
 /** DG1-6 value for a HIS diagnosis type. */
 export function dxMessageType(kind: DxKind, discharged: boolean): Dx["type"] {
   if (kind === "AD") return "A";
-  if (kind === "DF") return "W";
+  if (kind === "DF" || kind === "WK") return "W";
+  if (kind === "FN" || kind === "DC") return "F";
   return discharged ? "F" : "W";
 }
 
@@ -151,7 +157,7 @@ export function reactivateDx(active: Dx[], d: Dx, discharged: boolean): DxSaveRe
   let kind: DxKind = d.kind ?? "S";
   if (!hasPrincipal) kind = "P";
   else if (kind === "P") kind = "S";
-  return { list: normalizeDx([...list, { ...d, kind, type: dxMessageType(kind, discharged) }]) };
+  return { list: normalizeDx([...list, { ...d, kind: kind, type: dxMessageType(kind, discharged) }]) };
 }
 
 /* ---------- allergies ---------- */

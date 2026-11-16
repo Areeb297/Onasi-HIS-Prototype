@@ -33,7 +33,8 @@ export function actionsFor(enc: Encounter): ActionDef[] {
     if (!inpatient) out.push({ key: "A06", label: "Admit To Inpatient", icon: ic(IconBed, "text-ok") });
     if (inpatient) out.push({ key: "A07", label: "Change To Outpatient", icon: ic(IconWalk, "text-move") });
     out.push({ key: "A08", label: "Send Update", icon: ic(IconEdit, "text-update"), dot: enc.dirty });
-    out.push({ key: "A03", label: "Discharge", icon: ic(IconLogout, "text-cancel") });
+    // A03 is "discharge/end visit" in the NPHIES ADT spec: a clinic visit ends, an inpatient or ER patient is discharged.
+    out.push({ key: "A03", label: enc.cls === "O" ? "End Visit" : "Discharge", icon: ic(IconLogout, "text-cancel") });
     out.push(MOVE);
     out.push({ key: "A11", label: inpatient ? "Cancel Admission" : "Cancel Visit", icon: ic(IconCircleX, "text-cancel") });
   }

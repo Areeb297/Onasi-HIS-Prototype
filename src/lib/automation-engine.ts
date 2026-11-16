@@ -168,7 +168,7 @@ export function scanEvents(now: number = Date.now()): HisEvent[] {
     if (v.totals.patientBalance <= 0.005) continue;
     const e = encOf(inv.visit);
     out.push(makeEvent("invoice-overdue", `invoice-overdue:${inv.visit}:${inv.finalizedAt}`, at, patientOfEnc(e), e,
-      { amount: Math.round(v.totals.patientBalance * 100) / 100, daysOverdue: days }, `Invoice #${inv.number} unpaid for ${days} days`, "record"));
+      { amount: Math.round(v.totals.patientBalance * 100) / 100, daysOverdue: days }, `Invoice ${inv.number} unpaid for ${days} days`, "record"));
   }
   for (const e of getState().encounters) {
     if (e.status !== "active" || e.cls !== "I") continue;

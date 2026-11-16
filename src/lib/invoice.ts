@@ -26,7 +26,8 @@ import { fmtDateTime } from "./format";
  *    it drops when NPHIES Financial records the payer's payment for the visit.
  *
  * ZATCA (simulated): patient invoices are simplified tax invoices and must be reported within 24 hours. The first payment
- * reports the invoice automatically; Send To ZATCA does it by hand. A reported invoice that changes afterwards goes back to
+ * reports the invoice automatically and the worklist sync sweeps up any paid invoice still unreported (as the HIS background
+ * reporter does). Send To ZATCA does it by hand. A reported invoice that changes afterwards goes back to
  * Pending (in a live system the change is sent as a credit or debit note) and the 24 hours start again.
  */
 
@@ -224,6 +225,7 @@ export function lineShares(l: InvoiceLine, insured: boolean, vat: boolean, payer
   const patientAmount = insured ? round2(net * (1 - payerShare)) : net;
   const insuranceAmount = round2(net - patientAmount);
   const patientTax = vat ? round2(patientAmount * VAT_RATE) : 0;
+  // shortcut: no VAT on the insurer share yet (HIS InsuranceTax); the claim and payer payment must carry it too, see parity/finance.md.
   const insuranceTax = 0;
   return { gross, net, patientAmount, insuranceAmount, patientTax, insuranceTax, tax: round2(patientTax + insuranceTax), total: round2(net + patientTax + insuranceTax) };
 }
@@ -384,7 +386,8 @@ function createOrRefresh(s: InvoiceState, visit: string, now: number): { s: Invo
   }
   const seq = s.seq + 1;
   const base: Invoice = {
-    visit, number: 100000 + seq, patientId: ctx.patient.id, createdAt: iso(now), insurer: insurerOf(ctx.patient), vat: vatAppliesToPatientShare(ctx.patient),
+    // HIS: InvoiceNo = long.Parse($"{DateTime.Now.Year}{master.Id}"), e.g. 202634.
+    visit, number: Number(`${new Date(now).getFullYear()}${seq}`), patientId: ctx.patient.id, createdAt: iso(now), insurer: insurerOf(ctx.patient), vat: vatAppliesToPatientShare(ctx.patient),
     lines: [], transactions: [], zatca: { status: "Pending", clockFrom: iso(now), attempts: 0 },
   };
   const inv = refreshInvoice(base, ctx.enc, ctx.patient, now);
@@ -396,7 +399,7 @@ export function ensureInvoice(visit: string, now: number = Date.now()): Invoice 
   const before = store.get();
   const { s, created } = createOrRefresh(before, visit, now);
   if (s !== before) store.set(s);
-  if (created) audit("create", `Invoice #${created.number}`, { patient: nameOf(created), detail: `Visit ${visit}` });
+  if (created) audit("create", `Invoice ${created.number}`, { patient: nameOf(created), detail: `Visit ${visit}` });
   return invoiceOf(visit, s) ?? null;
 }
 
@@ -410,8 +413,17 @@ export function syncInvoices(now: number = Date.now()): void {
     s = r.s;
     if (r.created) created.push(r.created);
   }
+  // Sweep, as the HIS ZATCA background reporter does: an issued (paid) invoice that is not reported, or failed, goes again.
+  const swept: { inv: Invoice; ok: boolean }[] = [];
+  for (const inv of s.invoices) {
+    if (inv.zatca.status === "Reported" || !inv.transactions.some((x) => x.kind !== "refund")) continue;
+    const r = reportOne(s, inv, now, true);
+    s = r.s;
+    swept.push({ inv, ok: r.ok });
+  }
   if (s !== before) store.set(s);
-  for (const c of created) audit("create", `Invoice #${c.number}`, { patient: nameOf(c), detail: `Visit ${c.visit}` });
+  for (const c of created) audit("create", `Invoice ${c.number}`, { patient: nameOf(c), detail: `Visit ${c.visit}` });
+  for (const { inv, ok } of swept) audit("send-document", `Invoice ${inv.number} to ZATCA`, { patient: nameOf(inv), detail: ok ? "Reported by the automatic sweep" : "Failed in the automatic sweep" });
 }
 
 function nameOf(inv: Invoice): string {
@@ -524,7 +536,7 @@ export function sendToZatca(visits: string[], now: number = Date.now()): Result<
     const r = reportOne(s, inv, now, false);
     s = r.s;
     if (r.ok) reported++; else failed++;
-    audit("send-document", `Invoice #${inv.number} to ZATCA`, { patient: nameOf(inv), detail: r.ok ? "Reported" : "Failed" });
+    audit("send-document", `Invoice ${inv.number} to ZATCA`, { patient: nameOf(inv), detail: r.ok ? "Reported" : "Failed" });
   }
   store.set(s);
   return { ok: true, value: { reported, failed, skipped } };
@@ -532,9 +544,9 @@ export function sendToZatca(visits: string[], now: number = Date.now()): Result<
 
 /* ---------- payments ---------- */
 
-function denied(target: string, inv?: Invoice): Result<never> {
-  audit("denied", target, { patient: inv ? nameOf(inv) : undefined, detail: "Needs billing" });
-  return { ok: false, errors: ["Your role cannot do this. It needs the billing permission."] };
+function denied(target: string, inv?: Invoice, perm: "billing" | "cashier" = "billing"): Result<never> {
+  audit("denied", target, { patient: inv ? nameOf(inv) : undefined, detail: `Needs ${perm}` });
+  return { ok: false, errors: [`Your role cannot do this. It needs the ${perm} permission.`] };
 }
 
 export interface PaymentInput {
@@ -563,7 +575,8 @@ function allocateInOrder(view: InvoiceView, amount: number): Record<string, numb
 /** Record Payment, New Payment tab. */
 export function takePayment(visit: string, input: PaymentInput, now: number = Date.now()): Result<Transaction> {
   const inv0 = invoiceOf(visit);
-  if (!can("billing")) return denied(inv0 ? `Invoice #${inv0.number}` : `Invoice for visit ${visit}`, inv0);
+  // Segregation of duties: money in and out is the cashier's; billing staff do claims and ZATCA.
+  if (!can("cashier")) return denied(inv0 ? `Invoice ${inv0.number}` : `Invoice for visit ${visit}`, inv0, "cashier");
   const inv = ensureInvoice(visit, now);
   if (!inv) return { ok: false, errors: ["This invoice was not found."] };
   const view = invoiceView(inv);
@@ -594,7 +607,7 @@ export function takePayment(visit: string, input: PaymentInput, now: number = Da
   const first = !inv.transactions.some((x) => x.kind !== "refund");
   let next: Invoice = { ...inv, transactions: [...inv.transactions, t] };
   s = upsert({ ...s, txSeq }, next);
-  audit("update", `Invoice #${inv.number}`, {
+  audit("update", `Invoice ${inv.number}`, {
     patient: nameOf(inv),
     detail: waiver ? `Payment waiver (${waiver}) of ${sar(amount)}` : `Payment of ${sar(amount)} by ${input.method}${t.reference ? `, reference ${t.reference}` : ""}`,
   });
@@ -603,7 +616,7 @@ export function takePayment(visit: string, input: PaymentInput, now: number = Da
     const r = reportOne(s, next, now, true);
     s = r.s;
     next = invoiceOf(visit, s)!;
-    audit("send-document", `Invoice #${inv.number} to ZATCA`, { patient: nameOf(inv), detail: r.ok ? "Reported with the first payment" : "Failed with the first payment" });
+    audit("send-document", `Invoice ${inv.number} to ZATCA`, { patient: nameOf(inv), detail: r.ok ? "Reported with the first payment" : "Failed with the first payment" });
   }
   store.set(s);
   return { ok: true, value: t };
@@ -612,7 +625,7 @@ export function takePayment(visit: string, input: PaymentInput, now: number = Da
 /** Record Payment, Adjust Payment tab: place a payment's unallocated money on unpaid lines. */
 export function allocatePayment(visit: string, txId: string, amounts: Record<string, number>): Result<Transaction> {
   const inv = invoiceOf(visit);
-  if (!can("billing")) return denied(inv ? `Invoice #${inv.number}` : `Invoice for visit ${visit}`, inv);
+  if (!can("cashier")) return denied(inv ? `Invoice ${inv.number}` : `Invoice for visit ${visit}`, inv, "cashier");
   if (!inv) return { ok: false, errors: ["This invoice was not found."] };
   const t = inv.transactions.find((x) => x.id === txId && x.kind !== "refund");
   if (!t) return { ok: false, errors: ["Choose a payment first."] };
@@ -638,7 +651,7 @@ export function allocatePayment(visit: string, txId: string, amounts: Record<str
   for (const [k, a] of Object.entries(clean)) allocations[k] = round2((allocations[k] ?? 0) + a);
   const nt: Transaction = { ...t, allocations };
   store.set(upsert(store.get(), { ...inv, transactions: inv.transactions.map((x) => (x.id === t.id ? nt : x)) }));
-  audit("update", `Invoice #${inv.number}`, { patient: nameOf(inv), detail: `Payment ${t.id}: ${sar(total)} placed on ${Object.keys(clean).length} line(s)` });
+  audit("update", `Invoice ${inv.number}`, { patient: nameOf(inv), detail: `Payment ${t.id}: ${sar(total)} placed on ${Object.keys(clean).length} line(s)` });
   return { ok: true, value: nt };
 }
 
@@ -651,7 +664,7 @@ export interface RefundInput {
 /** Process Refund: gives back the whole overpayment, from the payments' unallocated money, newest first. */
 export function refundOverpayment(visit: string, input: RefundInput, now: number = Date.now()): Result<Transaction> {
   const inv = invoiceOf(visit);
-  if (!can("billing")) return denied(inv ? `Invoice #${inv.number}` : `Invoice for visit ${visit}`, inv);
+  if (!can("cashier")) return denied(inv ? `Invoice ${inv.number}` : `Invoice for visit ${visit}`, inv, "cashier");
   if (!inv) return { ok: false, errors: ["This invoice was not found."] };
   const view = invoiceView(inv);
   if (view.overpaid <= 0) return { ok: false, errors: ["The patient has not paid more than is due."] };
@@ -676,6 +689,6 @@ export function refundOverpayment(visit: string, input: RefundInput, now: number
   };
   s = upsert({ ...s, txSeq }, { ...inv, transactions: [...txs, r] });
   store.set(s);
-  audit("update", `Invoice #${inv.number}`, { patient: nameOf(inv), detail: `Refund of ${sar(r.amount)} by ${input.method}` });
+  audit("update", `Invoice ${inv.number}`, { patient: nameOf(inv), detail: `Refund of ${sar(r.amount)} by ${input.method}` });
   return { ok: true, value: r };
 }

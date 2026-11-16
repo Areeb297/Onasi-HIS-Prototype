@@ -5,7 +5,7 @@ import { Button, Field, Input, RequiredNote, Select } from "@/components/ui/prim
 import { machinesFor, procByCode } from "@/lib/fhir/rad-catalog";
 import type { PregnancyCheck, RadOrder } from "@/lib/fhir/types";
 import type { Patient } from "@/lib/model";
-import { PREGNANCY_TEXT, completeExam, examProblems, needsPregnancyCheck, type ExamDetails } from "@/lib/radiology";
+import { PREGNANCY_TEXT, completeExam, examProblems, needsPregnancyCheck, radApproval, type ExamDetails } from "@/lib/radiology";
 import { toLocalInput } from "@/lib/store";
 
 /**
@@ -32,6 +32,7 @@ export function RadExamDialog({ order, patient, onClose, onDone }: { order: RadO
     pregnancy, pregnancyNote, images,
   };
   const problems = examProblems(details, patient);
+  const gate = radApproval(order); // CHI: CT, MRI, nuclear and PET wait for the payer's approval
 
   return (
     <Dialog
@@ -45,7 +46,8 @@ export function RadExamDialog({ order, patient, onClose, onDone }: { order: RadO
           <Button variant="ghost" onClick={onClose}>Close</Button>
           <Button
             variant="primary"
-            disabled={problems.length > 0}
+            disabled={problems.length > 0 || gate.blocked}
+            title={gate.blocked ? gate.reason : undefined}
             onClick={() => {
               if (completeExam(order.id, details)) {
                 onDone?.();
@@ -60,6 +62,9 @@ export function RadExamDialog({ order, patient, onClose, onDone }: { order: RadO
     >
       <div className="space-y-3">
         <PatientIdStrip patient={patient} visitNumber={order.visitNumber} />
+        {gate.label && (
+          <p role="status" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm"><span className="font-semibold">{gate.label}.</span> {gate.reason}</p>
+        )}
         <p className="text-xs text-foreground">
           <span className="font-semibold">Reason for the exam:</span> {order.indication}
           {proc?.contrast && <span className="ml-2 font-semibold text-warn">This exam is normally done with contrast.</span>}

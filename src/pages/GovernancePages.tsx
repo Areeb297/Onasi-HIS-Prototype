@@ -7,11 +7,12 @@ import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Selec
 import { clearAudit, useAudit, type AuditAction, type AuditEntry } from "@/lib/audit";
 import { navigate, useRoute } from "@/lib/router";
 import { PERMISSION_LABELS } from "@/lib/permission-labels";
-import { ROLES, can, hasGlass, setIdleMinutes, useSession, type Permission } from "@/lib/session";
+import { IDLE_MAX, IDLE_MIN, ROLES, can, hasGlass, setIdleMinutes, useSession, type Permission } from "@/lib/session";
+import { audit } from "@/lib/audit";
 import { patientName, useHis } from "@/lib/store";
 
 const actionTone: Partial<Record<AuditAction, "ok" | "warn" | "danger" | "info" | "update" | "neutral">> = {
-  "break-glass": "danger", denied: "danger", delete: "warn", lock: "neutral", unlock: "neutral",
+  "break-glass": "danger", denied: "danger", delete: "warn", lock: "neutral", unlock: "neutral", export: "warn", print: "warn", download: "warn",
   "send-adt": "info", "send-fhir": "info", "send-document": "info", "ai-suggest": "update", "ai-accept": "update", "ai-reject": "update",
 };
 
@@ -19,6 +20,8 @@ const actionTone: Partial<Record<AuditAction, "ok" | "warn" | "danger" | "info" 
 export function AuditPage() {
   const entries = useAudit();
   useSession();
+  // Reading the access log is itself recorded.
+  React.useEffect(() => { audit("view", "Audit Trail"); }, []);
   const rows = [...entries].reverse();
   const actions = [...new Set(entries.map((e) => e.action))].sort();
   const users = [...new Set(entries.map((e) => e.user))].sort();
@@ -34,7 +37,8 @@ export function AuditPage() {
     { id: "role", header: "Role", value: (e) => e.role, cell: (e) => <span className="whitespace-nowrap text-muted-foreground">{e.role}</span> },
     { id: "action", header: "Action", value: (e) => e.action, cell: (e) => <Badge tone={actionTone[e.action] ?? "ok"}>{e.action}</Badge> },
     { id: "target", header: "Target", value: (e) => e.target, cell: (e) => <span className="block max-w-64 truncate" title={e.target}>{e.target}</span> },
-    { id: "patient", header: "Patient", value: (e) => e.patient ?? "", cell: (e) => <span className="font-mono text-xs whitespace-nowrap">{e.patient ?? "None"}</span> },
+    { id: "patient", header: "Patient", value: (e) => e.patient ?? "", csv: (e) => (e.patient ? `${e.patient}${e.mrn ? ` (${e.mrn})` : ""}` : ""),
+      cell: (e) => (e.patient ? <span className="whitespace-nowrap">{e.patient}{e.mrn && <span className="ml-1.5 font-mono text-xs text-muted-foreground">{e.mrn}</span>}</span> : <span className="text-muted-foreground">None</span>) },
     { id: "detail", header: "Detail", value: (e) => e.detail ?? "", cell: (e) => <span className="block max-w-80 truncate text-muted-foreground" title={e.detail}>{e.detail ?? ""}</span> },
   ];
   const list = useList({
@@ -47,14 +51,14 @@ export function AuditPage() {
     initialSort: { key: "at", dir: "desc" },
     pageSize: 50,
     unit: ["entry", "entries"],
-    search: (e) => `${e.user} ${e.role} ${e.action} ${e.target} ${e.patient ?? ""} ${e.detail ?? ""}`,
+    search: (e) => `${e.user} ${e.role} ${e.action} ${e.target} ${e.patient ?? ""} ${e.mrn ?? ""} ${e.detail ?? ""}`,
   });
 
   return (
     <ListPage
       title="Audit Trail"
       subtitle="Every view, change, send, denial, break-the-glass and AI action."
-      more={[can("admin") && { label: "Clear Demo Data", icon: <Trash2 className="size-4" />, danger: true, onClick: () => { if (confirm("Clear the demo audit data?")) clearAudit(); } }]}
+      more={[can("admin") && { label: "Clear Demo Data", icon: <Trash2 className="size-4" />, danger: true, onClick: () => { if (confirm("Clear the demo audit data? The clearing is recorded as the first new entry.")) clearAudit(); } }]}
     >
       <ListToolbar list={list} placeholder="User, patient or detail" />
       <DataTable
@@ -95,10 +99,10 @@ export function AccessPage() {
         </Table>
       </Card>
       <Card>
-        <CardHeader title="Session" subtitle="Automatic screen lock after inactivity (HIPAA automatic logoff theme, NCA session management)." />
+        <CardHeader title="Session" subtitle="Automatic screen lock after inactivity (NCA session management; HIPAA automatic logoff as best practice). It cannot be switched off." />
         <div className="max-w-xs p-4">
-          <Field label="Lock after (minutes, 0 is off)">
-            <Input type="number" min={0} max={120} value={session.idleMinutes} onChange={(e) => setIdleMinutes(Math.max(0, Number(e.target.value)))} />
+          <Field label={`Lock After (Minutes, ${IDLE_MIN} To ${IDLE_MAX})`}>
+            <Input type="number" min={IDLE_MIN} max={IDLE_MAX} value={session.idleMinutes} onChange={(e) => setIdleMinutes(Number(e.target.value))} />
           </Field>
         </div>
       </Card>
@@ -113,7 +117,8 @@ export function ConfidentialPage() {
   const entries = useAudit();
   const rows = state.patients.filter((p) => p.confidential && !p.mergedInto).map((p) => ({
     p,
-    last: [...entries].reverse().find((e) => e.action === "break-glass" && e.patient === p.id),
+    // Older entries stored the patient id; new ones carry the MRN.
+    last: [...entries].reverse().find((e) => e.action === "break-glass" && (e.mrn === p.mrn || e.patient === p.id)),
     enc: [...state.encounters].reverse().find((e) => e.patientId === p.id && e.status !== "cancelled"),
     open: hasGlass(p.id),
   }));

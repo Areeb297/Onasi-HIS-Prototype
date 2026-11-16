@@ -30,12 +30,15 @@ describe("progress notes", () => {
     expect(addNote(enc().visitNumber, "   ")).toBeNull();
   });
 
-  it("edits an older note and keeps its id", () => {
+  it("adds an addendum to an older note, keeps the original text and the id", () => {
     const id = noteId(enc().notes[0]);
+    const original = enc().notes[0].text;
     expect(editNote(enc().visitNumber, id, "")).toBe(false);
     expect(editNote(enc().visitNumber, id, "Corrected: chest X-ray done.")).toBe(true);
     const n = enc().notes[0];
-    expect(n).toMatchObject({ id, text: "Corrected: chest X-ray done.", editedBy: "Dr. Khalid Alharbi" });
+    expect(n).toMatchObject({ id, editedBy: "Dr. Khalid Alharbi" });
+    expect(n.text.startsWith(original)).toBe(true);
+    expect(n.text).toMatch(/Addendum by Dr\. Khalid Alharbi, .+: Corrected: chest X-ray done\.$/);
     expect(n.editedAt).toBeTruthy();
   });
 

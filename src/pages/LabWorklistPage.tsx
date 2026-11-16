@@ -31,10 +31,10 @@ import { fmtDateTime } from "@/lib/format";
 
 const FILTERS: { id: "all" | LabStatus; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "received", label: "Received" },
-  { id: "collected", label: "Specimen Collected" },
-  { id: "in-progress", label: "In Progress" },
-  { id: "resulted", label: "Resulted" },
+  { id: "received", label: "Test Orders" },
+  { id: "collected", label: "Sample Collection" },
+  { id: "in-progress", label: "Test Processing" },
+  { id: "resulted", label: "Result Release" },
   { id: "amended", label: "Amended" },
   { id: "cancelled", label: "Cancelled" },
 ];

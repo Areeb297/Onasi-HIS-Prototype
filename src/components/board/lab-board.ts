@@ -24,14 +24,15 @@ export const LAB_TARGET_MIN: Record<Exclude<LabStageId, "published">, Record<Lab
 
 const range = (s: Exclude<LabStageId, "published">) => `Target ${LAB_TARGET_MIN[s].stat} to ${LAB_TARGET_MIN[s].routine} min`;
 
+/** Labels are the HIS lab worklist columns (lookup "Laboratory Workflow Status", LaboratoryItem.LaboratoryWorkflowStatusId). */
 export const LAB_STAGES: (BoardStage & { id: LabStageId })[] = [
-  { id: "ordered", label: "Ordered", tone: "move", hint: "Waiting for a specimen", target: range("ordered") },
-  { id: "collected", label: "Specimen Collected", tone: "admit", hint: "Waiting to be received in the lab", target: range("collected") },
-  { id: "received", label: "Sample Received", tone: "move", hint: "At the bench, not started", target: range("received") },
-  { id: "in-progress", label: "In Progress", tone: "update", hint: "On the analyser, results being entered", target: range("in-progress") },
-  { id: "entered", label: "Results Entered", tone: "merge", hint: "All results typed, not yet sent for verification", target: range("entered") },
+  { id: "ordered", label: "Test Orders", tone: "move", hint: "Waiting for a specimen", target: range("ordered") },
+  { id: "collected", label: "Sample Collection", tone: "admit", hint: "Waiting to be received in the lab", target: range("collected") },
+  { id: "received", label: "Sample Receiving", tone: "move", hint: "At the bench, not started", target: range("received") },
+  { id: "in-progress", label: "Test Processing", tone: "update", hint: "On the analyser, results being entered", target: range("in-progress") },
+  { id: "entered", label: "Result Entry", tone: "merge", hint: "All results typed, not yet sent for verification", target: range("entered") },
   { id: "verification", label: "Result Verification", tone: "merge", hint: "Waiting for a second user to verify and release", target: range("verification") },
-  { id: "published", label: "Resulted", tone: "ok", hint: "Released to the chart", limit: 4 },
+  { id: "published", label: "Result Release", tone: "ok", hint: "Released to the chart", limit: 4 },
 ];
 
 export const LAB_LANES: (BoardLane & { id: LabLaneId })[] = [

@@ -6,6 +6,8 @@ import type { Patient } from "@/lib/model";
 import { patientName } from "@/lib/store";
 import { ZatcaQr } from "./InvoiceParts";
 import { fmtDateTime } from "@/lib/format";
+import { audit } from "@/lib/audit";
+import { can } from "@/lib/session";
 
 /** Prints only the receipt, at till-roll width. */
 const PRINT_CSS = `
@@ -39,7 +41,7 @@ export function Receipt({ view, patient }: { view: InvoiceView; patient: Patient
         <div className="mt-1 font-bold">Simplified Tax Invoice</div>
       </div>
       <hr className="my-2 border-dashed border-black/40" />
-      <Row label="Invoice" value={`#${view.invoice.number}`} />
+      <Row label="Invoice" value={String(view.invoice.number)} />
       <Row label="Date" value={fmtDateTime(view.invoice.createdAt)} />
       <Row label="Patient" value={patientName(patient)} />
       <Row label="MRN" value={patient?.mrn ?? ""} />
@@ -72,16 +74,19 @@ export function Receipt({ view, patient }: { view: InvoiceView; patient: Patient
 }
 
 export function ReceiptDialog({ open, onClose, view, patient }: { open: boolean; onClose: () => void; view: InvoiceView; patient: Patient | undefined }) {
+  const allowed = can("cashier");
+  // Printing and downloads are logged (privacy rule).
+  const print = () => { audit("print", `Receipt, invoice ${view.invoice.number}`, { patient: patient ? patientName(patient) : undefined }); window.print(); };
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title="Receipt"
-      subtitle={`Invoice #${view.invoice.number}`}
+      subtitle={`Invoice ${view.invoice.number}`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          <Button variant="primary" onClick={() => window.print()}><Printer className="size-4" /> Print</Button>
+          <Button variant="primary" onClick={print} disabled={!allowed} title={allowed ? undefined : "This needs the cashier permission."}><Printer className="size-4" /> Print</Button>
         </>
       }
     >

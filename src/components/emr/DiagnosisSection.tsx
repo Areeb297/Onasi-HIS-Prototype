@@ -1,9 +1,9 @@
 import * as React from "react";
 import { Pencil, Plus, Stethoscope, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/Dialog";
-import { Badge, Button, Card, CardHeader } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardHeader, Select } from "@/components/ui/primitives";
 import { CodeSearch, fmtWhen } from "@/components/emr/CodeSearch";
-import { ActiveToggle, EmptyState, EntryList, EntryRow, EntrySheet, ErrorSummary, FormField, PickedCode, RowMenu, Segmented, YesNo, useValidation } from "@/components/emr/entry-ui";
+import { ActiveToggle, EmptyState, EntryList, EntryRow, EntrySheet, ErrorSummary, FormField, PickedCode, RowMenu, YesNo, useValidation } from "@/components/emr/entry-ui";
 import { audit } from "@/lib/audit";
 import {
   DX_KINDS, canRetireDx, dxKind, dxKindLabel, dxListProblems, normalizeDx, reactivateDx, saveDx, type DxDraft, type DxKind,
@@ -15,7 +15,7 @@ import { can, useSession } from "@/lib/session";
 import { nowLocal, updateEncounter } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 
-const KIND_TONE: Record<DxKind, "admit" | "neutral" | "info" | "warn"> = { P: "admit", S: "neutral", AD: "info", DF: "warn" };
+const KIND_TONE: Record<DxKind, "admit" | "neutral" | "info" | "warn" | "ok"> = { P: "admit", S: "neutral", WK: "neutral", AD: "info", FN: "ok", DF: "warn", DC: "ok" };
 
 type Editing = { index: number | null; draft: DxDraft };
 
@@ -136,7 +136,7 @@ export function DiagnosisSection({ enc }: { enc: Encounter }) {
       )}
       {dev && (
         <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-          Sent in DG1. DG1-15 is 1 for the Principal diagnosis. DG1-6: Admitting is A, Differential is W, Principal and Secondary are W while the visit is open and F in the discharge (A03) and the discharge update (A08). On Admission sets ZDG1-3 (2 present on admission, 1 arose during the stay) for inpatients. Inactive diagnoses are not sent.
+          Sent in DG1. DG1-15 is 1 for the Principal diagnosis. DG1-6: Admitting is A, Working and Differential are W, Final and Discharge are F, Principal and Secondary are W while the visit is open and F in the discharge (A03) and the discharge update (A08). On Admission sets ZDG1-3 (2 present on admission, 1 arose during the stay) for inpatients. Inactive diagnoses are not sent.
         </p>
       )}
 
@@ -207,12 +207,10 @@ function DxSheet({ editing, active, inpatient, onClose, onSave }: {
             <CodeSearch label="Search diagnosis codes" placeholder="For example pneu or J18" items={ICD10AM_DIAGNOSES} exclude={taken} autoFocus onBlur={v.blur("code")} onPick={(t) => set({ code: t.code, text: t.text })} />
           )}
         </FormField>
-        <FormField label="Type" required group help={!otherPrincipal ? "This visit has no Principal diagnosis yet, so this one must be Principal." : undefined}>
-          <Segmented
-            value={d.kind}
-            options={DX_KINDS.map((k) => ({ value: k.code, label: k.label }))}
-            onChange={(k: DxKind) => set({ kind: k, onAdmission: k === "AD" ? true : d.onAdmission })}
-          />
+        <FormField label="Type" required help={!otherPrincipal ? "This visit has no Principal diagnosis yet, so this one must be Principal." : undefined}>
+          <Select value={d.kind} onChange={(e) => { const k = e.target.value as DxKind; set({ kind: k, onAdmission: k === "AD" ? true : d.onAdmission }); }}>
+            {DX_KINDS.map((k) => <option key={k.code} value={k.code}>{k.label}</option>)}
+          </Select>
         </FormField>
         {d.kind === "P" && otherPrincipal && (
           <p role="status" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm">

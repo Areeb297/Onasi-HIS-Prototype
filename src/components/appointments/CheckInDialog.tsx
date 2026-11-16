@@ -9,6 +9,7 @@ import {
 import { patientName, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 import { shownName } from "./BookingDialog";
+import { consultationShare } from "@/lib/copay";
 
 /**
  * Check-in at the desk. Coverage is checked before the visit opens, with the same eligibility check and plain-word
@@ -99,6 +100,16 @@ export function CheckInDialog({ appt, onClose, now }: { appt: Appointment | null
             </div>
           </div>
         </section>
+
+        {patient && !stops && (
+          // Practice in Saudi private hospitals: the patient's share is paid at the cashier before the doctor. Not a block.
+          <section aria-label="Patient share" className="rounded-lg border border-border px-3 py-2.5">
+            <p className="font-semibold">Patient Share Due Now: {consultationShare(patient).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SAR</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {outcome.kind === "covered" ? "The co-payment for the consultation." : "The consultation fee for a cash patient."} Send the patient to the cashier before the doctor.
+            </p>
+          </section>
+        )}
 
         {fixNote && (
           <p role="status" className="rounded-lg bg-muted px-3 py-2">

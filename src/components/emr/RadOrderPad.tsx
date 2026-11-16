@@ -9,6 +9,7 @@ import { BODY_REGIONS, MODALITIES, QUICK_RAD, RAD_CATALOG, procByCode, type RadP
 import { PRIORITIES, type OrderCoverage, type OrderDiagnosis, type Priority } from "@/lib/fhir/types";
 import type { Dx } from "@/lib/model";
 import { defaultOrderDiagnosis } from "@/lib/order-fields";
+import { serviceNeedsApproval } from "@/lib/nphies-financial";
 
 export interface RadOrderInput {
   /** The exams in this order. Each goes to NPHIES as its own order document. */
@@ -62,11 +63,14 @@ export function RadOrderPad({
   duplicatesOf,
   diagnoses = [],
   insured = false,
+  emergency = false,
 }: {
   /** Names of picked exams that are already open for the visit. The pad warns before it adds them again. */
   duplicatesOf?: (procCodes: string[]) => string[];
   /** The visit's diagnoses, for the Diagnosis picker. */
   diagnoses?: Dx[];
+  /** An emergency visit: an exam that needs approval still goes ahead, and approval follows within 24 hours (CHI). */
+  emergency?: boolean;
   /** The visit is billed to an insurance plan. Plan Coverage is offered only then. */
   insured?: boolean;
   /** An existing exam. Orders saved before diagnosis and coverage existed have neither. */
@@ -204,6 +208,19 @@ export function RadOrderPad({
         </FormGrid>
       </FormSection>
 
+      {(() => {
+        // CHI: CT, MRI, nuclear and PET imaging for an insured patient need the payer's approval before the exam.
+        const needs = coverage === "plan" ? picked.filter((p) => serviceNeedsApproval({ kind: "imaging", modality: p.modality, label: p.short })) : [];
+        if (!needs.length) return null;
+        return (
+          <p role="note" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
+            <span className="font-semibold">Needs payer approval:</span> {needs.map((p) => p.short).join(", ")}.{" "}
+            {emergency
+              ? "Emergency: the exam goes ahead now, and the approvals officer asks the payer within 24 hours."
+              : "Placing the order sends a prior authorization request to the approvals officer. The exam waits as Awaiting Approval until the payer answers."}
+          </p>
+        );
+      })()}
       {pending && dupes.length > 0 && (
         <div role="alert" className="space-y-2 rounded-lg border border-warn/50 bg-warn/10 p-3">
           <p className="text-sm">

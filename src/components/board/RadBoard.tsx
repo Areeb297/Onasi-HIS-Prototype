@@ -31,7 +31,7 @@ const NEXT_ACTION: Record<RadStageId, { label: string; to?: RadStageId }> = {
   reported: { label: "Open Report" },
 };
 
-function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCtx; onOpen: () => void; allowed: boolean }) {
+function RadCard({ order, ctx, onOpen, mayPerform, mayReport }: { order: RadOrder; ctx: CardCtx; onOpen: () => void; mayPerform: boolean; mayReport: boolean }) {
   const his = useHis();
   const patient = his.patients.find((p) => p.id === order.patientId);
   const proc = procByCode(order.procCode);
@@ -80,12 +80,12 @@ function RadCard({ order, ctx, onOpen, allowed }: { order: RadOrder; ctx: CardCt
         {!ctx.overlay && (
           <div className="flex gap-1.5">
             {stage === "signed" && (
-              <CardAction label="Open Report" variant="secondary" allowed={allowed} reason="Your role cannot write radiology reports." onClick={onOpen} />
+              <CardAction label="Open Report" variant="secondary" allowed={mayReport} reason="Your role cannot write radiology reports." onClick={onOpen} />
             )}
             <CardAction
               label={next.label}
-              allowed={allowed}
-              reason="Your role cannot work on radiology orders."
+              allowed={stage === "ordered" ? mayPerform : mayReport}
+              reason={stage === "ordered" ? "Your role cannot record exams." : "Only a radiologist works on the report."}
               variant={stage === "reported" ? "secondary" : "primary"}
               onClick={() => (next.to ? ctx.move(next.to) : onOpen())}
             />
@@ -108,7 +108,9 @@ export function RadBoard({
 }) {
   const his = useHis();
   const dev = useDevMode();
-  const allowed = can("rad.report");
+  // The technician performs the exam (rad.perform); the radiologist writes, signs and releases the report (rad.report).
+  const mayPerform = can("rad.perform");
+  const mayReport = can("rad.report");
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -128,7 +130,7 @@ export function RadBoard({
       return "deferred";
     }
     if (to === "reporting") {
-      onOpenEditor(o.id, "Write the findings and the impression. The card moves to Reporting as soon as you type.");
+      onOpenEditor(o.id, "Write the findings and the impression. The card moves to Result Entry as soon as you type.");
       return "deferred";
     }
     if (to === "signed") {
@@ -145,7 +147,12 @@ export function RadBoard({
     return false;
   }
 
-  const canDrag = (): MoveCheck => (allowed ? { ok: true } : { ok: false, reason: "Your role cannot move radiology orders. It needs the rad.report permission." });
+  const canDrag = (): MoveCheck => (mayPerform || mayReport ? { ok: true } : { ok: false, reason: "Your role cannot move radiology orders. It needs the rad.perform or rad.report permission." });
+  const canMove = (o: RadOrder, from: string, to: string): MoveCheck => {
+    if (to === "performed" && !mayPerform) return { ok: false, reason: "Only a radiology technician or radiologist records the exam. It needs the rad.perform permission." };
+    if (to !== "performed" && !mayReport) return { ok: false, reason: "Only a radiologist writes, signs and releases the report. It needs the rad.report permission." };
+    return radCanMove(o, from, to);
+  };
 
   return (
     <div>
@@ -168,8 +175,8 @@ export function RadBoard({
         label={(o) => `${nameOf(o)}, ${procByCode(o.procCode)?.short ?? o.procCode}`}
         laneOf={radLaneOf}
         stageOf={(o) => radStageOf(o) ?? "ordered"}
-        renderCard={(o, ctx) => <RadCard order={o} ctx={ctx} allowed={allowed} onOpen={() => onOpen(o.id)} />}
-        canMove={radCanMove}
+        renderCard={(o, ctx) => <RadCard order={o} ctx={ctx} mayPerform={mayPerform} mayReport={mayReport} onOpen={() => onOpen(o.id)} />}
+        canMove={canMove}
         canDrag={canDrag}
         onMove={onMove}
         onMoved={(o, from, to, via) => auditMove(`Radiology order ${o.id}`, radStageLabel(to), nameOf(o), via, `Visit ${o.visitNumber}, from ${radStageLabel(from)}`)}
@@ -178,7 +185,7 @@ export function RadBoard({
         dev={dev}
       />
       <p className="mt-2 text-xs text-muted-foreground">
-        Drag a card to the next stage, or use the arrows button on the card. The clock on Exam Done, Reporting and Report Signed cards counts down to the report due time.
+        Drag a card to the next stage, or use the arrows button on the card. The clock on Test Processing, Result Entry and Result Verification cards counts down to the report due time.
         A report is released only after a radiologist has signed it.
       </p>
     </div>

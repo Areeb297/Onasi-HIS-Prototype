@@ -4,7 +4,7 @@ import { Dialog } from "@/components/Dialog";
 import { ErQuickRegistration } from "@/components/ErQuickRegistration";
 import { PatientFlagBadges, PatientNameAr } from "@/components/PatientBanner";
 import { WristbandDialog } from "@/components/Wristband";
-import { Badge, Button, Card, Field, Input, RequiredNote, Select, cn } from "@/components/ui/primitives";
+import { Badge, Button, Card, Field, Input, RequiredNote, Select, Switch, cn } from "@/components/ui/primitives";
 import {
   AttentionLink, CheckRow, ChoiceSelect, ErrorSummary, FormActions, FormGrid, FormSection, ReasonButton, SegmentedControl, Stepper, focusField, isDirty, useFormErrors, useUnsavedChangesGuard,
   type Errors,
@@ -488,7 +488,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
       note: outcome ? <span className={cn("font-medium", outcome.blocking ? "text-destructive" : outcome.warning ? "text-warn" : "text-ok")}>{ar ? outcome.titleAr : outcome.title}</span> : payType === "Cash" ? t("Cash", "نقدي") : t("Not checked yet", "لم يتم التحقق"),
       attention: needsChoice && fe.submitted ? 1 : 0, done: payType === "Cash" ? !needsChoice : !!outcome && !outcome.blocking,
     },
-    { id: "visit", label: t("Visit", "الزيارة"), note: visit === "none" ? t("No visit now", "بدون زيارة") : (ar ? VISITS.find((v) => v.id === visit)?.ar : VISITS.find((v) => v.id === visit)?.en), attention: countShown("visit"), done: stepFields("visit").length === 0 && (consent || isUnknown) },
+    { id: "visit", label: t("Visit", "الزيارة"), note: visit === "none" ? t("No visit now", "بدون زيارة") : (ar ? VISITS.find((v) => v.id === visit)?.ar : VISITS.find((v) => v.id === visit)?.en), attention: countShown("visit"), done: stepFields("visit").length === 0 },
   ];
   function countShown(s: StepId) { return Object.keys(errs).filter((k) => stepOf(k) === s).length; }
   const stepIndex = steps.findIndex((s) => s.id === step);
@@ -573,7 +573,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
         family: isUnknown ? family.trim() || UNKNOWN_NAME.family : family.trim(),
         dob: dob || (isUnknown ? dobFromAge(Number.isFinite(ageYears) ? ageYears : undefined, undefined) : dob),
         sex, nationality: isUnknown && !idNumber ? "999" : nationality, maritalStatus: isUnknown ? "U" : marital,
-        address: shortCode, consentAt: isUnknown && !consent ? undefined : new Date().toISOString(), extra,
+        address: shortCode, shareData: consent, consentAt: consent ? new Date().toISOString() : undefined, extra,
         confidential: confidential || undefined,
       });
       patientId = created.id;
@@ -962,7 +962,7 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
                   <SegmentedControl options={[{ value: "Cash" as const, label: t("Cash", "نقدي") }, { value: "Insurance" as const, label: t("Insurance", "تأمين") }]} value={payType} onChange={changePayType} label={t("Payment Type", "طريقة الدفع")} />
                 </Field>
                 <Field label={t("Registration Date", "ت.التسجيل")} hl7={tag("PV1-44")} hint={`${hijri(regDate)} ${t("Hijri", "هجري")}`}><Input type="date" value={regDate} onChange={(e) => setRegDate(e.target.value)} /></Field>
-                <Field label={t("File Number", "رقم الملف")} hl7={tag("PID-3 (MRN not sent)")} hint={t("Given when you save.", "يعطى عند الحفظ.")}><Input value={`MRN${String(100 + n).padStart(7, "0")}`} disabled className="font-mono" /></Field>
+                <Field label={t("File Number", "رقم الملف")} hl7={tag("PID-3 (MRN not sent)")} hint={t("Given when you save.", "يعطى عند الحفظ.")}><Input value={`MR-${String(new Date().getFullYear()).slice(2)}-${String(100 + n).padStart(6, "0")}`} disabled className="font-mono" /></Field>
                 <Field label={t("Main File No.", "الملف الرئيسي")} hl7={hisOnly}><Input value={`MF-${1000 + n}`} disabled className="font-mono" /></Field>
                 <Field label={t("Registration No.", "رقم التسجيل")} hl7={hisOnly}><Input value={`REG-${today.slice(0, 4)}-${1000 + n}`} disabled className="font-mono" /></Field>
               </Grid>
@@ -1107,10 +1107,12 @@ function FullRegistrationForm({ cls = "O", onAgain }: { cls?: "O" | "E"; onAgain
             </Sec>
 
             <Sec title={t("Consent", "الموافقة")}>
-              <Field group name="consent" required={!isUnknown} label={t("Information Sharing", "مشاركة المعلومات")} error={errs.consent} hint={isUnknown ? t("An unconscious patient cannot agree now. Ask when the patient is awake.", "لا يستطيع المريض فاقد الوعي الموافقة الآن. اسأله عندما يستيقظ.") : undefined}>
-                <CheckRow checked={consent} onChange={setConsent}>
-                  {t("The patient has been told how their health information is used and shared with the national exchange (NPHIES), and agrees.", "تم إبلاغ المريض بكيفية استخدام معلوماته الصحية ومشاركتها مع المنصة الوطنية (نفيس) ووافق على ذلك.")}
-                </CheckRow>
+              {/* HIS Patients.ShareData. Optional: the patient may say no, and registration still goes ahead. */}
+              <Field group name="consent" label={t("Data Sharing Consent", "الموافقة على مشاركة البيانات")} error={errs.consent} hint={isUnknown ? t("An unconscious patient cannot agree now. Ask when the patient is awake.", "لا يستطيع المريض فاقد الوعي الموافقة الآن. اسأله عندما يستيقظ.") : undefined}>
+                <span className="flex items-start gap-3">
+                  <Switch checked={consent} onChange={setConsent} label={t("Data Sharing Consent", "الموافقة على مشاركة البيانات")} />
+                  <span className="text-sm">{t("The patient agrees to share their health information with the national health exchange (NPHIES) and the providers caring for them.", "يوافق المريض على مشاركة معلوماته الصحية مع المنصة الوطنية (نفيس) ومقدمي الرعاية له.")}</span>
+                </span>
               </Field>
             </Sec>
           </>

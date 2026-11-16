@@ -33,7 +33,7 @@ export function connectionStatus(rows: readonly Pick<OutboxRow, "type" | "state"
   for (const c of cases) {
     if (c.eligibility) used.add("eligibility");
     if (c.authorization) used.add("prior-auth");
-    if (c.claim) used.add("claims");
+    if (c.claim && c.claim.status !== "rejected") used.add("claims"); // an error outcome is not an accepted exchange
     if (c.payment) used.add("payment");
   }
   const ids: UseCaseId[] = ["visit-history", "sso", "clinical-notes", "e-prescribe", "e-dispense", "lab-result", "lab-order", "rad-order", "rad-view", "rad-report", "prior-auth", "claims", "payment", "eligibility"];

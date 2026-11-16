@@ -16,12 +16,13 @@ const STAGE_ORDER: RadStageId[] = ["ordered", "performed", "reporting", "signed"
 export const RAD_EXAM_TARGET_MIN: Record<Prio, number> = { stat: 15, urgent: 60, routine: 240 };
 export const RAD_REPORT_TARGET_MIN: Record<Prio, number> = { stat: 30, urgent: 120, routine: 1440 };
 
+/** Labels are the HIS radiology worklist columns (lookup "Radiology Workflow Status", RadiologyItem.RadiologyWorkflowStatusId). */
 export const RAD_STAGES: (BoardStage & { id: RadStageId })[] = [
-  { id: "ordered", label: "Ordered", tone: "move", hint: "Waiting for the exam", target: "Exam target 15 min to 4 h" },
-  { id: "performed", label: "Exam Done", tone: "admit", hint: "Images taken, no report yet", target: "Report target 30 min to 24 h" },
-  { id: "reporting", label: "Reporting", tone: "update", hint: "Draft being written by the radiologist", target: "Report target 30 min to 24 h" },
-  { id: "signed", label: "Report Signed", tone: "merge", hint: "Signed by the radiologist, waiting for release", target: "Report target 30 min to 24 h" },
-  { id: "reported", label: "Reported", tone: "ok", hint: "Released to the chart", limit: 4 },
+  { id: "ordered", label: "Test Orders", tone: "move", hint: "Waiting for the exam", target: "Exam target 15 min to 4 h" },
+  { id: "performed", label: "Test Processing", tone: "admit", hint: "Exam done by the technician, no report yet", target: "Report target 30 min to 24 h" },
+  { id: "reporting", label: "Result Entry", tone: "update", hint: "Draft being written by the radiologist", target: "Report target 30 min to 24 h" },
+  { id: "signed", label: "Result Verification", tone: "merge", hint: "Signed by the radiologist, waiting for release", target: "Report target 30 min to 24 h" },
+  { id: "reported", label: "Result Release", tone: "ok", hint: "Released to the chart", limit: 4 },
 ];
 
 export const RAD_LANES: (BoardLane & { id: RadLaneId })[] = [

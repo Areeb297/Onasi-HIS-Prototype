@@ -22,12 +22,14 @@ import { DOCTORS, SERVICES } from "@/lib/reference-data";
 import { navigate } from "@/lib/router";
 import { bedLabel, patientName, toLocalInput, useHis } from "@/lib/store";
 import { appointmentLabel, appointmentOf, eligibilityCell, subDepartmentOf } from "@/lib/worklist";
+import { patientShareDue } from "@/lib/copay";
+import { useInvoices } from "@/lib/invoice";
 
 type Mode = "opd" | "ipd" | "er";
 
 export function visitStatus(e: Encounter): { label: string; tone: "admit" | "move" | "ok" | "cancel" | "merge" | "neutral" } {
   if (e.status === "cancelled") return { label: "Cancelled", tone: "neutral" };
-  if (e.status === "discharged") return { label: "Discharged", tone: "cancel" };
+  if (e.status === "discharged") return { label: e.cls === "O" ? "Visit Ended" : "Discharged", tone: "cancel" };
   if (e.status === "preadmit") return { label: "Pre-Admit", tone: "merge" };
   if (e.cls === "I") return { label: "Admitted", tone: "ok" };
   return e.checkedIn ? { label: "Checked In", tone: "move" } : { label: "Arrived", tone: "admit" };
@@ -75,7 +77,7 @@ function ClearanceCell({ enc, onOpen }: { enc: Encounter; onOpen: () => void }) 
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
   Arrived: <IconUserCheck stroke={1.75} />, "Checked In": <IconStethoscope stroke={1.75} />, Admitted: <IconBed stroke={1.75} />,
-  "Pre-Admit": <IconCalendarPlus stroke={1.75} />, Discharged: <IconDoorExit stroke={1.75} />, Cancelled: <IconCircleX stroke={1.75} />,
+  "Pre-Admit": <IconCalendarPlus stroke={1.75} />, Discharged: <IconDoorExit stroke={1.75} />, "Visit Ended": <IconDoorExit stroke={1.75} />, Cancelled: <IconCircleX stroke={1.75} />,
 };
 
 export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolean }) {
@@ -86,11 +88,12 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
   const { requests } = useAdmissionRequests();
   const coverageStore = useCoverages();
   const fin = useFinancial();
+  useInvoices(); // the Not Paid pill clears when the cashier takes the payment
   const { act, openRegister, openPatient, openClearances, openLeftWard, dialogs } = useVisitActions();
   const ipd = mode === "ipd";
   const today = day(0);
 
-  const statuses = ipd ? ["Admitted", "Pre-Admit", "Discharged", "Cancelled"] : ["Arrived", "Checked In", "Discharged", "Cancelled"];
+  const statuses = ipd ? ["Admitted", "Pre-Admit", "Discharged", "Cancelled"] : ["Arrived", "Checked In", mode === "opd" ? "Visit Ended" : "Discharged", "Cancelled"];
   const subOf = (e: Encounter) => subDepartmentOf(e, requests, appointments);
   const ofMode = state.encounters.filter((e) => (mode === "opd" ? e.cls === "O" : mode === "er" ? e.cls === "E" : e.cls === "I"));
 
@@ -106,6 +109,8 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
       doctor: DOCTORS.find((d) => d.id === e.attending),
       dept: SERVICES.find((s) => s.code === e.service),
       appt: mode === "opd" ? appointmentOf(e.visitNumber, appointments) : undefined,
+      // Practice: the patient's share is paid at the cashier before the doctor. Shown, never blocking.
+      unpaid: mode === "opd" && e.status === "active" && !!p && !patientShareDue(e, p).paid,
     };
   });
   type Row = (typeof rows)[number];
@@ -172,6 +177,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
       cell: (r) => (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
           <Badge tone={r.status.tone}>{r.status.label}</Badge>
+          {r.unpaid && <span title="The patient's share is not paid at the cashier yet"><Badge tone="warn">Not Paid</Badge></span>}
           {r.e.dirty && <span className="size-2 rounded-full bg-warn" title="Changes not sent" role="img" aria-label="Changes not sent" />}
         </span>
       ),
@@ -225,7 +231,7 @@ export function WorklistPage({ mode, embedded }: { mode: Mode; embedded?: boolea
       { id: "emar", label: "Medication Chart", icon: <ClipboardList />, onClick: () => navigate("/chart", { visit: e.visitNumber, s: "emar" }) },
       { id: "journey", label: "Patient Journey", icon: <Route />, onClick: () => navigate("/chart", { visit: e.visitNumber, s: "overview" }) },
     ];
-    if (can("billing")) links.push({ id: "invoice", label: "Invoice", icon: <Receipt />, onClick: () => navigate("/invoice", { visit: e.visitNumber }) });
+    if (can(["billing", "cashier"])) links.push({ id: "invoice", label: "Invoice", icon: <Receipt />, onClick: () => navigate("/invoice", { visit: e.visitNumber }) });
     if (e.status === "active" && (e.cls === "O" || e.cls === "E") && canRequestAdmission()) {
       links.push({ id: "request", label: "Request Admission", icon: <BedDouble />, onClick: () => navigate("/admission-requests", { new: "1", patient: e.patientId, visit: e.visitNumber }) });
     }

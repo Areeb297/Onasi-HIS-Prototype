@@ -44,13 +44,17 @@ export interface Signer {
 
 export const SIDES = ["Left", "Right", "Both", "Midline", "Not applicable"] as const;
 export const URGENCIES = ["Elective", "Urgent (within 24 hours)", "Emergency (immediate)"] as const;
-export const ANAESTHESIA_TYPES = ["General", "Spinal", "Epidural", "Regional block", "Local with sedation", "Local only"] as const;
+/** HIS lookup "Type of Anesthesia" (OperativeNote.TypeOfAnesthesiaId). */
+export const ANAESTHESIA_TYPES = ["General Anesthesia", "Regional Anesthesia", "Spinal Anesthesia", "Epidural Anesthesia", "Combined Spinal Epidural", "Local Anesthesia", "Sedation", "Monitored Anesthesia Care", "Nerve Block", "Other"] as const;
 export const THEATRE_ROOMS = ["Theatre 1", "Theatre 2", "Theatre 3", "Minor Theatre", "Cath Lab", "Labour Theatre"] as const;
-export const ASSESSMENT_RESULTS = ["Fit", "Fit With High Risk", "Not Fit", "Needs More Tests"] as const;
+/** HIS Operation Request Status values set by the pre-anesthesia assessment. */
+export const ASSESSMENT_RESULTS = ["Fit For Anesthesia", "Fit With High Risk", "Not Fit For Anesthesia", "Need More Investigation"] as const;
 export type AssessmentResult = (typeof ASSESSMENT_RESULTS)[number];
 export const ASA_CLASSES = ["I", "II", "III", "IV", "V"] as const;
-export const OPERATION_CATEGORIES = ["Minor", "Intermediate", "Major", "Complex"] as const;
-export const TEAM_ROLES = ["Surgeon", "Assistant Surgeon", "Anaesthetist", "Anaesthesia Technician", "Scrub Nurse", "Circulating Nurse", "Recovery Nurse"] as const;
+/** HIS lookup "Surgery Category" (OperativeNote.OperationCategoryId). */
+export const OPERATION_CATEGORIES = ["Day Case", "Minor", "Major", "Package"] as const;
+/** HIS lookup "OT Roster Role" (OperativeNoteTeam.RoleId). */
+export const TEAM_ROLES = ["Lead Surgeon", "Surgeon", "Assistant Surgeon", "Anesthetist", "Anesthesia Technician", "Scrub Nurse", "Circulating Nurse", "OT Technician", "Recovery Nurse"] as const;
 export const PAIN_TOOLS = ["Faces", "Numerical", "CRIES"] as const;
 export const DISPOSITIONS = ["Returned To Ward", "Admitted To Intensive Care", "Discharged Home", "Day Surgery Unit", "Transferred To Another Facility", "Died"] as const;
 
@@ -69,7 +73,7 @@ export interface AssessmentData {
   result: AssessmentResult;
   asa?: string;
   anaesthesia?: string;
-  /** Needed when the result is Not Fit or Needs More Tests: what is wrong or which tests. */
+  /** Needed when the result is Not Fit For Anesthesia or Need More Investigation: what is wrong or which tests. */
   notes?: string;
 }
 
@@ -124,18 +128,23 @@ export interface PreOpItem {
   textLabel?: string;
 }
 
+/** Labels follow the HIS published Surgical Safety Checklist template (form 5, a ward pre-operative checklist); keys are unchanged. */
 export const PREOP_ITEMS: PreOpItem[] = [
-  { key: "identity", label: "Patient identity checked against the wristband", section: "Identity And Consent", naAllowed: false },
-  { key: "consent", label: "Consent for surgery signed", section: "Identity And Consent", naAllowed: false },
-  { key: "anaesthesiaConsent", label: "Consent for anaesthesia signed", section: "Identity And Consent", naAllowed: true },
-  { key: "siteMarked", label: "Operation site marked", section: "Identity And Consent", naAllowed: true },
-  { key: "fasting", label: "Fasting confirmed", section: "Preparation", naAllowed: true },
-  { key: "jewellery", label: "Jewellery, dentures and contact lenses removed", section: "Preparation", naAllowed: true },
-  { key: "otherItems", label: "Other items removed, such as hearing aids, prostheses and hair pins", section: "Preparation", naAllowed: true, textLabel: "Other Items Removed" },
+  { key: "identity", label: "Checked hand on band identification", section: "Identity And Consent", naAllowed: false },
+  { key: "consent", label: "Signed consent surgical", section: "Identity And Consent", naAllowed: false },
+  { key: "anaesthesiaConsent", label: "Special consents signed (anesthesia)", section: "Identity And Consent", naAllowed: true },
+  { key: "siteMarked", label: "Marked correct site and side", section: "Identity And Consent", naAllowed: true },
+  { key: "fasting", label: "NPO from midnight", section: "Preparation", naAllowed: true },
+  { key: "jewellery", label: "Valuables and jewelry removed or secured, dentures and contact lenses removed", section: "Preparation", naAllowed: true },
+  { key: "surgicalPrep", label: "Surgical prep done", section: "Preparation", naAllowed: true },
+  { key: "enema", label: "Enema", section: "Preparation", naAllowed: true },
+  { key: "urinaryCatheter", label: "Urinary catheter", section: "Preparation", naAllowed: true },
+  { key: "cleanGown", label: "Clean gown, cap on, clean bath blanket", section: "Preparation", naAllowed: false },
+  { key: "otherItems", label: "Hairpins, makeup and nail polish removed, other items removed", section: "Preparation", naAllowed: true, textLabel: "Other Items Removed" },
   { key: "tests", label: "Test results are in the chart", section: "Investigations And Blood", naAllowed: true, textLabel: "Other Investigation" },
   { key: "blood", label: "Blood available", section: "Investigations And Blood", naAllowed: true, textLabel: "Blood Units And Type" },
-  { key: "allergies", label: "Allergies checked", section: "Medicines And Observations", naAllowed: false },
-  { key: "medicines", label: "Medicines before surgery given, including the antibiotic if ordered", section: "Medicines And Observations", naAllowed: true, textLabel: "Pre-operative Medication" },
+  { key: "allergies", label: "Allergies to drugs checked", section: "Medicines And Observations", naAllowed: false },
+  { key: "medicines", label: "Pre-op medication administered, including prophylactic antibiotics", section: "Medicines And Observations", naAllowed: true, textLabel: "Pre-operative Medication" },
   { key: "vitals", label: "Vital signs recorded", section: "Medicines And Observations", naAllowed: false },
 ];
 
@@ -452,7 +461,15 @@ export interface SurgeryCase {
 
 /* ---------- step state and the gate ---------- */
 
-export const fitForSurgery = (r: AssessmentResult | undefined): boolean => r === "Fit" || r === "Fit With High Risk";
+export const fitForSurgery = (r: AssessmentResult | undefined): boolean => r === "Fit For Anesthesia" || r === "Fit With High Risk";
+
+/** Values saved before the lists followed the HIS lookups, read as their HIS value. */
+export const LEGACY_THEATRE_VALUES: Record<string, string> = {
+  Fit: "Fit For Anesthesia", "Not Fit": "Not Fit For Anesthesia", "Needs More Tests": "Need More Investigation",
+  General: "General Anesthesia", Spinal: "Spinal Anesthesia", Epidural: "Epidural Anesthesia", "Regional block": "Regional Anesthesia",
+  "Local with sedation": "Sedation", "Local only": "Local Anesthesia", Intermediate: "Major", Complex: "Major",
+  Anaesthetist: "Anesthetist", "Anaesthesia Technician": "Anesthesia Technician",
+};
 
 /** The schedule status shown to people. Null before anything is scheduled. */
 export function scheduleStatus(c: SurgeryCase): ScheduleStatus | null {
@@ -629,7 +646,7 @@ export function nextAction(c: SurgeryCase): string {
   const step = currentStep(c);
   if (!step) return "No action needed";
   if (step === "schedule") {
-    if (c.assessment && !fitForSurgery(c.assessment.result)) return c.assessment.result === "Needs More Tests" ? "Do the tests, then assess again" : "Assess again or cancel";
+    if (c.assessment && !fitForSurgery(c.assessment.result)) return c.assessment.result === "Need More Investigation" ? "Do the tests, then assess again" : "Assess again or cancel";
     if (c.schedule?.status === "Postponed") return "Postponed: schedule again";
     if (c.schedule?.status === "Draft") return "Finish the schedule draft";
   }
@@ -658,7 +675,7 @@ export function validateRequest(r: Partial<RequestData>): string | null {
 
 export function validateAssessment(a: Partial<AssessmentData>): string | null {
   if (!a.result || !ASSESSMENT_RESULTS.includes(a.result)) return "Choose the result of the assessment.";
-  if (!fitForSurgery(a.result) && blank(a.notes)) return a.result === "Needs More Tests" ? "Say which tests are needed." : "Say why the patient is not fit.";
+  if (!fitForSurgery(a.result) && blank(a.notes)) return a.result === "Need More Investigation" ? "Say which tests are needed." : "Say why the patient is not fit.";
   if (a.result === "Fit With High Risk" && blank(a.notes)) return "Describe the high risk.";
   return null;
 }
@@ -753,7 +770,7 @@ export function validateOpNote(n: Partial<OpNoteData>, mode: "draft" | "complete
   if (blank(n.start)) return "Enter when the operation started.";
   if (blank(n.end)) return "Enter when the operation ended.";
   if (blank(n.findings)) return "Enter the findings.";
-  if (!team.some((m) => m.role === "Surgeon")) return "Add at least one surgeon to the surgical team.";
+  if (!team.some((m) => m.role === "Surgeon" || m.role === "Lead Surgeon")) return "Add at least one surgeon to the surgical team.";
   if (n.complication === undefined) return "Answer Intra-operative Complication.";
   if (n.complication && blank(n.complications)) return "Enter the complication details.";
   if (n.specimenToPathology === undefined) return "Answer Specimen Sent To Pathology.";

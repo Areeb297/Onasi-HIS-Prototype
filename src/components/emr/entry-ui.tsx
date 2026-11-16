@@ -4,6 +4,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { FormGrid as SharedGrid, FormSection as SharedSection, SegmentedControl } from "@/components/forms";
 import { Button, Field, Switch, cn, textareaBase, useFieldAria } from "@/components/ui/primitives";
+import { ASK_BEFORE_LEAVING } from "@/components/forms/unsaved";
 
 /**
  * The data-entry pattern of the chart sections: a side sheet with a pinned save bar, labels above inputs, help and
@@ -54,7 +55,7 @@ export function EntrySheet({
   const [asking, setAsking] = React.useState(false);
   React.useEffect(() => { if (!dirty || !open) setAsking(false); }, [dirty, open]);
   const tryClose = () => {
-    if (!dirty) onClose();
+    if (!dirty || !ASK_BEFORE_LEAVING) onClose();
     else setAsking((a) => !a);
   };
   return (

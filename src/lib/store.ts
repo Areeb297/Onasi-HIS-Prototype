@@ -534,6 +534,7 @@ export function nextHealthId(): string {
 export interface NewPatient {
   extra?: Patient["extra"];
   consentAt?: string;
+  shareData?: boolean;
   healthId: string;
   given: string;
   family: string;
@@ -552,7 +553,8 @@ export function registerPatient(input: NewPatient): Patient {
   const n = s.counters.patient + 1;
   const p: Patient = {
     id: `P${String(n).padStart(3, "0")}`,
-    mrn: `MRN${String(100 + n).padStart(7, "0")}`,
+    // HIS format: MR-{two-digit year}-{six-digit sequence}, as CT-HIS builds it.
+    mrn: `MR-${String(new Date().getFullYear()).slice(2)}-${String(100 + n).padStart(6, "0")}`,
     nationalId: String(1000000000 + n * 7),
     ...input,
     // Stored as a CS-Adm-Country code. Older numeric codes (for example from the registry lookup) are converted here.

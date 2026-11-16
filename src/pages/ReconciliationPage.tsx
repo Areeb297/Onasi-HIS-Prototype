@@ -227,7 +227,7 @@ function ManualPaymentDialog({ onClose, existing, onSaved }: { onClose: () => vo
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={save}>Save Payment</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Payment Method" required><Select value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}><option value="">Choose</option>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</Select></Field>
-        <Field label="Reference No" required><Input maxLength={100} value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} placeholder="Cheque or transfer number" /></Field>
+        <Field label="Reference No" required><Input maxLength={100} value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} placeholder="Transfer number" /></Field>
         <Field label="Payment Date" required><Input type="date" max={dayOf(new Date())} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>
         <Field label="Payer" required><Select value={f.payer} onChange={(e) => setF({ ...f, payer: e.target.value })}><option value="">Choose</option>{RCM_PAYERS.map((m) => <option key={m}>{m}</option>)}</Select></Field>
         <Field label="Payment Amount (SAR)" required><Input type="number" min={0} step="0.01" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>

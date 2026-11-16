@@ -239,10 +239,13 @@ function VisitSteps({ v, allowed, dev }: { v: FinVisit; allowed: boolean; dev: b
 /** Each step and its NHIC use case icon. */
 const STEP_USE_CASE = { eligibility: "eligibility", authorization: "prior-auth", claim: "claims", payment: "payment" } as const;
 
-function StepCard({ n, s, allowed, visit }: { n: number; s: StepView; allowed: boolean; visit: string }) {
+function StepCard({ n, s, allowed: billing, visit }: { n: number; s: StepView; allowed: boolean; visit: string }) {
   const first = finActionFor(s);
   const second = finActionFor(s, true);
-  const reason = "Your role cannot do this. It needs the billing permission.";
+  // Eligibility and prior authorization are the insurance approvals officer's work; claim and payment the biller's.
+  const right = s.step === "eligibility" || s.step === "authorization" ? "approvals" : "billing";
+  const allowed = right === "approvals" ? can("approvals") : billing;
+  const reason = `Your role cannot do this. It needs the ${right} permission.`;
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border p-3">
       <div className="flex items-start justify-between gap-2">

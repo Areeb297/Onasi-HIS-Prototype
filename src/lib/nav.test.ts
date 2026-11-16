@@ -33,7 +33,7 @@ describe("menu", () => {
 
 describe("roles and permissions", () => {
   it("every permission used by a role or a page has a label", () => {
-    const used = new Set<Permission>([...ROLES.flatMap((r) => r.permissions), ...NAV.flatMap((g) => [g.perm, ...g.pages.map((p) => p.perm)]).filter(Boolean) as Permission[]]);
+    const used = new Set<Permission>([...ROLES.flatMap((r) => r.permissions), ...NAV.flatMap((g) => [g.perm, ...g.pages.map((p) => p.perm)]).flat().filter(Boolean) as Permission[]]);
     for (const p of used) expect(PERMISSION_LABELS[p], p).toBeTruthy();
   });
 

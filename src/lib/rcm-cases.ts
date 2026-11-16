@@ -33,11 +33,12 @@ import { getState, patientName } from "./store";
 export const RCM_PAYERS = PAYERS;
 export const COLLECTORS = ["Majed Aldosari", "Amal Alharbi", "Sultan Alqahtani", "Hind Alotaibi"];
 export const FWA_REVIEWERS = ["Amal Alharbi", "Dr. Tariq Aldossary", "Hind Alotaibi", "Majed Aldosari"];
-export const COLLECTION_STAGES = ["Initial Contact", "Follow Up", "Final Notice", "Legal Review", "Write Off Review"];
+// HIS lookups: AR Collection Stage (301), Contact Medium (299), Contact Outcome (300), PaymentMethod (186).
+export const COLLECTION_STAGES = ["Initial Contact", "Follow Up", "Payment Promised", "Escalated", "Final Review"];
 export const ESCALATION_LEVELS = ["Level 0 - None", "Level 1 - Minor", "Level 2 - Major", "Level 3 - Critical"];
-export const CONTACT_MEDIUMS = ["Phone", "Email", "Payer Portal", "NPHIES Communication", "Meeting"];
-export const CONTACT_OUTCOMES = ["Resolved", "Awaiting Payer Reply", "Escalated", "No Answer"];
-export const PAY_METHODS = ["Bank Transfer", "Cheque", "Cash", "Card", "Online"];
+export const CONTACT_MEDIUMS = ["Phone", "Email", "Portal", "Fax", "In Person"];
+export const CONTACT_OUTCOMES = ["Contacted", "No Response", "Information Requested", "Information Received", "Resolved"];
+export const PAY_METHODS = ["Bank Transfer", "Cash", "Card"];
 
 /** Claim-level and line-level errors a payer sends back with a rejected claim. Sample codes in the NPHIES format. */
 export const REJECTION_CODES: Record<string, string> = {
@@ -81,21 +82,22 @@ const RULE_CODE: Record<string, string> = {
 
 /* ---------- statuses and their flow ---------- */
 
-export type RejectionStatus = "Open" | "In Review" | "Corrected" | "Resubmitted" | "Closed";
-export type DenialStatus = "Open" | "Appealed" | "Resolved" | "Closed";
+// HIS: RCM.RejectionCases.Status and RCM.DenialCases.Status hold OPEN, IN_REVIEW, RESOLVED, CLOSED.
+// A correction or an appeal keeps the case In Review; a resubmission resolves it.
+export type RejectionStatus = "Open" | "In Review" | "Resolved" | "Closed";
+export type DenialStatus = "Open" | "In Review" | "Resolved" | "Closed";
 export type FwaStatus = "Open" | "In Review" | "Closed";
 export type ArStatus = "Open" | "In Review" | "Follow Up" | "Closed";
 
 export const REJECTION_FLOW: Record<RejectionStatus, RejectionStatus[]> = {
-  Open: ["In Review", "Corrected", "Closed"],
-  "In Review": ["Corrected", "Resubmitted", "Closed"],
-  Corrected: ["Resubmitted", "In Review", "Closed"],
-  Resubmitted: ["Closed", "Open"],
+  Open: ["In Review", "Closed"],
+  "In Review": ["In Review", "Resolved", "Closed"],
+  Resolved: ["Closed", "Open"],
   Closed: ["Open"],
 };
 export const DENIAL_FLOW: Record<DenialStatus, DenialStatus[]> = {
-  Open: ["Appealed", "Resolved", "Closed"],
-  Appealed: ["Resolved", "Open"],
+  Open: ["In Review", "Resolved", "Closed"],
+  "In Review": ["Resolved", "Open"],
   Resolved: ["Closed", "Open"],
   Closed: ["Open"],
 };
@@ -116,6 +118,10 @@ export function canMove<S extends string>(flow: Record<S, S[]>, from: S, to: S):
 }
 
 export const isActive = (s: string) => s !== "Closed" && s !== "Resolved";
+
+/** Statuses saved before the HIS names were used. */
+const LEGACY_STATUS: Record<string, string> = { Corrected: "In Review", Resubmitted: "Resolved", Appealed: "In Review" };
+const caseStatus = <S extends string>(saved: string | undefined): S | undefined => (saved ? (LEGACY_STATUS[saved] ?? saved) as S : undefined);
 
 /* ---------- ageing ---------- */
 
@@ -314,63 +320,63 @@ export function seedRcm(today: Date = new Date()): RcmState {
   const claim = (c: Omit<LedgerClaim, "source">): LedgerClaim => ({ ...c, source: "earlier" });
   const claims: LedgerClaim[] = [
     // Rejected for errors.
-    claim({ claimNumber: "CLM-26-4403", patientName: "Nasser Alzahrani", mrn: "MRN-100156", nationalId: "1029384756", payer: "MedGulf", type: "Institutional", serviceDate: d(12), submittedOn: d(10), answeredOn: d(9), diagnosis: "S72.0 Fracture of neck of femur", state: "Rejected",
-      errors: [{ code: "BV-00045", scope: "Claim" }], lines: [L(1, "SBS-SAMPLE-1003", "Inpatient Stay", 3200), L(2, "SBS-SAMPLE-4120", "X-Ray Hip", 320), L(3, "SBS-SAMPLE-3015", "Complete Blood Count", 85)] }),
-    claim({ claimNumber: "CLM-26-4377", patientName: "Khalid Alrashidi", mrn: "MRN-100221", nationalId: "1048826301", payer: "Tawuniya", type: "Professional", serviceDate: d(16), submittedOn: d(15), answeredOn: d(14), diagnosis: "M54.5 Low back pain", state: "Rejected",
-      errors: [{ code: "BV-00230", scope: "Item", seq: 2 }, { code: "BV-00763", scope: "Claim" }], lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350), L(2, "SBS-SAMPLE-4310", "MRI Lumbar Spine", 1450)] }),
-    claim({ claimNumber: "CLM-26-4359", patientName: "Noura Alshehri", mrn: "MRN-100274", nationalId: "1077310428", payer: "Bupa Arabia", type: "Professional", serviceDate: d(20), submittedOn: d(19), answeredOn: d(18), diagnosis: "J06.9 Acute upper respiratory infection, unspecified", state: "Rejected",
-      errors: [{ code: "BV-00402", scope: "Claim" }], lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350)] }),
-    claim({ claimNumber: "CLM-26-4341", patientName: "Meshal Alanazi", mrn: "MRN-100299", nationalId: "2310458871", payer: "NextCare", type: "Institutional", serviceDate: d(34), submittedOn: d(33), answeredOn: d(31), diagnosis: "S06.0 Concussion", state: "Rejected",
-      errors: [{ code: "BV-00112", scope: "Claim" }], lines: [L(1, "SBS-SAMPLE-1002", "Emergency Department Visit", 900), L(2, "SBS-SAMPLE-4205", "CT Brain Without Contrast", 1250)] }),
-    claim({ claimNumber: "CLM-26-4322", patientName: "Hessa Almansour", mrn: "MRN-100318", nationalId: "1093372615", payer: "Daman", type: "Professional", serviceDate: d(47), submittedOn: d(45), answeredOn: d(44), diagnosis: "E11.9 Type 2 diabetes mellitus without complication", state: "Rejected",
-      errors: [{ code: "BV-00318", scope: "Item", seq: 2 }], lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350), L(2, "SBS-SAMPLE-3044", "Glycated Haemoglobin (HbA1c)", 120)] }),
+    claim({ claimNumber: "CL00004403", patientName: "Nasser Alzahrani", mrn: "MR-26-100156", nationalId: "1029384756", payer: "MedGulf", type: "Institutional", serviceDate: d(12), submittedOn: d(10), answeredOn: d(9), diagnosis: "S72.0 Fracture of neck of femur", state: "Rejected",
+      errors: [{ code: "BV-00045", scope: "Claim" }], lines: [L(1, "83000-00-01", "Undetermined Stay In Ward", 3200), L(2, "SBS-SAMPLE-4120", "X-Ray Hip", 320), L(3, "SBS-SAMPLE-3015", "Complete Blood Count", 85)] }),
+    claim({ claimNumber: "CL00004377", patientName: "Khalid Alrashidi", mrn: "MR-26-100221", nationalId: "1048826301", payer: "Tawuniya", type: "Professional", serviceDate: d(16), submittedOn: d(15), answeredOn: d(14), diagnosis: "M54.5 Low back pain", state: "Rejected",
+      errors: [{ code: "BV-00230", scope: "Item", seq: 2 }, { code: "BV-00763", scope: "Claim" }], lines: [L(1, "83600-00-00", "General Practitioner Consult", 350), L(2, "SBS-SAMPLE-4310", "MRI Lumbar Spine", 1450)] }),
+    claim({ claimNumber: "CL00004359", patientName: "Noura Alshehri", mrn: "MR-26-100274", nationalId: "1077310428", payer: "Bupa Arabia", type: "Professional", serviceDate: d(20), submittedOn: d(19), answeredOn: d(18), diagnosis: "J06.9 Acute upper respiratory infection, unspecified", state: "Rejected",
+      errors: [{ code: "BV-00402", scope: "Claim" }], lines: [L(1, "83600-00-00", "General Practitioner Consult", 350)] }),
+    claim({ claimNumber: "CL00004341", patientName: "Meshal Alanazi", mrn: "MR-26-100299", nationalId: "2310458871", payer: "NextCare", type: "Institutional", serviceDate: d(34), submittedOn: d(33), answeredOn: d(31), diagnosis: "S06.0 Concussion", state: "Rejected",
+      errors: [{ code: "BV-00112", scope: "Claim" }], lines: [L(1, "83600-00-90", "Emergency Consult", 900), L(2, "SBS-SAMPLE-4205", "CT Brain Without Contrast", 1250)] }),
+    claim({ claimNumber: "CL00004322", patientName: "Hessa Almansour", mrn: "MR-26-100318", nationalId: "1093372615", payer: "Daman", type: "Professional", serviceDate: d(47), submittedOn: d(45), answeredOn: d(44), diagnosis: "E11.9 Type 2 diabetes mellitus without complication", state: "Rejected",
+      errors: [{ code: "BV-00318", scope: "Item", seq: 2 }], lines: [L(1, "83600-00-00", "General Practitioner Consult", 350), L(2, "SBS-SAMPLE-3044", "Glycated Haemoglobin (HbA1c)", 120)] }),
     // Denied in part or in full.
-    claim({ claimNumber: "CLM-26-4298", patientName: "Abdulaziz Alotaibi", mrn: "MRN-100331", nationalId: "1061129934", payer: "Tawuniya", type: "Institutional", serviceDate: d(40), submittedOn: d(38), answeredOn: d(33), diagnosis: "J18.9 Pneumonia, unspecified", state: "Partly Approved",
-      lines: [L(1, "SBS-SAMPLE-1003", "Inpatient Stay", 3200, 3200), L(2, "SBS-SAMPLE-4310", "MRI Lumbar Spine", 1450, 0, 0, "MN-1-1"), L(3, "SBS-SAMPLE-3015", "Complete Blood Count", 255, 255)] }),
-    claim({ claimNumber: "CLM-26-4275", patientName: "Joud Alsalem", mrn: "MRN-100266", nationalId: "1100458823", payer: "Daman", type: "Institutional", serviceDate: d(55), submittedOn: d(52), answeredOn: d(46), diagnosis: "K35.8 Acute appendicitis, other and unspecified", state: "Partly Approved",
-      lines: [L(1, "SBS-SAMPLE-1003", "Inpatient Stay", 9600, 7200, 0, "SE-1-6"), L(2, "SBS-SAMPLE-5011", "Ceftriaxone 1 g Injection", 380, 380)] }),
-    claim({ claimNumber: "CLM-26-4260", patientName: "Bandar Alharthi", mrn: "MRN-100342", nationalId: "1058821177", payer: "MedGulf", type: "Professional", serviceDate: d(70), submittedOn: d(68), answeredOn: d(61), diagnosis: "M17.1 Primary osteoarthritis of knee", state: "Partly Approved",
-      lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350, 315, 35), L(2, "SBS-SAMPLE-6020", "Physiotherapy Session (4)", 720, 0, 0, "CV-4-1")] }),
-    claim({ claimNumber: "CLM-26-4231", patientName: "Rakan Alshahrani", mrn: "MRN-100355", nationalId: "1088452290", payer: "Bupa Arabia", type: "Professional", serviceDate: d(26), submittedOn: d(25), answeredOn: d(21), diagnosis: "R10.4 Other and unspecified abdominal pain", state: "Partly Approved",
-      lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350, 315, 35), L(2, "SBS-SAMPLE-4230", "CT Abdomen With Contrast", 1250, 0, 0, "BE-1-4")] }),
-    claim({ claimNumber: "CLM-26-4210", patientName: "Maha Alshammari", mrn: "MRN-100302", nationalId: "1072215546", payer: "Malath Insurance", type: "Institutional", serviceDate: d(18), submittedOn: d(17), answeredOn: d(12), diagnosis: "R07.4 Chest pain, unspecified", state: "Denied",
-      lines: [L(1, "SBS-SAMPLE-1002", "Emergency Department Visit", 900, 0, 0, "AD-3-5"), L(2, "SBS-SAMPLE-3061", "Troponin I", 170, 0, 0, "AD-3-5")] }),
+    claim({ claimNumber: "CL00004298", patientName: "Abdulaziz Alotaibi", mrn: "MR-26-100331", nationalId: "1061129934", payer: "Tawuniya", type: "Institutional", serviceDate: d(40), submittedOn: d(38), answeredOn: d(33), diagnosis: "J18.9 Pneumonia, unspecified", state: "Partly Approved",
+      lines: [L(1, "83000-00-01", "Undetermined Stay In Ward", 3200, 3200), L(2, "SBS-SAMPLE-4310", "MRI Lumbar Spine", 1450, 0, 0, "MN-1-1"), L(3, "SBS-SAMPLE-3015", "Complete Blood Count", 255, 255)] }),
+    claim({ claimNumber: "CL00004275", patientName: "Joud Alsalem", mrn: "MR-26-100266", nationalId: "1100458823", payer: "Daman", type: "Institutional", serviceDate: d(55), submittedOn: d(52), answeredOn: d(46), diagnosis: "K35.8 Acute appendicitis, other and unspecified", state: "Partly Approved",
+      lines: [L(1, "83000-00-01", "Undetermined Stay In Ward", 9600, 7200, 0, "SE-1-6"), L(2, "SBS-SAMPLE-5011", "Ceftriaxone 1 g Injection", 380, 380)] }),
+    claim({ claimNumber: "CL00004260", patientName: "Bandar Alharthi", mrn: "MR-26-100342", nationalId: "1058821177", payer: "MedGulf", type: "Professional", serviceDate: d(70), submittedOn: d(68), answeredOn: d(61), diagnosis: "M17.1 Primary osteoarthritis of knee", state: "Partly Approved",
+      lines: [L(1, "83600-00-00", "General Practitioner Consult", 350, 315, 35), L(2, "SBS-SAMPLE-6020", "Physiotherapy Session (4)", 720, 0, 0, "CV-4-1")] }),
+    claim({ claimNumber: "CL00004231", patientName: "Rakan Alshahrani", mrn: "MR-26-100355", nationalId: "1088452290", payer: "Bupa Arabia", type: "Professional", serviceDate: d(26), submittedOn: d(25), answeredOn: d(21), diagnosis: "R10.4 Other and unspecified abdominal pain", state: "Partly Approved",
+      lines: [L(1, "83600-00-00", "General Practitioner Consult", 350, 315, 35), L(2, "SBS-SAMPLE-4230", "CT Abdomen With Contrast", 1250, 0, 0, "BE-1-4")] }),
+    claim({ claimNumber: "CL00004210", patientName: "Maha Alshammari", mrn: "MR-26-100302", nationalId: "1072215546", payer: "Malath Insurance", type: "Institutional", serviceDate: d(18), submittedOn: d(17), answeredOn: d(12), diagnosis: "R07.4 Chest pain, unspecified", state: "Denied",
+      lines: [L(1, "83600-00-90", "Emergency Consult", 900, 0, 0, "AD-3-5"), L(2, "SBS-SAMPLE-3061", "Troponin I", 170, 0, 0, "AD-3-5")] }),
     // Approved, waiting for the payer's money.
-    claim({ claimNumber: "CLM-26-4401", patientName: "Sara Almutairi", mrn: "MRN-100245", nationalId: "1044712280", payer: "Bupa Arabia", type: "Professional", serviceDate: d(13), submittedOn: d(12), answeredOn: d(11), diagnosis: "J06.9 Acute upper respiratory infection, unspecified", state: "Approved",
-      lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350, 315, 35), L(2, "SBS-SAMPLE-3015", "Complete Blood Count", 170, 153, 17)] }),
-    claim({ claimNumber: "CLM-26-4402", patientName: "Fahad Alqarni", mrn: "MRN-100187", nationalId: "1035567104", payer: "Tawuniya", type: "Professional", serviceDate: d(11), submittedOn: d(10), answeredOn: d(8), diagnosis: "M23.2 Derangement of meniscus due to old tear or injury", state: "Approved",
-      lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350, 280, 70), L(2, "SBS-SAMPLE-4320", "MRI Knee", 1122, 897.6, 224.4)] }),
-    claim({ claimNumber: "CLM-26-4188", patientName: "Omar Alqahtani", mrn: "MRN-100362", nationalId: "1029947731", payer: "MedGulf", type: "Institutional", serviceDate: d(48), submittedOn: d(46), answeredOn: d(40), diagnosis: "I50.9 Heart failure, unspecified", state: "Approved",
-      lines: [L(1, "SBS-SAMPLE-1003", "Inpatient Stay", 3200, 3200), L(2, "SBS-SAMPLE-5044", "Furosemide 40 mg Injection", 660, 660)] }),
-    claim({ claimNumber: "CLM-26-3975", patientName: "Lama Alghamdi", mrn: "MRN-100377", nationalId: "1081136649", payer: "Bupa Arabia", type: "Professional", serviceDate: d(75), submittedOn: d(74), answeredOn: d(70), diagnosis: "L30.9 Dermatitis, unspecified", state: "Approved",
-      lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350, 315, 35), L(2, "SBS-SAMPLE-6110", "Skin Biopsy", 610, 549, 61)] }),
-    claim({ claimNumber: "CLM-26-3610", patientName: "Saad Aldawsari", mrn: "MRN-100388", nationalId: "1015583302", payer: "MedGulf", type: "Institutional", serviceDate: d(138), submittedOn: d(136), answeredOn: d(128), diagnosis: "N10 Acute pyelonephritis", state: "Approved",
-      lines: [L(1, "SBS-SAMPLE-1003", "Inpatient Stay", 2600, 2600), L(2, "SBS-SAMPLE-4410", "Ultrasound Kidneys", 500, 500)] }),
-    claim({ claimNumber: "CLM-26-3802", patientName: "Reema Alharbi", mrn: "MRN-100266", nationalId: "1100231184", payer: "Daman", type: "Institutional", serviceDate: d(100), submittedOn: d(98), answeredOn: d(92), diagnosis: "O80 Single spontaneous delivery", state: "Approved",
-      lines: [L(1, "SBS-SAMPLE-1003", "Inpatient Stay", 6400, 6400), L(2, "SBS-SAMPLE-7010", "Normal Delivery", 2250, 2250)] }),
-    claim({ claimNumber: "CLM-26-4415", patientName: "Faris Alenezi", mrn: "MRN-100391", nationalId: "2298874410", payer: "NextCare", type: "Institutional", serviceDate: d(6), submittedOn: d(5), answeredOn: d(4), diagnosis: "R51 Headache", state: "Approved",
-      lines: [L(1, "SBS-SAMPLE-1002", "Emergency Department Visit", 900, 810, 90), L(2, "SBS-SAMPLE-4205", "CT Brain Without Contrast", 940, 846, 94)] }),
-    claim({ claimNumber: "CLM-26-4380", patientName: "Turki Alotaibi", mrn: "MRN-100402", nationalId: "1037759921", payer: "Bupa Arabia", type: "Professional", serviceDate: d(25), submittedOn: d(24), answeredOn: d(20), diagnosis: "J20.9 Acute bronchitis, unspecified", state: "Approved",
-      lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350, 315, 35), L(2, "SBS-SAMPLE-4101", "X-Ray Chest", 850, 765, 85)] }),
+    claim({ claimNumber: "CL00004401", patientName: "Sara Almutairi", mrn: "MR-26-100245", nationalId: "1044712280", payer: "Bupa Arabia", type: "Professional", serviceDate: d(13), submittedOn: d(12), answeredOn: d(11), diagnosis: "J06.9 Acute upper respiratory infection, unspecified", state: "Approved",
+      lines: [L(1, "83600-00-00", "General Practitioner Consult", 350, 315, 35), L(2, "SBS-SAMPLE-3015", "Complete Blood Count", 170, 153, 17)] }),
+    claim({ claimNumber: "CL00004402", patientName: "Fahad Alqarni", mrn: "MR-26-100187", nationalId: "1035567104", payer: "Tawuniya", type: "Professional", serviceDate: d(11), submittedOn: d(10), answeredOn: d(8), diagnosis: "M23.2 Derangement of meniscus due to old tear or injury", state: "Approved",
+      lines: [L(1, "83600-00-00", "General Practitioner Consult", 350, 280, 70), L(2, "SBS-SAMPLE-4320", "MRI Knee", 1122, 897.6, 224.4)] }),
+    claim({ claimNumber: "CL00004188", patientName: "Omar Alqahtani", mrn: "MR-26-100362", nationalId: "1029947731", payer: "MedGulf", type: "Institutional", serviceDate: d(48), submittedOn: d(46), answeredOn: d(40), diagnosis: "I50.9 Heart failure, unspecified", state: "Approved",
+      lines: [L(1, "83000-00-01", "Undetermined Stay In Ward", 3200, 3200), L(2, "SBS-SAMPLE-5044", "Furosemide 40 mg Injection", 660, 660)] }),
+    claim({ claimNumber: "CL00003975", patientName: "Lama Alghamdi", mrn: "MR-26-100377", nationalId: "1081136649", payer: "Bupa Arabia", type: "Professional", serviceDate: d(75), submittedOn: d(74), answeredOn: d(70), diagnosis: "L30.9 Dermatitis, unspecified", state: "Approved",
+      lines: [L(1, "83600-00-00", "General Practitioner Consult", 350, 315, 35), L(2, "SBS-SAMPLE-6110", "Skin Biopsy", 610, 549, 61)] }),
+    claim({ claimNumber: "CL00003610", patientName: "Saad Aldawsari", mrn: "MR-26-100388", nationalId: "1015583302", payer: "MedGulf", type: "Institutional", serviceDate: d(138), submittedOn: d(136), answeredOn: d(128), diagnosis: "N10 Acute pyelonephritis", state: "Approved",
+      lines: [L(1, "83000-00-01", "Undetermined Stay In Ward", 2600, 2600), L(2, "SBS-SAMPLE-4410", "Ultrasound Kidneys", 500, 500)] }),
+    claim({ claimNumber: "CL00003802", patientName: "Reema Alharbi", mrn: "MR-26-100266", nationalId: "1100231184", payer: "Daman", type: "Institutional", serviceDate: d(100), submittedOn: d(98), answeredOn: d(92), diagnosis: "O80 Single spontaneous delivery", state: "Approved",
+      lines: [L(1, "83000-00-01", "Undetermined Stay In Ward", 6400, 6400), L(2, "SBS-SAMPLE-7010", "Normal Delivery", 2250, 2250)] }),
+    claim({ claimNumber: "CL00004415", patientName: "Faris Alenezi", mrn: "MR-26-100391", nationalId: "2298874410", payer: "NextCare", type: "Institutional", serviceDate: d(6), submittedOn: d(5), answeredOn: d(4), diagnosis: "R51 Headache", state: "Approved",
+      lines: [L(1, "83600-00-90", "Emergency Consult", 900, 810, 90), L(2, "SBS-SAMPLE-4205", "CT Brain Without Contrast", 940, 846, 94)] }),
+    claim({ claimNumber: "CL00004380", patientName: "Turki Alotaibi", mrn: "MR-26-100402", nationalId: "1037759921", payer: "Bupa Arabia", type: "Professional", serviceDate: d(25), submittedOn: d(24), answeredOn: d(20), diagnosis: "J20.9 Acute bronchitis, unspecified", state: "Approved",
+      lines: [L(1, "83600-00-00", "General Practitioner Consult", 350, 315, 35), L(2, "SBS-SAMPLE-4101", "X-Ray Chest", 850, 765, 85)] }),
     // Sent, no answer yet (Manual Responses).
-    claim({ claimNumber: "CLM-26-4431", patientName: "Ibrahim Alghamdi", mrn: "MRN-100415", nationalId: "1052286617", payer: "Tawuniya", type: "Institutional", serviceDate: d(9), submittedOn: d(3), diagnosis: "K80.2 Calculus of gallbladder without cholecystitis", state: "Submitted",
-      lines: [L(1, "SBS-SAMPLE-1003", "Inpatient Stay", 4800), L(2, "SBS-SAMPLE-8020", "Laparoscopic Cholecystectomy", 6200)] }),
-    claim({ claimNumber: "CLM-26-4436", patientName: "Wafa Alsubaie", mrn: "MRN-100421", nationalId: "1066614402", payer: "Bupa Arabia", type: "Professional", serviceDate: d(3), submittedOn: d(2), diagnosis: "E03.9 Hypothyroidism, unspecified", state: "Submitted",
-      lines: [L(1, "SBS-SAMPLE-1001", "Outpatient Consultation", 350), L(2, "SBS-SAMPLE-3071", "Thyroid Stimulating Hormone", 95), L(3, "SBS-SAMPLE-3072", "Free T4", 95), L(4, "SBS-SAMPLE-3073", "Thyroid Function Panel", 200)] }),
+    claim({ claimNumber: "CL00004431", patientName: "Ibrahim Alghamdi", mrn: "MR-26-100415", nationalId: "1052286617", payer: "Tawuniya", type: "Institutional", serviceDate: d(9), submittedOn: d(3), diagnosis: "K80.2 Calculus of gallbladder without cholecystitis", state: "Submitted",
+      lines: [L(1, "83000-00-01", "Undetermined Stay In Ward", 4800), L(2, "SBS-SAMPLE-8020", "Laparoscopic Cholecystectomy", 6200)] }),
+    claim({ claimNumber: "CL00004436", patientName: "Wafa Alsubaie", mrn: "MR-26-100421", nationalId: "1066614402", payer: "Bupa Arabia", type: "Professional", serviceDate: d(3), submittedOn: d(2), diagnosis: "E03.9 Hypothyroidism, unspecified", state: "Submitted",
+      lines: [L(1, "83600-00-00", "General Practitioner Consult", 350), L(2, "SBS-SAMPLE-3071", "Thyroid Stimulating Hormone", 95), L(3, "SBS-SAMPLE-3072", "Free T4", 95), L(4, "SBS-SAMPLE-3073", "Thyroid Function Panel", 200)] }),
   ];
   const approvedOf = (n: string) => round2(claims.find((c) => c.claimNumber === n)!.lines.reduce((s, l) => s + (l.approved ?? 0), 0));
   const alloc = (claimNumber: string, amount: number, at: string): Allocation => ({ claimKey: claimNumber, claimNumber, amount, at, by: "Majed Aldosari" });
   const notices: PaymentNotice[] = [
-    // Bupa paid CLM-26-4380 in full; the rest of the transfer is waiting to be adjusted to two more claims.
-    { id: "RCN-2611-0101", payer: "Bupa Arabia", amount: round2(approvedOf("CLM-26-4380") + approvedOf("CLM-26-4401") + approvedOf("CLM-26-3975")), date: d(4), reference: "RMT-88120",
-      allocations: [alloc("CLM-26-4380", approvedOf("CLM-26-4380"), ts(d(3)))], createdAt: ts(d(4)), by: "Majed Aldosari" },
+    // Bupa paid CL00004380 in full; the rest of the transfer is waiting to be adjusted to two more claims.
+    { id: "RCN-2611-0101", payer: "Bupa Arabia", amount: round2(approvedOf("CL00004380") + approvedOf("CL00004401") + approvedOf("CL00003975")), date: d(4), reference: "RMT-88120",
+      allocations: [alloc("CL00004380", approvedOf("CL00004380"), ts(d(3)))], createdAt: ts(d(4)), by: "Majed Aldosari" },
     // Daman paid part of a delivery claim and the notice went back.
     { id: "RCN-2611-0102", payer: "Daman", amount: 5000, date: d(30), reference: "RMT-88145",
-      allocations: [alloc("CLM-26-3802", 5000, ts(d(29)))], createdAt: ts(d(30)), by: "Majed Aldosari", notice: { status: "Paid", at: ts(d(29), "11:20"), by: "Majed Aldosari" } },
+      allocations: [alloc("CL00003802", 5000, ts(d(29)))], createdAt: ts(d(30)), by: "Majed Aldosari", notice: { status: "Paid", at: ts(d(29), "11:20"), by: "Majed Aldosari" } },
     // MedGulf paid the heart failure stay; not adjusted yet.
-    { id: "RCN-2611-0103", payer: "MedGulf", amount: approvedOf("CLM-26-4188"), date: d(2), reference: "RMT-88171", allocations: [], createdAt: ts(d(2)), by: "Majed Aldosari" },
+    { id: "RCN-2611-0103", payer: "MedGulf", amount: approvedOf("CL00004188"), date: d(2), reference: "RMT-88171", allocations: [], createdAt: ts(d(2)), by: "Majed Aldosari" },
     // A cheque from Tawuniya, keyed in by hand.
-    { id: "MP-2611-0001", payer: "Tawuniya", amount: approvedOf("CLM-26-4402"), date: d(1), reference: "CHQ-009817", allocations: [], createdAt: ts(d(1)), by: "Majed Aldosari",
+    { id: "MP-2611-0001", payer: "Tawuniya", amount: approvedOf("CL00004402"), date: d(1), reference: "CHQ-009817", allocations: [], createdAt: ts(d(1)), by: "Majed Aldosari",
       manual: { method: "Cheque", writeOff: 0, active: true } },
   ];
   const n = (id: string, at: string, by: string, text: string, extra: Partial<Note> = {}): Note => ({ id, at, by, text, ...extra });
@@ -379,28 +385,28 @@ export function seedRcm(today: Date = new Date()): RcmState {
     v: 1,
     claims,
     rejections: {
-      "RJ-CLM-26-4403": { status: "In Review", assignee: "Amal Alharbi", history: [h(ts(d(8)), "Amal Alharbi", "Start Review", "Open", "In Review", "Asked the approvals office for the authorization number.")],
-        notes: [n("N-1", ts(d(8), "10:30"), "Amal Alharbi", "Payer asked for the approval number before the claim is sent again.", { medium: "Phone", outcome: "Awaiting Payer Reply", person: "MedGulf provider desk", reference: "MG-CALL-4471", followUp: d(-1) })] },
-      "RJ-CLM-26-4359": { status: "Corrected", history: [h(ts(d(17)), "Majed Aldosari", "Correct", "Open", "Corrected", "First claim CLM-26-4380 covers a different day. Added the visit date to the claim.")], notes: [], fixes: { "0": "Visit on a different day from CLM-26-4380; service date checked." } },
-      "RJ-CLM-26-4322": { status: "Resubmitted", history: [h(ts(d(43)), "Majed Aldosari", "Correct", "Open", "Corrected", "Changed the HbA1c code to the payer's code."), h(ts(d(42)), "Majed Aldosari", "Resubmit", "Corrected", "Resubmitted")], notes: [] },
+      "RJ-CL00004403": { status: "In Review", assignee: "Amal Alharbi", history: [h(ts(d(8)), "Amal Alharbi", "Start Review", "Open", "In Review", "Asked the approvals office for the authorization number.")],
+        notes: [n("N-1", ts(d(8), "10:30"), "Amal Alharbi", "Payer asked for the approval number before the claim is sent again.", { medium: "Phone", outcome: "Information Requested", person: "MedGulf provider desk", reference: "MG-CALL-4471", followUp: d(-1) })] },
+      "RJ-CL00004359": { status: "In Review", history: [h(ts(d(17)), "Majed Aldosari", "Correct", "Open", "In Review", "First claim CL00004380 covers a different day. Added the visit date to the claim.")], notes: [], fixes: { "0": "Visit on a different day from CL00004380; service date checked." } },
+      "RJ-CL00004322": { status: "Resolved", history: [h(ts(d(43)), "Majed Aldosari", "Correct", "Open", "In Review", "Changed the HbA1c code to the payer's code."), h(ts(d(42)), "Majed Aldosari", "Resubmit", "In Review", "Resolved")], notes: [] },
     },
     denials: {
-      "DN-CLM-26-4275": { status: "Appealed", history: [h(ts(d(40)), "Amal Alharbi", "Appeal", "Open", "Appealed", "Contract price list of 2026 attached.")], notes: [],
-        appeal: { claimNumber: "CLM-26-4275-AP1", reason: "The stay was billed at the 2026 contract price for a double room.", attachments: ["Daman contract 2026 price list.pdf"], seqs: [1], at: ts(d(40)), by: "Amal Alharbi" } },
-      "DN-CLM-26-4260": { status: "Open", history: [], notes: [n("N-2", ts(d(55), "12:00"), "Majed Aldosari", "Policy class C does not cover physiotherapy. Patient to be told.", { medium: "Payer Portal", outcome: "Resolved" })] },
+      "DN-CL00004275": { status: "In Review", history: [h(ts(d(40)), "Amal Alharbi", "Appeal", "Open", "In Review", "Contract price list of 2026 attached.")], notes: [],
+        appeal: { claimNumber: "CL00004275-AP1", reason: "The stay was billed at the 2026 contract price for a double room.", attachments: ["Daman contract 2026 price list.pdf"], seqs: [1], at: ts(d(40)), by: "Amal Alharbi" } },
+      "DN-CL00004260": { status: "Open", history: [], notes: [n("N-2", ts(d(55), "12:00"), "Majed Aldosari", "Policy class C does not cover physiotherapy. Patient to be told.", { medium: "Portal", outcome: "Resolved" })] },
     },
     fwaFlags: [
-      { id: "FWA-501", claimKey: "CLM-26-4298", ruleCode: "FWA-R-031", ruleName: "Imaging Without A Matching Diagnosis", findingType: "Waste", lineSeq: 2, score: 64, stage: "Post Claim Response", openedOn: d(33), atRisk: 1450,
+      { id: "FWA-501", claimKey: "CL00004298", ruleCode: "FWA-R-031", ruleName: "Imaging Without A Matching Diagnosis", findingType: "Waste", lineSeq: 2, score: 64, stage: "Post Claim Response", openedOn: d(33), atRisk: 1450,
         description: "An MRI of the lumbar spine was billed on a pneumonia admission.", evidence: ["Principal diagnosis J18.9 Pneumonia, unspecified", "No back pain in the chief complaint or the notes", "Payer denied the line for medical necessity (MN-1-1)"] },
-      { id: "FWA-502", claimKey: "CLM-26-4359", ruleCode: "FWA-R-012", ruleName: "Same Service Billed Twice In 7 Days", findingType: "Waste", lineSeq: 1, score: 72, stage: "Post Claim Response", openedOn: d(18), atRisk: 350,
-        description: "A consultation for the same patient and doctor was billed twice within a week.", evidence: ["CLM-26-4380 billed SBS-SAMPLE-1001 five days earlier", "Same treating doctor on both claims"] },
-      { id: "FWA-503", claimKey: "CLM-26-4431", ruleCode: "FWA-R-044", ruleName: "Stay Longer Than Expected For The Diagnosis", findingType: "Anomaly", score: 58, stage: "Pre Submission", openedOn: d(3), atRisk: 4800,
+      { id: "FWA-502", claimKey: "CL00004359", ruleCode: "FWA-R-012", ruleName: "Same Service Billed Twice In 7 Days", findingType: "Waste", lineSeq: 1, score: 72, stage: "Post Claim Response", openedOn: d(18), atRisk: 350,
+        description: "A consultation for the same patient and doctor was billed twice within a week.", evidence: ["CL00004380 billed 83600-00-00 five days earlier", "Same treating doctor on both claims"] },
+      { id: "FWA-503", claimKey: "CL00004431", ruleCode: "FWA-R-044", ruleName: "Stay Longer Than Expected For The Diagnosis", findingType: "Anomaly", score: 58, stage: "Pre Submission", openedOn: d(3), atRisk: 4800,
         description: "Six days in hospital for an elective laparoscopic cholecystectomy.", evidence: ["Expected stay for this diagnosis group: 1 to 2 days", "No complication coded"] },
-      { id: "FWA-504", claimKey: "CLM-26-4415", ruleCode: "FWA-R-020", ruleName: "Emergency Visit For A Routine Complaint", findingType: "Abuse", score: 41, stage: "Post Claim Response", openedOn: d(4), atRisk: 900,
+      { id: "FWA-504", claimKey: "CL00004415", ruleCode: "FWA-R-020", ruleName: "Emergency Visit For A Routine Complaint", findingType: "Abuse", score: 41, stage: "Post Claim Response", openedOn: d(4), atRisk: 900,
         description: "Emergency visit billed for a headache triaged at CTAS 5.", evidence: ["Triage level CTAS 5", "Seen and sent home within 40 minutes"] },
-      { id: "FWA-505", claimKey: "CLM-26-4436", ruleCode: "FWA-R-007", ruleName: "Panel Tests Billed Separately", findingType: "Error", lineSeq: 4, score: 35, stage: "Pre Submission", openedOn: d(2), atRisk: 190,
+      { id: "FWA-505", claimKey: "CL00004436", ruleCode: "FWA-R-007", ruleName: "Panel Tests Billed Separately", findingType: "Error", lineSeq: 4, score: 35, stage: "Pre Submission", openedOn: d(2), atRisk: 190,
         description: "TSH and Free T4 were billed on their own and again inside the thyroid panel.", evidence: ["Lines 2 and 3 are part of line 4"] },
-      { id: "FWA-506", claimKey: "CLM-26-4188", ruleCode: "FWA-R-052", ruleName: "Medicine Above The Usual Daily Dose", findingType: "Suspected Fraud", lineSeq: 2, score: 86, stage: "Post Claim Response", openedOn: d(40), atRisk: 660,
+      { id: "FWA-506", claimKey: "CL00004188", ruleCode: "FWA-R-052", ruleName: "Medicine Above The Usual Daily Dose", findingType: "Suspected Fraud", lineSeq: 2, score: 86, stage: "Post Claim Response", openedOn: d(40), atRisk: 660,
         description: "Furosemide billed at three times the usual daily amount for six days.", evidence: ["22 vials billed for a 6-day stay", "Medication chart shows 8 doses given"] },
     ],
     fwa: {
@@ -409,16 +415,16 @@ export function seedRcm(today: Date = new Date()): RcmState {
         notes: [n("N-3", ts(d(37), "09:15"), "Dr. Tariq Aldossary", "Asked pharmacy for the dispensing record of this admission.")] },
     },
     ar: {
-      "AR-CLM-26-3610": { status: "Follow Up", assignee: "Amal Alharbi", level: 3, stage: "Final Notice", nextFollowUp: d(2), lastFollowUp: d(14),
+      "AR-CL00003610": { status: "Follow Up", assignee: "Amal Alharbi", level: 3, stage: "Escalated", nextFollowUp: d(2), lastFollowUp: d(14),
         history: [h(ts(d(60)), "Amal Alharbi", "Record Follow-Up", "Open", "Follow Up", "Payer says the claim is in their payment run."), h(ts(d(14)), "Amal Alharbi", "Escalate", undefined, undefined, "Escalated to the payer relations manager.")], notes: [] },
-      "AR-CLM-26-4188": { status: "In Review", assignee: "Majed Aldosari", level: 1, stage: "Follow Up", promise: { date: d(-10), amount: approvedOf("CLM-26-4188") },
+      "AR-CL00004188": { status: "In Review", assignee: "Majed Aldosari", level: 1, stage: "Follow Up", promise: { date: d(-10), amount: approvedOf("CL00004188") },
         history: [h(ts(d(6)), "Majed Aldosari", "Promise To Pay", "In Review", "In Review", "MedGulf promised payment in the next remittance.")], notes: [] },
-      "AR-CLM-26-3975": { status: "Open", assignee: "Sultan Alqahtani", nextFollowUp: d(-2), history: [], notes: [] },
+      "AR-CL00003975": { status: "Open", assignee: "Sultan Alqahtani", nextFollowUp: d(-2), history: [], notes: [] },
     },
     patientDebts: [
-      { ref: "INV-26-00795", patientName: "Rakan Alshahrani", mrn: "MRN-100355", amount: 540, since: d(113) },
-      { ref: "INV-26-00812", patientName: "Fatimah Alzahrani", mrn: "MRN-100428", amount: 1260, since: d(64) },
-      { ref: "INV-26-00840", patientName: "Yazeed Almutairi", mrn: "MRN-100433", amount: 310, since: d(22) },
+      { ref: "INV-2026795", patientName: "Rakan Alshahrani", mrn: "MR-26-100355", amount: 540, since: d(113) },
+      { ref: "INV-2026812", patientName: "Fatimah Alzahrani", mrn: "MR-26-100428", amount: 1260, since: d(64) },
+      { ref: "INV-2026840", patientName: "Yazeed Almutairi", mrn: "MR-26-100433", amount: 310, since: d(22) },
     ],
     notices,
     imports: [],
@@ -525,9 +531,9 @@ export function rejectionCases(s: RcmState = store.get(), claims: RcmClaim[] = a
     const id = `RJ-${c.key}`;
     const o = s.rejections[id];
     if (c.state !== "Rejected" && !o) continue;
-    let status = (o?.status as RejectionStatus | undefined) ?? "Open";
+    let status = caseStatus<RejectionStatus>(o?.status) ?? "Open";
     // A live claim sent again from the claim page or NPHIES Financial has left the rejected state.
-    if (c.live && c.state !== "Rejected" && status !== "Closed") status = "Resubmitted";
+    if (c.live && c.state !== "Rejected" && status !== "Closed") status = "Resolved";
     const errors = c.errors.map((e, i) => ({
       ...e, text: REJECTION_CODES[e.code] ?? "The payer did not give a reason.", field: CODE_FIELD[e.code]?.field ?? "claim",
       fieldLabel: CODE_FIELD[e.code]?.label ?? "Claim", fixed: o?.fixes?.[String(i)],
@@ -566,7 +572,7 @@ export function denialCases(s: RcmState = store.get(), claims: RcmClaim[] = allC
     const written = o?.writeOff?.status === "Approved" ? o.writeOff.amount : 0;
     const moved = o?.movedToPatient?.amount ?? 0;
     out.push({
-      id, claim: c, status: (o?.status as DenialStatus | undefined) ?? "Open", deniedLines, denied: c.denied,
+      id, claim: c, status: caseStatus<DenialStatus>(o?.status) ?? "Open", deniedLines, denied: c.denied,
       open: round2(Math.max(0, c.denied - recovered - written - moved)), recovered,
       appeal: o?.appeal && { ...o.appeal, state: ap?.state ?? "Submitted", approved: recovered },
       writeOff: o?.writeOff, movedToPatient: o?.movedToPatient, ageDays: ageDays(c.answeredOn ?? c.submittedOn, today), notes: o?.notes ?? [], history: o?.history ?? [],
@@ -851,7 +857,7 @@ export function moveRejection(c: RejectionCase, to: RejectionStatus, note: strin
 export function correctRejection(c: RejectionCase, fixes: Record<string, string>, note: string): Res {
   const clean = Object.fromEntries(Object.entries(fixes).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
   if (!c.claim.live && Object.keys(clean).length < c.errors.length) return { ok: false, errors: ["Say what you changed for each error."] };
-  const r = move("rejections", REJECTION_FLOW, c.id, c.status, "Corrected", "Correct", note || "Corrected the claim.", c.claim.patientName, (o) => ({ fixes: { ...((o as RejectionOverlay).fixes ?? {}), ...clean } } as Partial<CaseOverlay>));
+  const r = move("rejections", REJECTION_FLOW, c.id, c.status, "In Review", "Correct", note || "Corrected the claim.", c.claim.patientName, (o) => ({ fixes: { ...((o as RejectionOverlay).fixes ?? {}), ...clean } } as Partial<CaseOverlay>));
   return r;
 }
 
@@ -868,7 +874,7 @@ export function startCorrection(c: RejectionCase): Res {
 export function resubmitRejection(c: RejectionCase, note: string, today: Date = new Date()): Res {
   const no = guard(`${KIND_WORD.rejections} ${c.id}`);
   if (no) return no;
-  if (!canMove(REJECTION_FLOW, c.status, "Resubmitted")) return { ok: false, errors: [`A case that is ${c.status} cannot be resubmitted. Correct it first.`] };
+  if (!canMove(REJECTION_FLOW, c.status, "Resolved")) return { ok: false, errors: [`A case that is ${c.status} cannot be resubmitted. Correct it first.`] };
   if (c.claim.live) {
     const r = sendFromClaim(c.claim.visit!, "claim");
     if (!r.ok) return { ok: false, errors: r.problems };
@@ -876,7 +882,7 @@ export function resubmitRejection(c: RejectionCase, note: string, today: Date = 
     const s = store.get();
     store.set({ ...s, claims: s.claims.map((x) => (x.claimNumber === c.claim.claimNumber ? { ...x, state: "Submitted", answeredOn: undefined, errors: [], submittedOn: dayOf(today) } : x)) });
   }
-  return move("rejections", REJECTION_FLOW, c.id, c.status, "Resubmitted", "Resubmit", note || "Sent the corrected claim to the payer.", c.claim.patientName);
+  return move("rejections", REJECTION_FLOW, c.id, c.status, "Resolved", "Resubmit", note || "Sent the corrected claim to the payer.", c.claim.patientName);
 }
 
 /* Denials */
@@ -905,7 +911,7 @@ export function appealDenial(c: DenialCase, input: AppealInput, today: Date = ne
   };
   store.set({ ...s, claims: [...s.claims, appeal] });
   const attachments = input.attachments.map((a) => a.trim()).filter(Boolean);
-  const r = move("denials", DENIAL_FLOW, c.id, c.status, "Appealed", "Appeal", input.reason, c.claim.patientName, () => ({ appeal: { claimNumber, reason: input.reason.trim(), attachments, seqs: lines.map((l) => l.seq), at: nowIso(), by: who() } } as Partial<CaseOverlay>));
+  const r = move("denials", DENIAL_FLOW, c.id, c.status, "In Review", "Appeal", input.reason, c.claim.patientName, () => ({ appeal: { claimNumber, reason: input.reason.trim(), attachments, seqs: lines.map((l) => l.seq), at: nowIso(), by: who() } } as Partial<CaseOverlay>));
   return r.ok ? { ok: true, id: claimNumber } : r;
 }
 
@@ -942,7 +948,7 @@ export function decideWriteOff(c: DenialCase, approve: boolean, note: string): R
 export function moveToPatient(c: DenialCase, note: string): Res {
   const no = guard(`${KIND_WORD.denials} ${c.id}`);
   if (no) return no;
-  if (c.status !== "Open" && c.status !== "Appealed") return { ok: false, errors: [`A case that is ${c.status} cannot be moved to the patient.`] };
+  if (c.status !== "Open" && c.status !== "In Review") return { ok: false, errors: [`A case that is ${c.status} cannot be moved to the patient.`] };
   if (c.open <= 0.004) return { ok: false, errors: ["Nothing is left to move to the patient."] };
   if (c.writeOff?.status === "Pending") return { ok: false, errors: ["A write-off is waiting for approval. Decide it first."] };
   const amount = c.open;
@@ -1006,7 +1012,8 @@ export function recordResponse(claimNumber: string, r: ResponseInput, today: Dat
   // The answer to an appeal resolves its denial case.
   if (c.appealOf) {
     const id = `DN-${c.appealOf}`;
-    if (store.get().denials[id]?.status === "Appealed") patchCase("denials", id, (o) => ({ ...o, status: "Resolved", history: [...o.history, { at: nowIso(), by: who(), action: "Appeal Answered", from: "Appealed", to: "Resolved", note: `Payer answer: ${state}.` }] }));
+    const st = caseStatus<DenialStatus>(store.get().denials[id]?.status);
+    if (st === "In Review") patchCase("denials", id, (o) => ({ ...o, status: "Resolved", history: [...o.history, { at: nowIso(), by: who(), action: "Appeal Answered", from: "In Review", to: "Resolved", note: `Payer answer: ${state}.` }] }));
   }
   audit("update", `Manual response ${claimNumber}`, { patient: c.patientName, detail: `Payer answer recorded: ${state}` });
   return { ok: true };

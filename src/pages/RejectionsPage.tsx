@@ -16,7 +16,7 @@ import {
 } from "@/lib/rcm-cases";
 import { pushToast } from "@/lib/toast";
 
-const STATUSES = ["Active", "Open", "In Review", "Corrected", "Resubmitted", "Closed", "All"] as const;
+const STATUSES = ["Active", "Open", "In Review", "Resolved", "Closed", "All"] as const;
 
 /**
  * Rejection Management: claims the payer refused because of errors. Each case lists the payer's error codes; the biller
@@ -79,11 +79,14 @@ export function RejectionsPage() {
   );
 }
 
+/** Every error has its fix recorded (HIS keeps the case In Review until it is resubmitted). */
+const isCorrected = (c: RejectionCase) => c.status === "In Review" && c.errors.length > 0 && c.errors.every((e) => e.fixed);
+
 function RejectionPanel({ c, allowed }: { c: RejectionCase; allowed: boolean }) {
   const [dlg, setDlg] = React.useState<"note" | "correct" | "close" | "reopen" | "review" | "resubmit" | null>(null);
   const live = c.claim.live;
   const first = c.errors[0];
-  const canResubmit = c.status === "Corrected" || (live && c.status === "In Review");
+  const canResubmit = c.status === "In Review" && (live || isCorrected(c));
   const correct = () => {
     if (live) {
       if (!run(startCorrection(c))) return;
@@ -95,12 +98,12 @@ function RejectionPanel({ c, allowed }: { c: RejectionCase; allowed: boolean }) 
       sub={<>{c.claim.patientName}, {c.claim.mrn}, {c.claim.payer}</>}
       actions={allowed ? (
         <>
-          {isActive(c.status) && c.status !== "Resubmitted" && <Button variant="primary" size="sm" className={BRAND} onClick={correct}><Pencil className="size-4" aria-hidden="true" />Correct And Resubmit</Button>}
+          {isActive(c.status) && <Button variant="primary" size="sm" className={BRAND} onClick={correct}><Pencil className="size-4" aria-hidden="true" />Correct And Resubmit</Button>}
           {canResubmit && <Button size="sm" onClick={() => setDlg("resubmit")}><Send className="size-4" aria-hidden="true" />Resubmit</Button>}
           {c.status === "Open" && <Button size="sm" onClick={() => setDlg("review")}>Start Review</Button>}
           <Button size="sm" onClick={() => setDlg("note")}><StickyNote className="size-4" aria-hidden="true" />Notes</Button>
           {c.status !== "Closed" && <Button size="sm" variant="ghost" onClick={() => setDlg("close")}><X className="size-4" aria-hidden="true" />Close</Button>}
-          {(c.status === "Closed" || c.status === "Resubmitted") && <Button size="sm" variant="ghost" onClick={() => setDlg("reopen")}><RotateCcw className="size-4" aria-hidden="true" />Reopen</Button>}
+          {(c.status === "Closed" || c.status === "Resolved") && <Button size="sm" variant="ghost" onClick={() => setDlg("reopen")}><RotateCcw className="size-4" aria-hidden="true" />Reopen</Button>}
         </>
       ) : <NoAccess />}>
       <Section title="Claim">
@@ -154,10 +157,10 @@ function CorrectDialog({ open, onClose, c }: { open: boolean; onClose: () => voi
   const [note, setNote] = React.useState("");
   React.useEffect(() => { if (open) { setFixes(Object.fromEntries(c.errors.map((e, i) => [String(i), e.fixed ?? ""]))); setNote(""); } }, [open, c]);
   const save = (send: boolean) => {
-    const ok = c.status === "Corrected" ? true : run(correctRejection(c, fixes, note));
+    const ok = isCorrected(c) ? true : run(correctRejection(c, fixes, note));
     if (!ok) return;
     if (send) {
-      const now = { ...c, status: "Corrected" as const };
+      const now = { ...c, status: "In Review" as const };
       if (!run(resubmitRejection(now, note || "Sent the corrected claim to the payer."), "Claim corrected and sent again.")) return;
     } else pushOk();
     onClose();

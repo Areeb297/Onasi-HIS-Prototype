@@ -10,7 +10,7 @@ import { can } from "@/lib/session";
 import { nowLocal } from "@/lib/store";
 import { amendPanel, currentRecorder, obsValue, savePanel, sendPanel, type VitalPanel } from "@/lib/vitals";
 import {
-  BP_POSITIONS, CONSCIOUSNESS, CONTEXTS, DIPSTICK, LOCAL_VITALS, VITALS, bmiOf, flagFor, localFlag, news2, refRangeText,
+  BP_POSITIONS, CONSCIOUSNESS, CONSCIOUSNESS_LABEL, CONTEXTS, DIPSTICK, LOCAL_VITALS, VITALS, bmiOf, flagFor, localFlag, news2, refRangeText,
   type Consciousness, type LocalReadings, type PanelContext, type VitalKey,
 } from "@/lib/vitals-spec";
 
@@ -171,8 +171,8 @@ export function VitalsSheet({ enc, patient, panel, hasPanels, onClose }: { enc: 
 
           <FormSection title="How It Was Taken" help="Used for the early warning score and the message.">
             <FormGrid cols={2}>
-              <Field label="Consciousness" hint="Alert, new confusion, responds to voice, responds to pain, unresponsive.">
-                <Select value={cons} onChange={(e) => setCons(e.target.value as Consciousness)}>{CONSCIOUSNESS.map((c) => <option key={c}>{c}</option>)}</Select>
+              <Field label="Conscious Level">
+                <Select value={cons} onChange={(e) => setCons(e.target.value as Consciousness)}>{CONSCIOUSNESS.map((c) => <option key={c} value={c}>{CONSCIOUSNESS_LABEL[c]}</option>)}</Select>
               </Field>
               <Field label="Blood Pressure Position" hl7={dev ? "OBX 8361-8" : undefined}>
                 <Select value={pos} onChange={(e) => setPos(e.target.value)}><option value="">Not recorded</option>{BP_POSITIONS.map((c) => <option key={c}>{c}</option>)}</Select>

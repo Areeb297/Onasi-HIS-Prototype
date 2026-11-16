@@ -4,7 +4,8 @@ import { CODE_DICTIONARY } from "./ai/coding";
 import { audit } from "./audit";
 import { bedProblem } from "./beds";
 import type { Dx, Encounter, HisState } from "./model";
-import { ADMISSION_METHODS, DOCTORS, DX_SAMPLES, SERVICES } from "./reference-data";
+import { caseOf, insuredPayer } from "./nphies-financial";
+import { ADMISSION_METHODS, DOCTORS, DX_SAMPLES, SERVICES, cnhiAdmissionMethod } from "./reference-data";
 import { can, currentUser } from "./session";
 import { getState, patientName, toLocalInput, updateEncounter } from "./store";
 
@@ -46,13 +47,15 @@ export const WARD_OF: Record<string, string> = { MED: "3A", SUR: "4B", ORT: "4B"
 export const ADMISSION_TYPES = ADMISSION_METHODS;
 export const admissionTypeLabel = (code: string): string => ADMISSION_TYPES.find((m) => m.code === code)?.label ?? code;
 
-export const PATIENT_CONDITIONS = ["Stable", "Fair", "Serious", "Critical"];
-export const ACTIVITY_LEVELS = ["Walks Without Help", "Walks With Help", "Wheelchair", "Bed Rest", "Complete Bed Rest"];
+/** HIS lookups "Patient Condition" and "Activity Level" (AdmitPatients.PatientConditionId, ActivityLevelId). */
+export const PATIENT_CONDITIONS = ["Stable", "Sick", "Seriously Ill", "Very Seriously Ill", "Critical", "Conscious", "Semi Conscious", "Unconscious"];
+export const ACTIVITY_LEVELS = ["Up & About", "Ambulatory", "Bed Ridden", "On Wheel Chair", "On Crutches"];
 export const ADMISSION_SPECIALTIES = [
   "Internal Medicine", "Cardiology", "Pulmonology", "Endocrinology", "Nephrology", "Gastroenterology", "Infectious Diseases",
   "General Surgery", "Orthopedics", "Urology", "Intensive Care", "Neurology",
 ];
-export const RELATIONS = ["Father", "Mother", "Husband", "Wife", "Son", "Daughter", "Brother", "Sister", "Other Relative", "Friend"];
+/** HIS lookup "Family Relation Type" (AdmitPatients.AttendantRelationId). */
+export const RELATIONS = ["Father", "Mother", "Brother", "Sister", "Spouse", "Son", "Daughter", "Grandfather", "Grandmother", "Uncle", "Aunt", "Cousin", "Caregiver", "Other"];
 export type PayPlan = "Insurance" | "Cash";
 
 /** The app's ICD-10-AM diagnosis list: the chart samples plus the coding dictionary, one entry per code. */
@@ -190,7 +193,8 @@ export type Result<T> = { ok: true; value: T } | { ok: false; errors: string[] }
 /** Raising a request is a clinical order: it needs chart write access. */
 export const canRequestAdmission = (): boolean => can("emr.write");
 /** Approving, rejecting and cancelling admit the patient or close the request, so they need the right to send ADT. */
-export const canDecideAdmission = (): boolean => can("adt.send");
+/** Approving or rejecting an admission request is the Insurance Approvals Officer's step (and the administrator's). */
+export const canDecideAdmission = (): boolean => can("approvals");
 
 /* ---------- selectors ---------- */
 
@@ -373,6 +377,15 @@ export function approvalProblems(r: AdmissionRequest, a: ApprovalInput, now: num
   }
   if (a.attendantPhone.trim() && !/^\+?[0-9 ]{9,15}$/.test(a.attendantPhone.trim())) errors.push("Enter the contact number with digits only, for example 0551234567.");
   const source = openSourceVisit(r, s);
+  // CHI: an insured elective admission waits for the payer's prior authorization. An emergency admission goes ahead
+  // and the authorization follows within 24 hours. A pre-admission only plans the stay, so it may wait for the answer.
+  const payer = insuredPayer(s.patients.find((p) => p.id === r.patientId) ?? {});
+  if (!a.preAdmit && payer && a.admissionType && cnhiAdmissionMethod(a.admissionType) === "14") {
+    const auth = source ? caseOf(source.visitNumber).authorization : undefined;
+    if (auth?.status !== "approved") {
+      errors.push(`${payer} has not approved this elective admission yet. Request prior authorization on NPHIES Financial, tick Pre-Admit to plan the stay meanwhile, or choose an emergency admission type.`);
+    }
+  }
   if (a.preAdmit) {
     const pre = s.encounters.find((e) => e.patientId === r.patientId && e.status === "preadmit");
     if (pre) errors.push(`This patient already has a pre-admission (visit ${pre.visitNumber}).`);
@@ -459,7 +472,9 @@ function close(id: string, status: "rejected" | "cancelled", reason: string, now
   const r = get().requests.find((x) => x.id === id);
   if (!r) return { ok: false, errors: ["This request was not found."] };
   const patient = patientName(getState().patients.find((p) => p.id === r.patientId));
-  if (!canDecideAdmission()) {
+  // The doctor who can raise a request may also cancel it; only the approvals officer rejects.
+  const allowed = status === "cancelled" ? canDecideAdmission() || canRequestAdmission() : canDecideAdmission();
+  if (!allowed) {
     audit("denied", `Admission request ${id}`, { patient, detail: status === "rejected" ? "Reject" : "Cancel" });
     return { ok: false, errors: [`Your role cannot ${verb} admission requests.`] };
   }

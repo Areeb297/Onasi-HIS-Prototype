@@ -326,8 +326,8 @@ export function checkRows(table: Table, m: Mapping, ctx: ImportContext): ImportR
 export function templateCsv(): string {
   const head = IMPORT_FIELDS.map((f) => f.label);
   const rows = [
-    ["CLM-26-5001", "Abdullah Alsubaie", "MRN-100231", "1023344556", "Bupa Arabia", "2026-11-02", "Professional", "J06.9", "SBS-SAMPLE-1001", "Outpatient Consultation", "350", "315", "Approved"],
-    ["CLM-26-5002", "Maha Alshammari", "MRN-100302", "1072215546", "Tawuniya", "2026-11-03", "Institutional", "K35.8", "SBS-SAMPLE-1003", "Inpatient Stay", "3200", "", "Submitted"],
+    ["CL00005001", "Abdullah Alsubaie", "MR-26-100231", "1023344556", "Bupa Arabia", "2026-11-02", "Professional", "J06.9", "83600-00-00", "General Practitioner Consult", "350", "315", "Approved"],
+    ["CL00005002", "Maha Alshammari", "MR-26-100302", "1072215546", "Tawuniya", "2026-11-03", "Institutional", "K35.8", "83000-00-01", "Undetermined Stay In Ward", "3200", "", "Submitted"],
   ];
   const q = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   return [head, ...rows].map((r) => r.map(q).join(",")).join("\r\n");

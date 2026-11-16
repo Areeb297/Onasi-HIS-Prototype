@@ -9,8 +9,9 @@ import { BEDS, BED_BY_ID, WARDS } from "./reference-data";
  * The ward, room and bed number cannot change once the bed is saved: messages already sent name the bed.
  */
 
-export const ROOM_TYPES = ["Private", "Semi-Private", "Shared Ward", "VIP Suite", "Intensive Care", "Isolation Room"];
-export const BED_TYPES = ["Standard", "Electric", "Intensive Care", "Bariatric", "Pediatric Cot", "Day Case Recliner"];
+/** HIS lookups "Room Type" and "Bed Type" (Beds.RoomTypeId, BedTypeId). */
+export const ROOM_TYPES = ["General Ward", "Semi-Private Room", "Private Room", "VIP Room", "Intensive Care Unit", "Coronary Care Unit", "Neonatal Intensive Care Unit", "Pediatric Intensive Care Unit", "Isolation Room", "Day Care Room", "Emergency Observation Room", "Recovery Room", "Delivery Room"];
+export const BED_TYPES = ["Standard Bed", "Electric Bed", "ICU Bed", "Pediatric Bed", "Neonatal Bed", "Bariatric Bed", "Maternity Bed", "Isolation Bed", "Recovery Bed", "Observation Bed"];
 export const BED_GENDERS: BedGender[] = ["Any", "Male", "Female"];
 export const GENDER_LABEL: Record<BedGender, string> = { Any: "Any", Male: "Male Only", Female: "Female Only" };
 
@@ -27,8 +28,8 @@ export function defaultAttrs(bed: Pick<Bed, "ward">): BedAttrs {
   const icu = bed.ward === "ICU";
   return {
     floor: FLOOR_OF[bed.ward] ?? "1",
-    roomType: icu ? "Intensive Care" : "Semi-Private",
-    bedType: icu ? "Intensive Care" : "Electric",
+    roomType: icu ? "Intensive Care Unit" : "Semi-Private Room",
+    bedType: icu ? "ICU Bed" : "Electric Bed",
     gender: "Any",
     isolation: false,
     oxygen: true,

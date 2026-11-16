@@ -32,6 +32,12 @@
 ## CT-HIS database reference
 - `docs/ct-his-db/` (kept out of git) holds a read-only snapshot of the real CT-HIS SQL Server database: `SCHEMA.md` (310 tables with columns and keys), `LOOKUPS.md` (303 dropdown lists in English and Arabic), `EMR-PAGES.md` (EMR pages and routes) and `form-templates/` (the dynamic form JSON). Read these before designing a form or a list; query the database (`sqlcmd -S . -E -C -d CT-HIS`, read-only) only when the snapshot is not enough.
 
+## Build only what the HIS can implement (user, 16 Nov 2026)
+- Everything here will be implemented in the real CT-HIS codebase, so screens, fields, statuses, dropdowns and sample data must come from it: the database (`docs/ct-his-db/`) and the source (`CT-CoreApp`, branch `origin/dev-Sham`, read only with `git show`: `CT-HIS.WebApp/app/(pages)/` for pages, `CT-HIS.Domain` and `CT-HIS.API` for entities, enums and endpoints).
+- Use the HIS names for fields, statuses and lookups, and HIS formats for identifiers (MRN, visit and invoice numbers). Sample data uses only values the HIS tables could hold.
+- A field or feature with no HIS table, column or page is not added silently: either map it to the nearest HIS table, or list it in `docs/ct-his-db/parity/` as "New in HIS" with the table or column it would need, and ask before building it.
+- `docs/ct-his-db/parity/` holds one file per area mapping our pages to HIS pages, routes and tables.
+
 ## Epic benchmarking (physician feedback, see `MoM Onasi HIS Epic Benchmarking.docx`, kept out of git)
 - Fewer clicks: every routine doctor task (labs, vitals, imaging) in one or two clicks.
 - The whole visit on one page with module tabs (Lab, Imaging, Vitals and so on), not list menus; a patient list is the doctor's landing view.

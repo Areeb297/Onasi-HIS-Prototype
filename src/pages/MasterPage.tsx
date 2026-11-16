@@ -14,6 +14,7 @@ import { can, useSession } from "@/lib/session";
 import { useDevMode } from "@/lib/devmode";
 import { audit } from "@/lib/audit";
 import { pushToast } from "@/lib/toast";
+import { ASK_BEFORE_LEAVING } from "@/components/forms/unsaved";
 
 const badgeTone = (s: string) =>
   // Check the negative words first, so "Inactive" does not match "active".
@@ -224,7 +225,7 @@ function EditSheet({ def, open, initial, rows, index, onClose, onSave }: { def: 
   const adding = index === null;
   const required = def.columns.some((c) => c.field?.required);
 
-  const requestClose = () => { if (dirty) setConfirmClose(true); else onClose(); };
+  const requestClose = () => { if (dirty && ASK_BEFORE_LEAVING) setConfirmClose(true); else onClose(); };
   const save = () => {
     setTried(true);
     if (rowProblems(def, v, rows, index).length === 0) { onSave(v); return; }

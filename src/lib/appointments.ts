@@ -52,7 +52,8 @@ export const columnOf = (s: ApptStatus): ApptColumn => COLUMN_OF[s];
 export const isLive = (s: ApptStatus) => s !== "cancelled" && s !== "no-show" && s !== "rescheduled";
 
 export type VisitType = "in-person" | "online";
-export const VISIT_TYPE_LABEL: Record<VisitType, string> = { "in-person": "In Person", online: "Online" };
+/** HIS Appointments.AppointmentType has New, Follow Up, Online Visit and Walk-In; here only In Person and Online Visit are kept. */
+export const VISIT_TYPE_LABEL: Record<VisitType, string> = { "in-person": "In Person", online: "Online Visit" };
 
 /** The clinic speciality of each service the doctors belong to. */
 const SPECIALITY_OF_SERVICE: Record<string, string> = {

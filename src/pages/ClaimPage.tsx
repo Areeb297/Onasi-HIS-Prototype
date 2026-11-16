@@ -157,6 +157,10 @@ export function ClaimPage() {
 
   const allowed = can("billing");
   const readOnly = !allowed || m.locked;
+  // Segregation of duties: the coder changes codes, the approvals officer runs eligibility and prior authorization.
+  const approvals = can("approvals");
+  const codeReadOnly = !can("coding") || m.locked;
+  const noApprovals = "This needs the approvals permission.";
   const claimFindings = reviewModel(m, "claim");
   const options = sendOptions(enc, fin);
   const status = statusOfClaim(m);
@@ -200,9 +204,9 @@ export function ClaimPage() {
               {sum.hard + sum.soft > 0 && <span aria-hidden="true" className={cn("rounded-full px-1.5 text-[0.6875rem] font-semibold leading-5 text-white", sum.hard ? "bg-destructive" : "bg-warn")}>{sum.hard || sum.soft}</span>}
             </Button>
             {options.eligibility.enabled && (
-              <Button size="sm" className="flex-1 sm:flex-none" disabled={!allowed} title={allowed ? options.eligibility.why : noRole} onClick={() => warn(checkEligibility(visit))}><UserCheck className="size-4" /> <span className="sm:hidden">Eligibility</span><span className="hidden sm:inline">{options.eligibility.label}</span></Button>
+              <Button size="sm" className="flex-1 sm:flex-none" disabled={!approvals} title={approvals ? options.eligibility.why : noApprovals} onClick={() => warn(checkEligibility(visit))}><UserCheck className="size-4" /> <span className="sm:hidden">Eligibility</span><span className="hidden sm:inline">{options.eligibility.label}</span></Button>
             )}
-            <Button size="sm" className="flex-1 sm:flex-none" variant={next === "priorauth" ? "primary" : "secondary"} disabled={!allowed || !options.priorAuth.enabled} title={!allowed ? noRole : options.priorAuth.enabled ? options.priorAuth.label : options.priorAuth.why} onClick={() => send(visit, "priorauth")}>
+            <Button size="sm" className="flex-1 sm:flex-none" variant={next === "priorauth" ? "primary" : "secondary"} disabled={!approvals || !options.priorAuth.enabled} title={!approvals ? noApprovals : options.priorAuth.enabled ? options.priorAuth.label : options.priorAuth.why} onClick={() => send(visit, "priorauth")}>
               <ShieldCheck className="size-4" /> <span className="sm:hidden">PreAuth</span><span className="hidden sm:inline">{options.priorAuth.label.replace("Prior Authorization", "PreAuth")}</span>
             </Button>
             <Button size="sm" className="flex-1 sm:flex-none" variant={next === "claim" ? "primary" : "secondary"} disabled={!allowed || !options.claim.enabled} title={!allowed ? noRole : options.claim.enabled ? options.claim.label : options.claim.why} onClick={() => send(visit, "claim")}>
@@ -257,10 +261,10 @@ export function ClaimPage() {
           <EncounterSection m={m} />
           <CareTeamSection m={m} readOnly={readOnly} />
           <SupportSection m={m} readOnly={readOnly} />
-          <DiagnosesSection m={m} readOnly={readOnly} />
+          <DiagnosesSection m={m} readOnly={codeReadOnly} />
           {m.drg && <DrgSection m={m} />}
           <section id="claim-lines" aria-label="Service Lines" tabIndex={-1} className={cn("scroll-mt-48 rounded-2xl focus-visible:outline-none", flash)}>
-            <ServiceLinesCard m={m} findings={claimFindings} readOnly={readOnly} />
+            <ServiceLinesCard m={m} findings={claimFindings} readOnly={codeReadOnly} />
           </section>
           <FinancialSection m={m} invoiceNumber={inv?.number} />
         </div>
@@ -630,7 +634,7 @@ function FinancialSection({ m, invoiceNumber }: { m: ClaimModel; invoiceNumber?:
   return (
     <Section
       id="claim-financial" title="Financial Summary"
-      subtitle={invoiceNumber ? `From invoice #${invoiceNumber}. Read only: prices are set on the invoice.` : "From the visit charges. Read only."}
+      subtitle={invoiceNumber ? `From invoice ${invoiceNumber}. Read only: prices are set on the invoice.` : "From the visit charges. Read only."}
       right={invoiceNumber ? <Button size="sm" variant="ghost" onClick={() => navigate("/invoice", { visit: m.visit })}>Open Invoice</Button> : undefined}
     >
       <div className="grid gap-3 p-4 sm:grid-cols-3">

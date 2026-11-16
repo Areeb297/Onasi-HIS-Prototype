@@ -27,6 +27,7 @@ import { doctorIdForUser, personFromDoctor, personFromUser } from "./fhir/people
 import { can, currentUser, type DemoUser } from "./session";
 import { getState, patientName } from "./store";
 import { pushToast } from "./toast";
+import { requestOrderAuthorization, serviceBlocked, type ApprovalService, type ServiceGate } from "./nphies-financial";
 
 export * from "./fhir/rad-catalog";
 export { buildRadOrderBundle, buildRadReportBundle } from "./fhir/rad-bundles";
@@ -142,7 +143,7 @@ function classBlocksSend(enc: Encounter, what: string): boolean {
   return true;
 }
 
-function allowed(perm: "order.rad" | "rad.report", target: string, patient?: string): boolean {
+function allowed(perm: "order.rad" | "rad.perform" | "rad.report", target: string, patient?: string): boolean {
   if (can(perm)) return true;
   audit("denied", target, { patient, detail: `Needs ${perm}` });
   pushToast({ tone: "warn", text: "Your role cannot do this.", detail: `This needs the ${perm} permission.` });
@@ -200,6 +201,22 @@ export function groupRadOrders(orders: RadOrder[]): { groupId: string; orders: R
   return out;
 }
 
+/* ---------- prior authorization (CHI) ---------- */
+
+const examService = (o: Pick<RadOrder, "procCode">): ApprovalService => {
+  const p = procByCode(o.procCode);
+  return { kind: "imaging", modality: p?.modality ?? "", label: p?.short ?? o.procCode };
+};
+
+/**
+ * Whether the exam must wait for the payer's approval: CT, MRI, nuclear or PET imaging for an insured patient, on a
+ * visit that is not an emergency, billed to the plan, while NPHIES Financial has no approved authorization.
+ */
+export function radApproval(o: Pick<RadOrder, "visitNumber" | "procCode" | "coverage">): ServiceGate {
+  if (o.coverage === "self-pay") return { blocked: false, label: "", reason: "" };
+  return serviceBlocked({ visitNumber: o.visitNumber, service: examService(o) });
+}
+
 export function placeRadOrder(enc: Encounter, input: RadOrderFields): RadOrder | null {
   const patient = getState().patients.find((p) => p.id === enc.patientId);
   if (!allowed("order.rad", "Radiology order", patient && patientName(patient))) return null;
@@ -229,6 +246,8 @@ export function placeRadOrder(enc: Encounter, input: RadOrderFields): RadOrder |
     ...(input.coverage ? { coverage: input.coverage } : {}),
   };
   store.set({ ...s, counter, orders: [order, ...s.orders] });
+  // CHI: the approval request goes when the doctor orders, for the approvals officer to send.
+  if (order.coverage !== "self-pay") requestOrderAuthorization(enc.visitNumber, examService(order));
   audit("create", `Radiology order ${order.id}`, {
     patient: patientName(patient),
     detail: `Visit ${order.visitNumber}: ${procByCode(order.procCode)?.short}${order.groupId ? `. Order ${order.groupId}` : ""}${order.diagnosis ? `. Diagnosis ${order.diagnosis.code}` : ""}${order.coverage ? `. ${coverageLabel(order.coverage)}` : ""}`,
@@ -336,7 +355,7 @@ export function examProblems(d: ExamDetails, patient: Pick<Patient, "sex" | "dob
  */
 export function completeExam(id: string, details: ExamDetails): boolean {
   const o = getRadOrder(id);
-  if (!o || !allowed("rad.report", `Radiology order ${id}`)) return false;
+  if (!o || !allowed("rad.perform", `Radiology order ${id}`)) return false;
   if (o.status !== "received") return false;
   const patient = getState().patients.find((p) => p.id === o.patientId);
   if (!patient) return false;
@@ -351,8 +370,13 @@ export function completeExam(id: string, details: ExamDetails): boolean {
 /** The exam is done. Creates the study record (UID, accession). Images are in PACS unless told otherwise. */
 export function markPerformed(id: string, opts: { images?: boolean; details?: ExamDetails } = {}): boolean {
   const o = getRadOrder(id);
-  if (!o || !allowed("rad.report", `Radiology order ${id}`)) return false;
+  if (!o || !allowed("rad.perform", `Radiology order ${id}`)) return false;
   if (o.status !== "received") return false;
+  const gate = radApproval(o);
+  if (gate.blocked) {
+    pushToast({ tone: "warn", text: `${gate.label}: the exam cannot be done yet.`, detail: gate.reason });
+    return false;
+  }
   const d = opts.details;
   const end = d ? new Date(d.end) : new Date();
   const study: RadStudy = {
@@ -392,7 +416,7 @@ export const PREGNANCY_TEXT: Record<PregnancyCheck, string> = {
 
 export function setStudyImages(id: string, images: boolean): boolean {
   const o = getRadOrder(id);
-  if (!o?.study || !allowed("rad.report", `Radiology order ${id}`)) return false;
+  if (!o?.study || !allowed("rad.perform", `Radiology order ${id}`)) return false;
   mutate(id, (x) => {
     if (x.study) x.study.images = images;
     if (isRadPublished(x)) x.reportDirty = true;

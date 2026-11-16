@@ -238,6 +238,16 @@ describe("invoice", () => {
     expect(invoiceOf(visit)!.zatca.attempts).toBe(1);
   });
 
+  it("sends a paid invoice that failed to report again on the next sweep, without a click", () => {
+    const visit = encOf(SAUDI).visitNumber;
+    ensureInvoice(visit);
+    setZatcaFailNext(true);
+    takePayment(visit, { amount: 5, method: "Cash" });
+    expect(invoiceOf(visit)!.zatca.status).toBe("Failed");
+    syncInvoices();
+    expect(invoiceOf(visit)!.zatca).toMatchObject({ status: "Reported", auto: true, attempts: 2 });
+  });
+
   it("sends to ZATCA by hand and in bulk, with a failure that can be sent again", () => {
     const a = encOf(SAUDI).visitNumber;
     const b = encOf(NON_SAUDI).visitNumber;

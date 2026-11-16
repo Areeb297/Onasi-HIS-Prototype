@@ -1,6 +1,5 @@
 import * as React from "react";
 import { downloadText } from "@/components/ui/code-block";
-import { audit } from "@/lib/audit";
 import type { Density } from "@/lib/prefs";
 import { useSession } from "@/lib/session";
 import {
@@ -190,8 +189,7 @@ export function useList<T>(opts: ListOptions<T>): ListApi<T> {
     exportCsv: (rows) => {
       const list = rows ?? sorted;
       const cols = visibleColumns.filter((c) => c.csv || c.value).map((c) => ({ header: c.header, value: (r: T) => (c.csv ?? c.value)!(r) }));
-      downloadText(csvFileName(opts.title), toCsv(cols, list));
-      audit("export", opts.title, { detail: `${list.length} ${list.length === 1 ? (opts.unit ?? ["row"])[0] : (opts.unit ?? ["row", "rows"])[1]} to CSV` });
+      downloadText(csvFileName(opts.title), toCsv(cols, list), `${opts.title}: ${list.length} ${list.length === 1 ? (opts.unit ?? ["row"])[0] : (opts.unit ?? ["row", "rows"])[1]} to CSV`);
     },
   };
 }

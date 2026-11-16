@@ -170,13 +170,14 @@ export function flagViews(flags: PatientFlags | undefined): FlagView[] {
 
 /* ---------- lists for the form ---------- */
 
-export const TITLES = ["Mr", "Mrs", "Miss", "Ms", "Dr", "Baby"];
+/** HIS lookup "Title for Person". There is no newborn title: a newborn is flagged with IsNewborn instead. */
+export const TITLES = ["Mr.", "Mrs.", "Ms", "Miss", "Dr.", "Prof", "Engr."];
 
 /** The usual title for the sex and marital status, the way the HIS fills it in until the clerk picks one. */
 export function defaultTitle(sex: "M" | "F", marital: string, newborn = false): string {
-  if (newborn) return "Baby";
-  if (sex === "M") return "Mr";
-  if (marital === "M" || marital === "W" || marital === "D" || marital === "A") return "Mrs";
+  if (newborn) return "";
+  if (sex === "M") return "Mr.";
+  if (marital === "M" || marital === "W" || marital === "D" || marital === "A") return "Mrs.";
   if (marital === "S") return "Miss";
   return "Ms";
 }
@@ -211,8 +212,10 @@ export const ADMISSION_TYPES: { label: string; method: string }[] = [
   { label: "Newborn", method: "N" },
 ];
 
-export const PATIENT_CONDITIONS = ["Stable", "Fair", "Serious", "Critical"];
-export const ACTIVITY_LEVELS = ["Bed Rest", "Up With Help", "Up As Tolerated", "Walks Freely"];
+/** HIS lookup "Patient Condition" (AdmitPatients.PatientConditionId). */
+export const PATIENT_CONDITIONS = ["Stable", "Sick", "Seriously Ill", "Very Seriously Ill", "Critical", "Conscious", "Semi Conscious", "Unconscious"];
+/** HIS lookup "Activity Level" (AdmitPatients.ActivityLevelId). */
+export const ACTIVITY_LEVELS = ["Up & About", "Ambulatory", "Bed Ridden", "On Wheel Chair", "On Crutches"];
 export const ADMISSION_SPECIALTIES = [
   "Internal Medicine", "General Surgery", "Orthopedics", "Cardiology", "Intensive Care", "Neurology", "Obstetrics And Gynecology",
   "Pediatrics", "Neonatology", "Urology", "Nephrology", "Pulmonology",
@@ -302,7 +305,7 @@ export function validateRegistration(i: RegistrationInput): FieldProblem[] {
   if (i.visit === "I" && !s(i.admissionType)) add("admissionType", "Pick the admission type.", "اختر نوع التنويم.");
   if (i.visit === "I" && !s(i.patientCondition)) add("patientCondition", "Pick the patient condition.", "اختر حالة المريض.");
   if (i.visit === "I" && s(i.expectedStay) && !/^\d{1,3}$/.test(s(i.expectedStay))) add("expectedStay", "The expected stay is a whole number of days.", "مدة الإقامة المتوقعة عدد صحيح من الأيام.");
-  if (unknown && !s(i.title)) add("title", "Pick a title. It is required for an unknown patient.", "اختر اللقب. هو مطلوب للمريض المجهول.");
+  if (unknown && !i.newborn && !s(i.title)) add("title", "Pick a title. It is required for an unknown patient.", "اختر اللقب. هو مطلوب للمريض المجهول.");
   if (!unknown && !i.first.trim()) add("first", "Enter the first name.", "أدخل الاسم الأول.");
   if (!unknown && !i.family.trim()) add("family", "Enter the family name.", "أدخل اسم العائلة.");
   if (i.confidential && !s(i.nickName)) add("nickName", "Enter a nick name for the confidential patient.", "أدخل اسما مستعارا للمريض السري.");
@@ -319,7 +322,7 @@ export function validateRegistration(i: RegistrationInput): FieldProblem[] {
   if (i.interpreter && !i.language.trim()) add("language", "Pick the language for the interpreter.", "اختر لغة المترجم.");
   // An unknown patient gets a test Health ID when saved, and cannot give consent until the details are completed.
   if (!unknown && !i.healthId.trim()) add("healthId", "Enter the Health ID.", "أدخل رقم الهوية الصحية.");
-  if (!unknown && !i.consent) add("consent", "Confirm the patient consent.", "أكد موافقة المريض.");
+  // Data sharing (Patients.ShareData) is the patient's choice: off by default and never required to register.
   return out;
 }
 

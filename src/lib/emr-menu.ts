@@ -82,6 +82,7 @@ export const EMR_MENU: EmrItem[] = [
   f("operation-request", "Operation Request", "OT"),
   f("pre-anesthesia-assessment", "Pre-Anesthesia Assessment", "OT"),
   f("ot-schedule", "OT Schedule", "OT"),
+  f("anesthesia-chart", "Anesthesia Chart", "OT"),
 
   f("nursing-initial-assessment", "Nursing Initial Assessment", "Nursing"),
   f("nursing-pain-assessment", "Nursing Pain Assessment", "Nursing"),

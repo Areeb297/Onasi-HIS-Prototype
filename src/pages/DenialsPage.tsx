@@ -11,7 +11,7 @@ import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { Badge, Button, Empty, Field, Table, Td, Th } from "@/components/ui/primitives";
 import { addNote, appealDenial, decideWriteOff, denialCases, moveDenial, moveToPatient, RCM_PAYERS, requestWriteOff, type DenialCase } from "@/lib/rcm-cases";
 
-const STATUSES = ["Active", "Open", "Appealed", "Resolved", "Closed", "All"] as const;
+const STATUSES = ["Active", "Open", "In Review", "Resolved", "Closed", "All"] as const;
 
 /**
  * Denial Management: lines the payer would not pay. Appeal them (a new claim linked to the denied one), write them off with
@@ -25,17 +25,17 @@ export function DenialsPage() {
   const [payer, setPayer] = React.useState("");
   const [sel, setSel] = React.useState<string | null>(null);
   const rows = cases.filter((c) =>
-    (status === "All" || (status === "Active" ? c.status === "Open" || c.status === "Appealed" : c.status === status)) && (!payer || c.claim.payer === payer) &&
+    (status === "All" || (status === "Active" ? c.status === "Open" || c.status === "In Review" : c.status === status)) && (!payer || c.claim.payer === payer) &&
     matches(q, c.claim.claimNumber, c.claim.patientName, c.claim.mrn, c.claim.payer, ...c.deniedLines.map((l) => l.reason)));
   const current = cases.find((c) => c.id === sel) ?? null;
-  const active = cases.filter((c) => c.status === "Open" || c.status === "Appealed");
+  const active = cases.filter((c) => c.status === "Open" || c.status === "In Review");
   const maxDenied = Math.max(1, ...rows.map((c) => c.denied));
 
   return (
     <RcmPage title="Denial Management" subtitle="Service lines the payer would not pay. Appeal them, write them off with approval, or move them to the patient.">
       <KpiStrip label="Denial totals" className="grid-cols-2 xl:grid-cols-4">
         <KpiTile icon={<IconReceiptOff stroke={1.75} />} accent="danger" label="Denied, Still Open" value={<Money value={active.reduce((n, c) => n + c.open, 0)} />} note={`${active.length} active cases`} />
-        <KpiTile icon={<IconGavel stroke={1.75} />} label="Under Appeal" value={<Money value={cases.filter((c) => c.status === "Appealed").reduce((n, c) => n + c.open, 0)} />} note={`${cases.filter((c) => c.status === "Appealed").length} appeals waiting for the payer`} />
+        <KpiTile icon={<IconGavel stroke={1.75} />} label="Under Appeal" value={<Money value={cases.filter((c) => c.status === "In Review" && c.appeal).reduce((n, c) => n + c.open, 0)} />} note={`${cases.filter((c) => c.status === "In Review" && c.appeal).length} appeals waiting for the payer`} />
         <KpiTile icon={<IconArrowBackUp stroke={1.75} />} label="Recovered On Appeal" value={<Money value={cases.reduce((n, c) => n + c.recovered, 0)} />} tone="ok" note="Approved after appeal" />
         <KpiTile icon={<IconClockHour4 stroke={1.75} />} accent="warn" label="Write-Offs Waiting" value={cases.filter((c) => c.writeOff?.status === "Pending").length} note="Need a second person to approve" />
       </KpiStrip>
@@ -88,7 +88,7 @@ function DenialPanel({ c, allowed, user }: { c: DenialCase; allowed: boolean; us
         <>
           {c.status === "Open" && <Button variant="primary" size="sm" className={BRAND} onClick={() => setDlg("appeal")}><Scale className="size-4" aria-hidden="true" />Appeal</Button>}
           {c.status !== "Closed" && !pending && c.open > 0 && <Button size="sm" onClick={() => setDlg("writeoff")}><Trash2 className="size-4" aria-hidden="true" />Write Off</Button>}
-          {(c.status === "Open" || c.status === "Appealed") && !pending && c.open > 0 && <Button size="sm" onClick={() => setDlg("patient")}><UserRound className="size-4" aria-hidden="true" />Move To Patient Responsibility</Button>}
+          {(c.status === "Open" || c.status === "In Review") && !pending && c.open > 0 && <Button size="sm" onClick={() => setDlg("patient")}><UserRound className="size-4" aria-hidden="true" />Move To Patient Responsibility</Button>}
           <Button size="sm" onClick={() => setDlg("note")}><StickyNote className="size-4" aria-hidden="true" />Notes</Button>
           {(c.status === "Open" || c.status === "Resolved") && <Button size="sm" variant="ghost" onClick={() => setDlg("close")}><X className="size-4" aria-hidden="true" />Close</Button>}
           {c.status === "Closed" && <Button size="sm" variant="ghost" onClick={() => setDlg("reopen")}><RotateCcw className="size-4" aria-hidden="true" />Reopen</Button>}

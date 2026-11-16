@@ -1,7 +1,7 @@
 import type { MasterDef, Row } from "../schema";
 import { EMR_GROUPS, EMR_MENU } from "../emr-menu";
 import { NAV } from "../nav";
-import { ROLES, USERS, type Permission } from "../session";
+import { ROLES, USERS, hasNeed, type Permission } from "../session";
 import { badge, bool, date, mono, monoPick, more, num, pick, text } from "./helpers";
 
 /** EMR setup, reporting, users and role permissions. Users and roles are built from src/lib/session.ts so they always match. */
@@ -21,6 +21,7 @@ const PERMISSION_TEXT: Record<Permission, string> = {
   "rx.write": "Write prescriptions",
   "rx.dispense": "Dispense medication",
   "lab.result": "Enter laboratory results",
+  "rad.perform": "Perform Imaging Exams",
   "rad.report": "Write radiology reports",
   "docs.publish": "Publish clinical documents",
   "confidential.read": "Open confidential patients",
@@ -28,6 +29,9 @@ const PERMISSION_TEXT: Record<Permission, string> = {
   admin: "Manage setup, users and roles",
   "ai.use": "Use AI assistants",
   billing: "Use invoice and RCM pages",
+  cashier: "Take payments, deposits and refunds",
+  approvals: "Request prior authorization",
+  coding: "Code diagnoses and procedures for claims",
 };
 
 // EMR pages
@@ -66,8 +70,8 @@ const emrPageRows: Row[] = EMR_MENU.map((i, n) => ({
 const visibleGroups = NAV.filter((g) => !g.devOnly);
 const roleModuleRows: Row[] = ROLES.flatMap((r) =>
   visibleGroups
-    .filter((g) => !g.perm || r.permissions.includes(g.perm))
-    .map((g) => ({ role: r.id, moduleId: g.id, module: g.label, pages: g.pages.filter((p) => !p.perm || r.permissions.includes(p.perm)).length, total: g.pages.length }))
+    .filter((g) => !g.perm || hasNeed(r.permissions, g.perm))
+    .map((g) => ({ role: r.id, moduleId: g.id, module: g.label, pages: g.pages.filter((p) => !p.perm || hasNeed(r.permissions, p.perm)).length, total: g.pages.length }))
     .filter((x) => x.pages > 0 || x.total === 0)
     .map((x) => ({ ...x, access: x.pages === x.total ? "Full" : "Partial", active: true })),
 );
@@ -522,12 +526,12 @@ export const SYSTEM: MasterDef[] = [
       badge("eligibility", "Eligibility", ["Eligible", "Not Eligible", "Not Checked"], false),
     ],
     seed: [
-      { mrn: "MRN-204511", patient: "Mohammed Alqahtani", externalPatientId: "ORA-0091245", migrationDate: "2026-10-28", coverage: "Insured Standard, Class B", eligibility: "Eligible" },
-      { mrn: "MRN-204512", patient: "Fatimah Alharbi", externalPatientId: "ORA-0091302", migrationDate: "2026-10-28", coverage: "Insured VIP, Class A", eligibility: "Eligible" },
-      { mrn: "MRN-204513", patient: "Abdulrahman Alshehri", externalPatientId: "ORA-0091377", migrationDate: "2026-10-29", coverage: "Cash", eligibility: "Not Checked" },
-      { mrn: "MRN-204514", patient: "Nouf Aldossari", externalPatientId: "ORA-0091420", migrationDate: "2026-10-29", coverage: "Insured Standard, Class C", eligibility: "Not Eligible" },
-      { mrn: "MRN-204515", patient: "Sultan Alanazi", externalPatientId: "ORA-0091466", migrationDate: "2026-11-02", coverage: "Insured Standard, Class B", eligibility: "Eligible" },
-      { mrn: "MRN-204516", patient: "Maha Alzahrani", externalPatientId: "ORA-0091513", migrationDate: "2026-11-02", coverage: "Cash", eligibility: "Not Checked" },
+      { mrn: "MR-26-204511", patient: "Mohammed Alqahtani", externalPatientId: "ORA-0091245", migrationDate: "2026-10-28", coverage: "Insured Standard, Class B", eligibility: "Eligible" },
+      { mrn: "MR-26-204512", patient: "Fatimah Alharbi", externalPatientId: "ORA-0091302", migrationDate: "2026-10-28", coverage: "Insured VIP, Class A", eligibility: "Eligible" },
+      { mrn: "MR-26-204513", patient: "Abdulrahman Alshehri", externalPatientId: "ORA-0091377", migrationDate: "2026-10-29", coverage: "Cash", eligibility: "Not Checked" },
+      { mrn: "MR-26-204514", patient: "Nouf Aldossari", externalPatientId: "ORA-0091420", migrationDate: "2026-10-29", coverage: "Insured Standard, Class C", eligibility: "Not Eligible" },
+      { mrn: "MR-26-204515", patient: "Sultan Alanazi", externalPatientId: "ORA-0091466", migrationDate: "2026-11-02", coverage: "Insured Standard, Class B", eligibility: "Eligible" },
+      { mrn: "MR-26-204516", patient: "Maha Alzahrani", externalPatientId: "ORA-0091513", migrationDate: "2026-11-02", coverage: "Cash", eligibility: "Not Checked" },
     ],
   },
 ];

@@ -5,6 +5,7 @@ import { ChecksList } from "@/components/MessagePanel";
 import { DataTable, ListPage, ListToolbar, useList, type Column, type FilterDef, type RowAction } from "@/components/list";
 import { CodeBlock, copyText, downloadText } from "@/components/ui/code-block";
 import { Badge } from "@/components/ui/primitives";
+import { audit } from "@/lib/audit";
 import { fmtDateTime } from "@/lib/format";
 import { pretty } from "@/lib/hl7";
 import type { LogEntry } from "@/lib/model";
@@ -61,15 +62,20 @@ export function LogPage() {
     search: (m) => `${m.controlId} ${m.patientName} ${m.visitNumber} ${eventLabel(m.eventId)}`,
   });
 
+  // HL7 messages carry patient details, so a copy is audited like a download (downloadText audits downloads).
   async function copy(m: LogEntry) {
     await copyText(m.message);
+    audit("export", `HL7 message ${m.controlId}`, { patient: m.patientName, detail: `Visit ${m.visitNumber}. Copied` });
     pushToast({ tone: "ok", text: "Message copied.", detail: m.controlId });
   }
-  const downloadAll = (list: LogEntry[]) => downloadText("adt_messages.hl7", [...list].reverse().map((m) => m.message).join("\r\n\r\n"));
+  const downloadAll = (list: LogEntry[]) => {
+    downloadText("adt_messages.hl7", [...list].reverse().map((m) => m.message).join("\r\n\r\n"), `${list.length} HL7 message(s)`);
+  };
+  const downloadOne = (m: LogEntry) => downloadText(fileName(m), m.message, `HL7 message ${m.controlId}, visit ${m.visitNumber}, ${m.patientName}`);
 
   const actions = (m: LogEntry): RowAction[] => [
     { id: "copy", label: "Copy Message", icon: <Copy />, onClick: () => copy(m) },
-    { id: "hl7", label: "Download .hl7", icon: <Download />, onClick: () => downloadText(fileName(m), m.message) },
+    { id: "hl7", label: "Download .hl7", icon: <Download />, onClick: () => downloadOne(m) },
   ];
 
   return (

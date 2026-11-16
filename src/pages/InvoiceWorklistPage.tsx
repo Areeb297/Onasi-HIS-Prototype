@@ -56,7 +56,7 @@ export function InvoiceWorklistPage() {
   ];
 
   const columns: Column<Row>[] = [
-    { id: "number", header: "Invoice", hideable: false, value: (r) => r.view.invoice.number, cell: (r) => <span className="font-mono text-xs whitespace-nowrap">#{r.view.invoice.number}</span> },
+    { id: "number", header: "Invoice #", hideable: false, value: (r) => r.view.invoice.number, cell: (r) => <span className="font-mono text-xs whitespace-nowrap">{r.view.invoice.number}</span> },
     {
       id: "patient", header: "Patient", value: (r) => patientName(r.patient),
       cell: (r) => <span className="flex items-center gap-2 whitespace-nowrap"><span className="font-medium">{patientName(r.patient)}</span><span className="font-mono text-xs text-muted-foreground">{r.patient?.mrn}</span></span>,
@@ -139,7 +139,7 @@ export function InvoiceWorklistPage() {
         selectable
         bulk={[{ label: "Send To ZATCA", icon: <Send aria-hidden="true" />, onClick: bulkSend, disabled: !allowed, title: allowed ? undefined : "Needs the billing permission." }]}
         card={(r) => ({
-          title: <span className="flex items-center gap-2"><span className="font-mono text-xs font-normal text-muted-foreground">#{r.view.invoice.number}</span>{patientName(r.patient)}</span>,
+          title: <span className="flex items-center gap-2"><span className="font-mono text-xs font-normal text-muted-foreground">{r.view.invoice.number}</span>{patientName(r.patient)}</span>,
           aside: <InvoiceStatusBadge status={r.view.status} />,
           lines: [
             <span key="a" className="flex flex-wrap gap-x-3"><span>{fmtDate(r.view.invoice.createdAt)}</span><span className="font-semibold text-foreground"><Sar value={r.view.totals.total} /></span><span>Balance <Sar value={r.view.totals.patientBalance} /></span></span>,

@@ -47,10 +47,15 @@ export const resetLabExtras = store.reset;
 
 /* ---------- lists the sample form offers ---------- */
 
-export const COLLECTION_METHODS = ["Venipuncture", "Finger Prick", "Heel Prick", "Arterial Puncture", "Clean Catch Urine", "Midstream Urine", "Catheter Urine", "Swab"];
+/**
+ * Values of the HIS lookups on LaboratorySampleItem: "Specimen Collection Method" (CollectionMethodId), "Specimen Sample Care"
+ * (SpecimentSampleCareId) and "Specimen Risk" (SpecimenRiskId). Clean Catch Urine and Midstream Urine are not in the HIS
+ * list yet (listed as New in HIS); Standard Precautions means no special risk and is saved as an empty SpecimenRiskId.
+ */
+export const COLLECTION_METHODS = ["Venipuncture", "Capillary Specimen", "Arterial Puncture", "Line, Venous", "Line, Arterial", "Catheterized", "Swab", "Biopsy", "Aspiration, Fine Needle", "Blood Culture, Aerobic Bottle", "Blood Culture, Anaerobic Bottle", "Clean Catch Urine", "Midstream Urine"];
 export const SPECIMEN_SOURCES = ["Left Arm", "Right Arm", "Hand Vein", "Foot Or Heel", "Urethra", "Throat", "Nose", "Wound"];
-export const SAMPLE_CARE = ["Room Temperature", "Keep On Ice", "Keep Refrigerated", "Protect From Light", "Deliver Within 1 Hour"];
-export const SPECIMEN_RISKS = ["Standard Precautions", "Biohazard", "Suspected Infectious", "Cytotoxic Contact"];
+export const SAMPLE_CARE = ["Routine Handling", "Store At Room Temperature", "On Ice", "Keep Refrigerated", "Keep Frozen", "Protect From Light", "Transport Immediately", "Deliver Within 1 Hour", "Anaerobic Transport", "Viral Transport Medium"];
+export const SPECIMEN_RISKS = ["Standard Precautions", "Biohazard", "Material Danger Infectious", "Biological", "Corrosive", "Poison", "Radioactive", "Injury Hazard"];
 
 /** What the form starts with: the usual choice for the specimen type. */
 export function defaultSampleDetails(specimenKeys: string[]): SampleDetails {
@@ -59,7 +64,7 @@ export function defaultSampleDetails(specimenKeys: string[]): SampleDetails {
   return {
     method: urine ? "Clean Catch Urine" : nose ? "Swab" : "Venipuncture",
     source: urine ? "Urethra" : nose ? "Nose" : "Left Arm",
-    care: "Room Temperature",
+    care: "Store At Room Temperature",
     risk: "Standard Precautions",
   };
 }
@@ -124,7 +129,7 @@ export function markLabelsPrinted(order: Pick<LabOrder, "id" | "specimens" | "pa
   const s = store.get();
   const old = sampleOf(order, s);
   store.set({ ...s, samples: { ...s.samples, [order.id]: { ...old, collectedAt: first.collectedAt, labelsPrinted: (old?.labelsPrinted ?? 0) + 1 } } });
-  audit("view", `Lab sample labels ${order.id}`, { patient: nameOfOrder(order), detail: `Printed, ${(old?.labelsPrinted ?? 0) + 1} time(s)` });
+  audit("print", `Lab sample labels ${order.id}`, { patient: nameOfOrder(order), detail: `Printed, ${(old?.labelsPrinted ?? 0) + 1} time(s)` });
 }
 
 export function saveNotes(orderId: string, patch: { conclusion: string; comments: string }): boolean {

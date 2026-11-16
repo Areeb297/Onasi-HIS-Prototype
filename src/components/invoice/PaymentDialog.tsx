@@ -46,7 +46,7 @@ export function PaymentDialog({ open, onClose, view }: { open: boolean; onClose:
   const [txId, setTxId] = React.useState<string | null>(null);
   const [alloc, setAlloc] = React.useState<Record<string, string>>({});
   const [errors, setErrors] = React.useState<string[]>([]);
-  const allowed = can("billing");
+  const allowed = can("cashier");
 
   React.useEffect(() => {
     if (!open) return;
@@ -101,11 +101,11 @@ export function PaymentDialog({ open, onClose, view }: { open: boolean; onClose:
       onClose={onClose}
       wide
       title="Record Payment"
-      subtitle={`Invoice #${view.invoice.number}`}
+      subtitle={`Invoice ${view.invoice.number}`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={submit} disabled={!allowed} title={allowed ? undefined : "This needs the billing permission."}>
+          <Button variant="primary" onClick={submit} disabled={!allowed} title={allowed ? undefined : "This needs the cashier permission."}>
             {tab === "new" ? "Submit Payment" : "Allocate Payment"}
           </Button>
         </>

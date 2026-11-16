@@ -5,7 +5,7 @@ import {
   IconCloudUpload, IconRadioactive, IconScissors, IconNotebook, IconTable, IconListDetails, IconSchool, IconRobot, IconFolders,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
-import type { Permission } from "./session";
+import type { Permission, PermissionNeed } from "./session";
 
 type Icon = ComponentType<{ className?: string; stroke?: number }>;
 
@@ -13,7 +13,7 @@ export interface NavPage {
   id: string;
   label: string;
   path: string;
-  perm?: Permission;
+  perm?: PermissionNeed;
 }
 
 export interface NavGroup {
@@ -21,8 +21,8 @@ export interface NavGroup {
   label: string;
   icon: Icon;
   pages: NavPage[];
-  /** Hidden unless the user has this permission. */
-  perm?: Permission;
+  /** Hidden unless the user has this permission (a list: any one of them). */
+  perm?: PermissionNeed;
   /** Only in Developer View. */
   devOnly?: boolean;
 }
@@ -80,7 +80,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: "rad", label: "Radiology", icon: IconRadioactive,
-    pages: [{ id: "rad", label: "Worklist", path: "/radiology", perm: "rad.report" }],
+    pages: [{ id: "rad", label: "Worklist", path: "/radiology", perm: "rad.perform" }],
   },
   {
     id: "theatre", label: "Theatre", icon: IconScissors,
@@ -102,14 +102,14 @@ export const NAV: NavGroup[] = [
     pages: [{ id: "agents", label: "Agents", path: "/agents", perm: "ai.use" }],
   },
   {
-    id: "invoice", label: "Invoice", icon: IconFileInvoice, perm: "billing",
-    pages: [{ id: "invoices", label: "Invoice Worklist", path: "/invoices", perm: "billing" }, m("contractual-discounts", "Contractual Discounts", "billing")],
+    id: "invoice", label: "Invoice", icon: IconFileInvoice, perm: ["billing", "cashier"],
+    pages: [{ id: "invoices", label: "Invoice Worklist", path: "/invoices", perm: ["billing", "cashier"] }, m("contractual-discounts", "Contractual Discounts", "billing")],
   },
   {
-    id: "rcm", label: "RCM", icon: IconCash, perm: "billing",
+    id: "rcm", label: "RCM", icon: IconCash, perm: ["billing", "coding", "approvals"],
     pages: [
       m("daman-dashboard", "Daman Dashboard", "billing"),
-      { id: "billing", label: "Billing Worklist", path: "/billing", perm: "billing" },
+      { id: "billing", label: "Billing Worklist", path: "/billing", perm: ["billing", "coding"] },
       { id: "transactions", label: "Submitted Transactions", path: "/transactions", perm: "billing" },
       { id: "rule-engine", label: "Rule Engine", path: "/rule-engine", perm: "billing" },
       { id: "integrations-billing", label: "Integrations", path: "/integrations", perm: "billing" },
@@ -119,7 +119,7 @@ export const NAV: NavGroup[] = [
       m("ar-management", "AR Management", "billing"), m("payment-reconciliations", "Payment Reconciliations", "billing"),
       m("claim-import", "Claim Import", "billing"), m("refer-patient", "Refer Patient", "billing"),
       m("ar-cases", "AR Cases", "billing"), m("manual-payments", "Manual Payments", "billing"), m("manual-responses", "Manual Responses", "billing"),
-      { id: "nphies-financial", label: "NPHIES Financial", path: "/nphies-financial", perm: "billing" },
+      { id: "nphies-financial", label: "NPHIES Financial", path: "/nphies-financial", perm: ["billing", "approvals"] },
     ],
   },
   {

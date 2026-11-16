@@ -21,7 +21,8 @@ export type PayerType = (typeof PAYER_TYPES)[number];
 export const INSURERS = ["Bupa Arabia", "Tawuniya", "MedGulf", "Al Rajhi Takaful", "Walaa", "Malath", "Arabian Shield", "Gulf Union Alahlia"];
 export const TPAS = ["None", "Saudi Health TPA", "Gulf Care TPA", "Najd Claims Management"];
 export const PLANS = ["VIP", "Class A", "Class B", "Class C"];
-export const RELATIONSHIPS = ["Self", "Spouse", "Child", "Parent", "Other"];
+/** HIS lookup "Relationship" (PatientCoverages.RelationshipToSubscriber). */
+export const RELATIONSHIPS = ["Self", "Spouse", "Child", "Parent", "Common Law Spouse", "Injured Party", "Other"];
 export const REQUEST_TYPES = ["Discovery", "Validation", "Benefits", "Benefits And Validation"] as const;
 export type RequestType = (typeof REQUEST_TYPES)[number];
 export const REQUEST_PRIORITIES = ["Normal", "Stat", "Deferred"] as const;

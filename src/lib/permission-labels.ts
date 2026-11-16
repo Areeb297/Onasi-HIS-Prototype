@@ -11,6 +11,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "rx.write": "Prescribe",
   "rx.dispense": "Dispense medication",
   "lab.result": "Enter laboratory results",
+  "rad.perform": "Perform Imaging Exams",
   "rad.report": "Write radiology reports",
   "docs.publish": "Publish clinical documents",
   "confidential.read": "Read confidential records without break-the-glass",
@@ -18,4 +19,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   admin: "Administer setup, users and roles",
   "ai.use": "Use the AI assistant",
   billing: "Billing and RCM",
+  cashier: "Take payments, deposits and refunds",
+  approvals: "Request prior authorization",
+  coding: "Code diagnoses and procedures for claims",
 };

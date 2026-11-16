@@ -1,5 +1,5 @@
 import { NAV } from "./nav";
-import { ROLES, type Permission } from "./session";
+import { ROLES, hasNeed, type Permission, type PermissionNeed } from "./session";
 
 /**
  * Who may open a page by its address. The sidebar already hides what a role cannot use; this stops the same pages
@@ -12,19 +12,21 @@ import { ROLES, type Permission } from "./session";
  * Developer pages are handled by the Developer View switch, not here.
  */
 
-const RECORD_PERMS: Record<string, Permission> = { "/claim": "billing", "/invoice": "billing", "/transaction": "billing" };
+const RECORD_PERMS: Record<string, PermissionNeed> = {
+  "/claim": ["billing", "coding", "approvals"], "/invoice": ["billing", "cashier"], "/transaction": "billing",
+};
 
 export interface RouteAccess {
   allowed: boolean;
   /** The page's name, for the No Access card. */
   label: string;
-  /** Any one of these permissions opens the page. Empty means anyone. */
-  perms: Permission[][];
+  /** Any one of these lists opens the page; every need in it must be met (a need that is a list: any one). Empty means anyone. */
+  perms: PermissionNeed[][];
   /** Roles that can open it, for the No Access card. */
   roles: string[];
 }
 
-interface Entry { label: string; need: Permission[] }
+interface Entry { label: string; need: PermissionNeed[] }
 
 function entriesFor(path: string): Entry[] {
   const out: Entry[] = [];
@@ -32,7 +34,7 @@ function entriesFor(path: string): Entry[] {
     if (g.devOnly) continue;
     for (const p of g.pages) {
       if (p.path === path) {
-        out.push({ label: p.label === g.label ? p.label : `${p.label} (${g.label})`, need: [g.perm, p.perm].filter((x): x is Permission => !!x) });
+        out.push({ label: p.label === g.label ? p.label : `${p.label} (${g.label})`, need: [g.perm, p.perm].filter((x): x is PermissionNeed => !!x) });
       }
     }
   }
@@ -54,7 +56,7 @@ export function routeAccess(path: string, has: (p: Permission) => boolean): Rout
   }
   if (!entries.length) return { allowed: true, label: "", perms: [], roles: [] };
   const perms = entries.map((e) => e.need);
-  const opens = (ok: (p: Permission) => boolean) => perms.some((need) => need.every(ok));
-  const roles = ROLES.filter((r) => opens((p) => r.permissions.includes(p))).map((r) => r.label);
-  return { allowed: opens(has), label: entries[0].label, perms, roles };
+  const opens = (ok: (n: PermissionNeed) => boolean) => perms.some((need) => need.every(ok));
+  const roles = ROLES.filter((r) => opens((n) => hasNeed(r.permissions, n))).map((r) => r.label);
+  return { allowed: opens((n) => (typeof n === "string" ? has(n) : n.some(has))), label: entries[0].label, perms, roles };
 }

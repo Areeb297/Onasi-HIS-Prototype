@@ -24,7 +24,7 @@ const defs: FilterDef<P>[] = [
 
 describe("search", () => {
   it("needs every word, in any order, ignoring case", () => {
-    expect(matchesQuery("Saad Almutairi MRN0000101", "almutairi saad")).toBe(true);
+    expect(matchesQuery("Saad Almutairi MR-26-000101", "almutairi saad")).toBe(true);
     expect(matchesQuery("Saad Almutairi", "saad layla")).toBe(false);
     expect(matchesQuery("anything", "   ")).toBe(true);
   });

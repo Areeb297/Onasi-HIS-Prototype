@@ -1,7 +1,7 @@
 import * as React from "react";
 import { AlertDialog } from "radix-ui";
 import { Button } from "@/components/ui/primitives";
-import { createLeaveGate } from "./unsaved";
+import { createLeaveGate, ASK_BEFORE_LEAVING } from "./unsaved";
 
 /**
  * Asks before work is lost. It covers three ways out:
@@ -26,7 +26,7 @@ export function useUnsavedChangesGuard(
 
   // The browser tab: reload, close or typing a new address.
   React.useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || !ASK_BEFORE_LEAVING) return;
     const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
@@ -36,7 +36,7 @@ export function useUnsavedChangesGuard(
   // swapped (and the typing lost) before the user answers. The address is put back while we ask.
   React.useEffect(() => {
     const onHash = (e: HashChangeEvent) => {
-      if (!gate.shouldBlock(dirtyRef.current)) return;
+      if (!ASK_BEFORE_LEAVING || !gate.shouldBlock(dirtyRef.current)) return;
       e.stopImmediatePropagation();
       const to = e.newURL;
       window.history.replaceState(window.history.state, "", e.oldURL);
@@ -48,7 +48,7 @@ export function useUnsavedChangesGuard(
 
   const guard = React.useCallback((proceed: () => void) => {
     if (askingRef.current) return; // already asking: a second Escape or click outside does nothing more
-    if (!dirtyRef.current) proceed();
+    if (!dirtyRef.current || !ASK_BEFORE_LEAVING) proceed();
     else setAsk({ proceed });
   }, []);
 

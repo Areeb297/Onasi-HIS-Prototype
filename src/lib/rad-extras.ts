@@ -187,5 +187,5 @@ export function markReportPrinted(order: Pick<RadOrder, "id" | "patientId">): vo
   const s = store.get();
   const n = (s.prints[order.id] ?? 0) + 1;
   store.set({ ...s, prints: { ...s.prints, [order.id]: n } });
-  audit("view", `Radiology report print ${order.id}`, { patient: nameOfOrder(order), detail: `Printed, ${n} time(s)` });
+  audit("print", `Radiology report print ${order.id}`, { patient: nameOfOrder(order), detail: `Printed, ${n} time(s)` });
 }

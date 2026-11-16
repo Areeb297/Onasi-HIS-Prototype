@@ -3,6 +3,7 @@ import { audit } from "./audit";
 import type { Encounter } from "./model";
 import { getRx, rxForVisit } from "./rx";
 import { DRUG_BY_ID, FREQ_BY_ID, ROUTE_LABEL, drugLabel } from "./rx-catalogue";
+import { verifyStatusIn } from "./rx-verify";
 import type { Drug, ItemStatus, RxItem, RxState } from "./rx-types";
 import { currentUser, roleOf } from "./session";
 import { getState } from "./store";
@@ -103,6 +104,8 @@ export interface MarOrder {
   /** False for a stopped, cancelled or on-hold item: no further doses. */
   live: boolean;
   highAlert: string | null;
+  /** The pharmacist verified this item version (HIS Prescription.PharmacistVerificationStatus = Verified). */
+  verified: boolean;
   /** First and last moment a dose can fall due (ms). */
   start: number;
   end: number;
@@ -143,7 +146,7 @@ export function marOrders(enc: Encounter, rx: RxState = getRx()): MarOrder[] {
         frequencyId: item.frequencyId,
         frequencyText: kind === "stat" ? "Stat (once, now)" : kind === "prn" ? `As needed${freq ? `, up to ${freq.label.toLowerCase()}` : ""}` : freq?.label ?? item.frequencyId,
         kind, status: item.status, live: item.status === "active" || item.status === "completed",
-        highAlert: highAlertOf(drug), start, end,
+        highAlert: highAlertOf(drug), verified: verifyStatusIn(rx, p, item) === "verified", start, end,
         minGapMinutes: kind === "prn" && freq && freq.perDay > 0 ? Math.round(1440 / freq.perDay) : undefined,
         instruction: item.patientInstruction,
       });
@@ -401,6 +404,8 @@ export function checkAdmin(input: AdminInput, order: MarOrder | undefined, who: 
   }
   if (input.outcome === "given") {
     const at = input.at ?? now;
+    // Pharmacist verification before the dose (CBAHI, JCI). A stat dose may go first: the pharmacist reviews it after.
+    if (!order.verified && order.kind !== "stat") errors.push("The pharmacist has not verified this medicine yet. Wait for the pharmacy check before giving it.");
     const unticked = RIGHTS.filter((r) => !input.rights?.[r]);
     if (unticked.length) errors.push(`Confirm the five rights. Not confirmed: ${unticked.join(", ")}.`);
     if (at > now + MIN) errors.push("The time given cannot be in the future.");

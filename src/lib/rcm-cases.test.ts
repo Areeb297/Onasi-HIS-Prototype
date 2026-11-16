@@ -30,20 +30,20 @@ describe("rcm cases", () => {
 
   it("puts every seeded case in the right list with amounts from its own lines", () => {
     const rj = rejectionCases(getRcm(), allClaims(), TODAY);
-    expect(rj.map((c) => c.claim.claimNumber).sort()).toEqual(["CLM-26-4322", "CLM-26-4341", "CLM-26-4359", "CLM-26-4377", "CLM-26-4403"]);
-    const c4403 = rj.find((c) => c.id === "RJ-CLM-26-4403")!;
+    expect(rj.map((c) => c.claim.claimNumber).sort()).toEqual(["CL00004322", "CL00004341", "CL00004359", "CL00004377", "CL00004403"]);
+    const c4403 = rj.find((c) => c.id === "RJ-CL00004403")!;
     expect(c4403.status).toBe("In Review");
     expect(c4403.claim.claimed).toBe(3200 + 320 + 85);
     expect(c4403.errors[0]).toMatchObject({ code: "BV-00045", field: "review" });
     expect(c4403.ageDays).toBe(9);
 
     const dn = denialCases(getRcm(), allClaims(), TODAY);
-    const d4260 = dn.find((d) => d.id === "DN-CLM-26-4260")!;
+    const d4260 = dn.find((d) => d.id === "DN-CL00004260")!;
     expect(d4260.denied).toBe(720);
     expect(d4260.deniedLines.map((l) => l.reason)).toEqual(["CV-4-1"]);
     // The patient share is not a denial: 350 claimed, 315 approved, 35 co-pay.
     expect(d4260.claim.lines[0].denied).toBe(0);
-    expect(dn.find((d) => d.id === "DN-CLM-26-4210")!.claim.state).toBe("Denied");
+    expect(dn.find((d) => d.id === "DN-CL00004210")!.claim.state).toBe("Denied");
   });
 
   it("derives a rejection case from a live claim the payer rejected, at the invoice amount", () => {
@@ -57,30 +57,30 @@ describe("rcm cases", () => {
     expect(c.claim.claimed).toBe(670);
     expect(c.errors.length).toBeGreaterThan(0);
     expect(c.status).toBe("Open");
-    // Sent again and approved through NPHIES Financial: the case shows as Resubmitted.
+    // Sent again and approved through NPHIES Financial: the case shows as Resolved (HIS RESOLVED).
     runFinancial(LIVE, "claim");
     expect(rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === `RJ-${LIVE}`)).toBeUndefined();
     moveRejection({ ...c, status: "Open" }, "In Review", "Looking at it");
-    expect(rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === `RJ-${LIVE}`)!.status).toBe("Resubmitted");
+    expect(rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === `RJ-${LIVE}`)!.status).toBe("Resolved");
   });
 
   it("allows only the status moves in the flow", () => {
-    expect(canMove(REJECTION_FLOW, "Open", "Resubmitted")).toBe(false);
-    expect(canMove(REJECTION_FLOW, "Corrected", "Resubmitted")).toBe(true);
-    expect(canMove(DENIAL_FLOW, "Closed", "Appealed")).toBe(false);
+    expect(canMove(REJECTION_FLOW, "Open", "Resolved")).toBe(false);
+    expect(canMove(REJECTION_FLOW, "In Review", "Resolved")).toBe(true);
+    expect(canMove(DENIAL_FLOW, "Closed", "In Review")).toBe(false);
     expect(canMove(AR_FLOW, "Closed", "Open")).toBe(true);
-    const c = rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "RJ-CLM-26-4341")!;
+    const c = rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "RJ-CL00004341")!;
     expect(resubmitRejection(c, "send").ok).toBe(false);
     expect(correctRejection(c, {}, "fixed").ok).toBe(false);
     expect(correctRejection(c, { "0": "Policy renewed; member number corrected" }, "Member number corrected").ok).toBe(true);
     const corrected = rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === c.id)!;
-    expect(corrected.status).toBe("Corrected");
+    expect(corrected.status).toBe("In Review");
     expect(corrected.errors[0].fixed).toMatch(/member number/);
     expect(resubmitRejection(corrected, "Sent again", TODAY).ok).toBe(true);
-    expect(getRcm().claims.find((x) => x.claimNumber === "CLM-26-4341")!.state).toBe("Submitted");
-    expect(rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === c.id)!.status).toBe("Resubmitted");
+    expect(getRcm().claims.find((x) => x.claimNumber === "CL00004341")!.state).toBe("Submitted");
+    expect(rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === c.id)!.status).toBe("Resolved");
     // The payer rejects it again: the case reopens.
-    expect(recordResponse("CLM-26-4341", { outcome: "Rejected", date: "2026-11-15", errors: [{ code: "BV-00112" }] }, TODAY).ok).toBe(true);
+    expect(recordResponse("CL00004341", { outcome: "Rejected", date: "2026-11-15", errors: [{ code: "BV-00112" }] }, TODAY).ok).toBe(true);
     expect(rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === c.id)!.status).toBe("Open");
   });
 
@@ -91,35 +91,35 @@ describe("rcm cases", () => {
     expect(r.ok).toBe(false);
     switchUser("U9");
     expect(addNote("rejections", c.id, { text: "Called", medium: "Phone" }).ok).toBe(false);
-    expect(addNote("rejections", c.id, { text: "Called the payer desk", medium: "Phone", outcome: "No Answer" }).ok).toBe(true);
+    expect(addNote("rejections", c.id, { text: "Called the payer desk", medium: "Phone", outcome: "No Response" }).ok).toBe(true);
     const after = rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === c.id)!;
-    expect(after.notes.at(-1)).toMatchObject({ by: "System Administrator", medium: "Phone", outcome: "No Answer" });
+    expect(after.notes.at(-1)).toMatchObject({ by: "System Administrator", medium: "Phone", outcome: "No Response" });
   });
 
   it("appeals denied lines as a linked claim and resolves the case on the payer's answer", () => {
-    const d = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "DN-CLM-26-4231")!;
+    const d = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "DN-CL00004231")!;
     expect(appealDenial(d, { seqs: [], reason: "short", attachments: [] }).ok).toBe(false);
     const r = appealDenial(d, { seqs: [2], reason: "Authorization AUTH-2210 was approved before the scan.", attachments: ["Approval letter.pdf", " "] }, TODAY);
-    expect(r).toMatchObject({ ok: true, id: "CLM-26-4231-AP1" });
-    const ap = getRcm().claims.find((x) => x.claimNumber === "CLM-26-4231-AP1")!;
-    expect(ap).toMatchObject({ appealOf: "CLM-26-4231", state: "Submitted" });
+    expect(r).toMatchObject({ ok: true, id: "CL00004231-AP1" });
+    const ap = getRcm().claims.find((x) => x.claimNumber === "CL00004231-AP1")!;
+    expect(ap).toMatchObject({ appealOf: "CL00004231", state: "Submitted" });
     expect(ap.lines[0].claimed).toBe(1250);
     let now = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === d.id)!;
-    expect(now.status).toBe("Appealed");
+    expect(now.status).toBe("In Review");
     expect(now.appeal!.attachments).toEqual(["Approval letter.pdf"]);
     expect(appealDenial(now, { seqs: [2], reason: "Again with the same reason", attachments: [] }).ok).toBe(false);
-    expect(recordResponse("CLM-26-4231-AP1", { outcome: "Partly Approved", date: "2026-11-15", lines: [{ seq: 1, approved: 1000, reason: "SE-1-6" }] }, TODAY).ok).toBe(true);
+    expect(recordResponse("CL00004231-AP1", { outcome: "Partly Approved", date: "2026-11-15", lines: [{ seq: 1, approved: 1000, reason: "SE-1-6" }] }, TODAY).ok).toBe(true);
     now = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === d.id)!;
     expect(now.status).toBe("Resolved");
     expect(now.recovered).toBe(1000);
     expect(now.open).toBe(250);
     // The appeal money is now owed by the payer.
-    expect(arCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "AR-CLM-26-4231-AP1")!.outstanding).toBe(1000);
+    expect(arCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "AR-CL00004231-AP1")!.outstanding).toBe(1000);
   });
 
   it("writes off only after a second person approves", () => {
     switchUser("U7");
-    const d = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "DN-CLM-26-4260")!;
+    const d = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "DN-CL00004260")!;
     expect(requestWriteOff(d, "Policy class does not cover it").ok).toBe(true);
     let now = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === d.id)!;
     expect(now.writeOff).toMatchObject({ status: "Pending", amount: 720 });
@@ -132,10 +132,10 @@ describe("rcm cases", () => {
   });
 
   it("moves denied money to the patient as patient AR", () => {
-    const d = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "DN-CLM-26-4210")!;
+    const d = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "DN-CL00004210")!;
     expect(moveToPatient(d, "Patient agreed to pay").ok).toBe(true);
     expect(denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === d.id)!.status).toBe("Resolved");
-    const ar = arCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "AR-PR-CLM-26-4210")!;
+    const ar = arCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "AR-PR-CL00004210")!;
     expect(ar).toMatchObject({ kind: "Patient", outstanding: 1070, payer: "Self Pay" });
   });
 
@@ -145,7 +145,7 @@ describe("rcm cases", () => {
     expect(ageDays("2026-10-16", TODAY)).toBe(30);
     expect(ageDays("2026-12-01", TODAY)).toBe(0);
     const ar = arCases(getRcm(), allClaims(), TODAY);
-    const c3610 = ar.find((x) => x.id === "AR-CLM-26-3610")!;
+    const c3610 = ar.find((x) => x.id === "AR-CL00003610")!;
     expect(c3610).toMatchObject({ bucket: "121+", days: 136, priority: "High", level: 3, followUpOverdue: true });
     const rows = ageingOf(ar);
     expect(rows.map((r) => r.bucket)).toEqual(["0-30", "31-60", "61-90", "91-120", "121+"]);
@@ -155,7 +155,7 @@ describe("rcm cases", () => {
   });
 
   it("checks AR actions the way the HIS dialog does", () => {
-    const c = arCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "AR-CLM-26-3975")!;
+    const c = arCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "AR-CL00003975")!;
     expect(validateArAction(c, "follow-up", { notes: "x", date: "2026-11-01" }, TODAY)).toContain("Next follow-up date cannot be in the past.");
     expect(validateArAction(c, "promise", { notes: "x", date: "2026-11-20", amount: 99999 }, TODAY)[0]).toMatch(/cannot be more than/);
     expect(validateArAction(c, "in-review", { notes: " " }, TODAY)).toContain("Action notes are required.");
@@ -172,28 +172,28 @@ describe("rcm cases", () => {
   it("adjusts a payment across ledger claims with the remaining amount shown", () => {
     const claims = allClaims();
     const n = allNotices().find((x) => x.id === "RCN-2611-0101")!;
-    const a4401 = claims.find((c) => c.key === "CLM-26-4401")!;
-    const a3975 = claims.find((c) => c.key === "CLM-26-3975")!;
+    const a4401 = claims.find((c) => c.key === "CL00004401")!;
+    const a3975 = claims.find((c) => c.key === "CL00003975")!;
     expect(a4401.approved).toBe(468);
     expect(n.remaining).toBe(468 + 864);
     expect(n.status).toBe("Partly Adjusted");
-    expect(validateAllocation(n, claims, { "CLM-26-4401": 500 }).errors[0]).toMatch(/more than the 468.00 SAR/);
-    expect(validateAllocation(n, claims, { "CLM-26-4402": 100 }).errors[0]).toMatch(/belongs to Tawuniya/);
+    expect(validateAllocation(n, claims, { "CL00004401": 500 }).errors[0]).toMatch(/more than the 468.00 SAR/);
+    expect(validateAllocation(n, claims, { "CL00004402": 100 }).errors[0]).toMatch(/belongs to Tawuniya/);
     expect(validateAllocation(n, claims, {}).errors).toEqual(["Enter an amount for at least one claim."]);
-    const v = validateAllocation(n, claims, { "CLM-26-4401": 468, "CLM-26-3975": 400 });
+    const v = validateAllocation(n, claims, { "CL00004401": 468, "CL00003975": 400 });
     expect(v).toEqual({ errors: [], total: 868, remaining: 464 });
-    expect(fillInOrder(n, claims)).toEqual({ "CLM-26-3975": 864, "CLM-26-4231": 315, "CLM-26-4401": 153 });
+    expect(fillInOrder(n, claims)).toEqual({ "CL00003975": 864, "CL00004231": 315, "CL00004401": 153 });
     expect(generatePaymentNotice(n.id, "Paid").ok).toBe(false);
-    expect(adjustToClaims(n.id, { "CLM-26-4401": 468, "CLM-26-3975": 400 }).ok).toBe(true);
+    expect(adjustToClaims(n.id, { "CL00004401": 468, "CL00003975": 400 }).ok).toBe(true);
     const after = allClaims();
-    expect(after.find((c) => c.key === "CLM-26-4401")).toMatchObject({ pay: "Paid", outstanding: 0 });
-    expect(after.find((c) => c.key === "CLM-26-3975")).toMatchObject({ pay: "Partly Paid", outstanding: 464, paid: 400 });
+    expect(after.find((c) => c.key === "CL00004401")).toMatchObject({ pay: "Paid", outstanding: 0 });
+    expect(after.find((c) => c.key === "CL00003975")).toMatchObject({ pay: "Partly Paid", outstanding: 464, paid: 400 });
     expect(a3975.pay).toBe("Not Paid");
     expect(noticeView(getRcm().notices.find((x) => x.id === n.id)!).remaining).toBe(464);
-    expect(adjustToClaims(n.id, { "CLM-26-3975": 464 }).ok).toBe(true);
+    expect(adjustToClaims(n.id, { "CL00003975": 464 }).ok).toBe(true);
     expect(generatePaymentNotice(n.id, "Cleared").ok).toBe(true);
     expect(allNotices().find((x) => x.id === n.id)!.status).toBe("Notice Sent");
-    expect(adjustToClaims(n.id, { "CLM-26-4380": 1 }).ok).toBe(false);
+    expect(adjustToClaims(n.id, { "CL00004380": 1 }).ok).toBe(false);
   });
 
   it("pays a live claim through NPHIES Financial so the invoice insurance balance drops", () => {
@@ -215,14 +215,14 @@ describe("rcm cases", () => {
     expect(invoiceView(invoiceOf(LIVE)!).totals.insuranceBalance).toBe(0);
     expect(allClaims().find((c) => c.key === LIVE)!.pay).toBe("Paid");
     expect(allNotices().find((x) => x.id === id)).toMatchObject({ remaining: 397, status: "Partly Adjusted" });
-    expect(adjustToClaims(id, { "CLM-26-4401": 397 }).ok).toBe(true);
+    expect(adjustToClaims(id, { "CL00004401": 397 }).ok).toBe(true);
     expect(generatePaymentNotice(id, "Paid").ok).toBe(true);
     expect(caseOf(LIVE).payment!.status).toBe("notice-sent");
   });
 
   it("assigns, reviews and closes an FWA flag with an outcome", () => {
     const f = fwaCases(getRcm(), allClaims(), TODAY, []).find((x) => x.id === "FWA-503")!;
-    expect(f).toMatchObject({ status: "Open", claimNumber: "CLM-26-4431", patientName: "Ibrahim Alghamdi" });
+    expect(f).toMatchObject({ status: "Open", claimNumber: "CL00004431", patientName: "Ibrahim Alghamdi" });
     expect(moveFwa(f, "In Review", "Start").ok).toBe(false);
     expect(assignFwa(f, "Hind Alotaibi", "Please check the operative note").ok).toBe(true);
     let now = fwaCases(getRcm(), allClaims(), TODAY, []).find((x) => x.id === f.id)!;
@@ -234,24 +234,24 @@ describe("rcm cases", () => {
   });
 
   it("records a manual payer answer and checks it adds up", () => {
-    expect(recordResponse("CLM-26-4436", { outcome: "Approved", date: "2026-11-16", lines: [] }, TODAY).ok).toBe(false);
-    expect(recordResponse("CLM-26-4436", { outcome: "Approved", date: "2026-11-15", lines: [{ seq: 1, approved: 300 }] }, TODAY)).toMatchObject({ ok: false });
-    expect(recordResponse("CLM-26-4436", { outcome: "Partly Approved", date: "2026-11-15", lines: [{ seq: 4, approved: 0, reason: "AD-1-4" }] }, TODAY).ok).toBe(true);
-    const c = allClaims().find((x) => x.key === "CLM-26-4436")!;
+    expect(recordResponse("CL00004436", { outcome: "Approved", date: "2026-11-16", lines: [] }, TODAY).ok).toBe(false);
+    expect(recordResponse("CL00004436", { outcome: "Approved", date: "2026-11-15", lines: [{ seq: 1, approved: 300 }] }, TODAY)).toMatchObject({ ok: false });
+    expect(recordResponse("CL00004436", { outcome: "Partly Approved", date: "2026-11-15", lines: [{ seq: 4, approved: 0, reason: "AD-1-4" }] }, TODAY).ok).toBe(true);
+    const c = allClaims().find((x) => x.key === "CL00004436")!;
     expect(c).toMatchObject({ state: "Partly Approved", claimed: 740, approved: 540, denied: 200 });
-    expect(denialCases(getRcm(), allClaims(), TODAY).some((d) => d.id === "DN-CLM-26-4436")).toBe(true);
+    expect(denialCases(getRcm(), allClaims(), TODAY).some((d) => d.id === "DN-CL00004436")).toBe(true);
   });
 
   it("saves imported claims as new or updated ledger claims", () => {
     const base = { patientName: "Test Patient", mrn: "MRN-1", payer: "Bupa Arabia", type: "Professional", serviceDate: daysAgo(5, TODAY), diagnosis: "J06.9", serviceCode: "SBS-1", serviceText: "Consult", claimed: 350 };
     const r = saveImported("file.csv", [
       { claim: { ...base, claimNumber: "CLM-NEW-1", approved: 315, state: "Approved" }, update: false },
-      { claim: { ...base, claimNumber: "CLM-26-4436", state: "Submitted" }, update: true },
+      { claim: { ...base, claimNumber: "CL00004436", state: "Submitted" }, update: true },
     ], 2, 4);
     expect(r.ok).toBe(true);
     const s = getRcm();
     expect(s.imports[0]).toMatchObject({ created: 1, updated: 1, invalid: 2, total: 4 });
     expect(allClaims().find((c) => c.key === "CLM-NEW-1")).toMatchObject({ approved: 315, outstanding: 315 });
-    expect(s.claims.find((c) => c.claimNumber === "CLM-26-4436")!.source).toBe("earlier");
+    expect(s.claims.find((c) => c.claimNumber === "CL00004436")!.source).toBe("earlier");
   });
 });

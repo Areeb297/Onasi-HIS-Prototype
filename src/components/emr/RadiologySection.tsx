@@ -77,6 +77,7 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
           <RadOrderPad
             key={padKey}
             diagnoses={enc.dx}
+            emergency={enc.cls === "E" || !!enc.ed}
             insured={insured}
             duplicatesOf={(codes) => openRadDuplicates(rad.orders, enc.visitNumber, codes).map((c) => procByCode(c)?.short ?? c)}
             canOrder={canOrder}
@@ -216,6 +217,7 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
           <RadOrderPad
             key={amendingOrder.id}
             diagnoses={enc.dx}
+            emergency={enc.cls === "E" || !!enc.ed}
             insured={insured}
             duplicatesOf={(codes) => openRadDuplicates(rad.orders, enc.visitNumber, codes, amendingOrder.id).map((c) => procByCode(c)?.short ?? c)}
             single

@@ -62,7 +62,7 @@ export function useTabLook(tab: WorkspaceTab): TabLook {
     if (kind === "claim") return { title: `Claim ${caseOf(visit).claim?.claimNumber ?? visit}`, icon: IconFileDollar };
     if (kind === "invoice") {
       const inv = invoiceOf(visit);
-      return { title: inv ? `Invoice #${inv.number}` : `Invoice ${visit}`, icon: IconFileInvoice };
+      return { title: inv ? `Invoice ${inv.number}` : `Invoice ${visit}`, icon: IconFileInvoice };
     }
     if (kind === "transaction") return { title: `Transaction ${params.get("id") ?? ""}`.trim(), icon: IconArrowsExchange };
     const nav = LABEL_BY_PATH.get(path);

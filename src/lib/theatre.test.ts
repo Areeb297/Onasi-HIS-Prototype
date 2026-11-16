@@ -49,7 +49,7 @@ function caseAt(upTo: (typeof STEPS)[number]["id"], patch: Partial<SurgeryCase> 
     id: "SC-1", visit: "V1", patientId: "P1",
     request: { procedure: "Appendicectomy", side: "Not applicable", surgeon: "Dr. S", urgency: "Elective", plannedDate: "2026-03-10", done: stamp },
   };
-  if (has("assessment")) c.assessment = { result: "Fit", done: stamp };
+  if (has("assessment")) c.assessment = { result: "Fit For Anesthesia", done: stamp };
   if (has("schedule")) c.schedule = { ...slot, status: "Confirmed", done: stamp };
   if (has("preop")) c.preop = { ...fullPreop(), done: stamp };
   if (has("signIn")) c.signIn = { ...phaseData("signIn"), done: stamp };
@@ -84,7 +84,7 @@ describe("the steps run in order", () => {
   it("names the stage and the next action", () => {
     expect(caseStage(caseAt("request"))).toBe("Waiting For Assessment");
     expect(caseStage(caseAt("assessment"))).toBe("To Schedule");
-    expect(caseStage(caseAt("assessment", { assessment: { result: "Not Fit", notes: "Chest infection", done: stamp } }))).toBe("Not Cleared");
+    expect(caseStage(caseAt("assessment", { assessment: { result: "Not Fit For Anesthesia", notes: "Chest infection", done: stamp } }))).toBe("Not Cleared");
     expect(caseStage(caseAt("preop"))).toBe("Scheduled");
     expect(caseStage(caseAt("timeOut"))).toBe("In Theatre");
     expect(caseStage(caseAt("signOut"))).toBe("Note Needed");
@@ -107,7 +107,7 @@ describe("the steps run in order", () => {
     const old = {
       id: "SC-9", visit: "V1", patientId: "P1",
       request: { procedure: "Hernia repair", side: "Left", surgeon: "Dr. S", urgency: "Elective", plannedDate: "2026-03-10", done: stamp },
-      assessment: { result: "Fit", done: stamp },
+      assessment: { result: "Fit For Anesthesia", done: stamp },
       schedule: { ...slot, done: stamp },
       preop: { answers: allYes(), done: stamp },
       signIn: { checked: ["identity"], confirmedRole: "Anaesthetist", confirmedName: "Dr. A", done: stamp },
@@ -129,11 +129,11 @@ describe("the steps run in order", () => {
 
 describe("pre-anaesthesia assessment gates the schedule", () => {
   it("lets only Fit and Fit With High Risk be scheduled", () => {
-    expect(fitForSurgery("Fit")).toBe(true);
+    expect(fitForSurgery("Fit For Anesthesia")).toBe(true);
     expect(fitForSurgery("Fit With High Risk")).toBe(true);
-    expect(fitForSurgery("Not Fit")).toBe(false);
-    expect(fitForSurgery("Needs More Tests")).toBe(false);
-    for (const result of ["Not Fit", "Needs More Tests"] as const) {
+    expect(fitForSurgery("Not Fit For Anesthesia")).toBe(false);
+    expect(fitForSurgery("Need More Investigation")).toBe(false);
+    for (const result of ["Not Fit For Anesthesia", "Need More Investigation"] as const) {
       const g = stepGate(caseAt("assessment", { assessment: { result, notes: "x", done: stamp } }), "schedule");
       expect(g.ok).toBe(false);
       expect(g.reason).toContain(result);
@@ -143,18 +143,18 @@ describe("pre-anaesthesia assessment gates the schedule", () => {
   });
 
   it("lets the patient be assessed again until the case is booked", () => {
-    expect(stepGate(caseAt("assessment", { assessment: { result: "Needs More Tests", notes: "ECG", done: stamp } }), "assessment").ok).toBe(true);
+    expect(stepGate(caseAt("assessment", { assessment: { result: "Need More Investigation", notes: "ECG", done: stamp } }), "assessment").ok).toBe(true);
     expect(stepGate(caseAt("schedule"), "assessment").ok).toBe(false);
     expect(stepGate(caseAt("schedule", { schedule: { ...slot, status: "Postponed", done: stamp } }), "assessment").ok).toBe(true);
   });
 
   it("asks for the reason behind a result that is not a plain Fit", () => {
     expect(validateAssessment({})).toBeTruthy();
-    expect(validateAssessment({ result: "Fit" })).toBeNull();
-    expect(validateAssessment({ result: "Not Fit" })).toBe("Say why the patient is not fit.");
-    expect(validateAssessment({ result: "Needs More Tests" })).toBe("Say which tests are needed.");
+    expect(validateAssessment({ result: "Fit For Anesthesia" })).toBeNull();
+    expect(validateAssessment({ result: "Not Fit For Anesthesia" })).toBe("Say why the patient is not fit.");
+    expect(validateAssessment({ result: "Need More Investigation" })).toBe("Say which tests are needed.");
     expect(validateAssessment({ result: "Fit With High Risk" })).toBe("Describe the high risk.");
-    expect(validateAssessment({ result: "Needs More Tests", notes: "Echocardiogram" })).toBeNull();
+    expect(validateAssessment({ result: "Need More Investigation", notes: "Echocardiogram" })).toBeNull();
   });
 });
 
@@ -286,7 +286,7 @@ describe("the case cannot start with an incomplete pre-operative checklist", () 
     expect(preOpProblems(fullPreop({ wardNurse: undefined }))).toEqual(["Choose the ward nurse."]);
     expect(preOpProblems(fullPreop({ theatreNurse: { name: "Theatre Nurse" } }))).toEqual(["The theatre nurse has not signed."]);
     expect(preOpProblems(fullPreop({ theatreNurse: { name: "Ward Nurse", signed: true } }))).toContain("The ward nurse and the theatre nurse must be two people.");
-    expect(preOpProblems(fullPreop({ answers: { ...allYes(), fasting: "no" } }))).toEqual(['"Fasting confirmed" is answered No. Write a remark that says why.']);
+    expect(preOpProblems(fullPreop({ answers: { ...allYes(), fasting: "no" } }))).toEqual(['"NPO from midnight" is answered No. Write a remark that says why.']);
     expect(preOpProblems(fullPreop({ answers: { ...allYes(), vitals: "no" } }))).toEqual(['"Vital signs recorded" must be Yes before the operation.']);
     expect(preOpProblems(undefined).length).toBeGreaterThan(5);
   });
@@ -505,7 +505,7 @@ describe("the store enforces the gate", () => {
   /** Request, assess, schedule, confirm and complete the checklist. */
   const ready = () => {
     const id = request();
-    saveAssessment(id, { result: "Fit", anaesthesia: "Spinal" });
+    saveAssessment(id, { result: "Fit For Anesthesia", anaesthesia: "Spinal Anesthesia" });
     saveSchedule(id, slot);
     confirmSchedule(id);
     savePreOp(id, fullPreop(), "complete");
@@ -525,9 +525,9 @@ describe("the store enforces the gate", () => {
     expect(saveOpNote(id, note(), "complete").ok).toBe(false);
     expect(closeCase(id, "Completed", undefined, closure).ok).toBe(false);
 
-    expect(saveAssessment(id, { result: "Needs More Tests", notes: "ECG" }).ok).toBe(true);
+    expect(saveAssessment(id, { result: "Need More Investigation", notes: "ECG" }).ok).toBe(true);
     expect(saveSchedule(id, slot).ok).toBe(false);
-    expect(saveAssessment(id, { result: "Fit" }).ok).toBe(true);
+    expect(saveAssessment(id, { result: "Fit For Anesthesia" }).ok).toBe(true);
     expect(saveSchedule(id, { ...slot, anaesthetist: "" }, "draft").ok).toBe(true);
     expect(caseById(id)!.schedule!.status).toBe("Draft");
     expect(savePreOp(id, fullPreop()).ok).toBe(false); // a draft slot is not booked
@@ -588,7 +588,7 @@ describe("the store enforces the gate", () => {
 
   it("stamps a nurse signature once and keeps it", () => {
     const id = request();
-    saveAssessment(id, { result: "Fit" });
+    saveAssessment(id, { result: "Fit For Anesthesia" });
     saveSchedule(id, slot);
     expect(savePreOp(id, fullPreop({ theatreNurse: { name: "Theatre Nurse" } })).ok).toBe(true);
     const first = caseById(id)!.preop!;
@@ -614,19 +614,19 @@ describe("the store enforces the gate", () => {
     expect(getFormRecords("V900001", "operation-request")).toHaveLength(1);
     saveOpNote(id, note({ findings: "Draft findings" }), "draft");
     expect(getFormRecords("V900001", "operation-request")[0].values.opFindings ?? "").toBe("");
-    saveOpNote(id, note({ procedureDone: "Hernia repair", findings: "Indirect hernia", bloodLossMl: 50, category: "Intermediate" }), "complete");
+    saveOpNote(id, note({ procedureDone: "Hernia repair", findings: "Indirect hernia", bloodLossMl: 50, category: "Major" }), "complete");
     const recs = getFormRecords("V900001", "operation-request");
     expect(recs).toHaveLength(1);
     expect(recs[0].values).toMatchObject({
-      procedure: "Hernia repair", urgency: "Elective", operationStart: "2026-03-10T09:10", operationEnd: "2026-03-10T10:20", anesthesiaType: "Spinal", preferredDate: "2026-03-10",
-      opFindings: "Indirect hernia", specimens: "Appendix to histopathology", complications: "None", bloodLossMl: 50, surgeryCategory: "Intermediate",
+      procedure: "Hernia repair", urgency: "Elective", operationStart: "2026-03-10T09:10", operationEnd: "2026-03-10T10:20", anesthesiaType: "Spinal Anesthesia", preferredDate: "2026-03-10",
+      opFindings: "Indirect hernia", specimens: "Appendix to histopathology", complications: "None", bloodLossMl: 50, surgeryCategory: "Major",
     });
   });
 
   it("refuses a second case in a booked room, and frees the room when a case is postponed or cancelled", () => {
     const a = request(), b = request();
-    saveAssessment(a, { result: "Fit" });
-    saveAssessment(b, { result: "Fit" });
+    saveAssessment(a, { result: "Fit For Anesthesia" });
+    saveAssessment(b, { result: "Fit For Anesthesia" });
     expect(saveSchedule(a, slot).ok).toBe(true);
     const clash = saveSchedule(b, { ...slot, start: "10:00" });
     expect(clash.ok).toBe(false);
@@ -671,7 +671,7 @@ describe("the store enforces the gate", () => {
   it("refuses a role that cannot write to the chart", () => {
     const id = request();
     switchUser("U7"); // billing
-    expect(saveAssessment(id, { result: "Fit" })).toEqual({ ok: false, message: "Your role cannot record surgery steps." });
+    expect(saveAssessment(id, { result: "Fit For Anesthesia" })).toEqual({ ok: false, message: "Your role cannot record surgery steps." });
     expect(requestSurgery("V900001", "P900", { procedure: "x", side: "Left", surgeon: "Dr. S", urgency: "Elective", plannedDate: "2026-03-10" }).ok).toBe(false);
     expect(postponeSchedule(id, "x").ok).toBe(false);
     switchUser("U1");

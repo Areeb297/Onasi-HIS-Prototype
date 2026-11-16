@@ -15,7 +15,8 @@ import { can, currentUser } from "./session";
 export type Severity = "warning" | "soft" | "hard";
 export const SEVERITY_NAME: Record<Severity, string> = { warning: "Warning", soft: "Soft Stop", hard: "Hard Stop" };
 export type RuleTrigger = "both" | "priorauth" | "claim";
-export const TRIGGER_LABEL: Record<RuleTrigger, string> = { both: "PreAuth And Claim", priorauth: "PreAuth Only", claim: "Claim Only" };
+// HIS lookup Claim Scrubbing Rule Trigger Stage (262): Before PreAuth Submit, Before Claim Submit.
+export const TRIGGER_LABEL: Record<RuleTrigger, string> = { both: "Before PreAuth And Claim Submit", priorauth: "Before PreAuth Submit", claim: "Before Claim Submit" };
 export type RuleSource = "generic" | "nphies";
 export type ClaimTypeKey = "institutional" | "professional" | "pharmacy" | "oral" | "vision";
 

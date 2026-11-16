@@ -209,9 +209,9 @@ const KIND_OF_DX: Record<string, DxType> = { P: "principal", S: "secondary", AD:
 
 const digits = (s: string, n: number) => String((s.replace(/\D/g, "") ? Number(s.replace(/\D/g, "")) : s.length) % 10 ** n).padStart(n, "0");
 const VISIT_CODE: Record<string, { code: string; text: string }> = {
-  O: { code: "SBS-SAMPLE-1001", text: "Outpatient Consultation" },
-  E: { code: "SBS-SAMPLE-1002", text: "Emergency Department Visit" },
-  I: { code: "SBS-SAMPLE-1003", text: "Inpatient Stay" },
+  O: { code: "83600-00-00", text: "General Practitioner Consult" },
+  E: { code: "83600-00-90", text: "Emergency Consult" },
+  I: { code: "83000-00-01", text: "Undetermined Stay In Ward" },
 };
 
 export interface BuildInput {
@@ -651,9 +651,11 @@ function claimSent(visit: string, fin: ReturnType<typeof getFinancial>): boolean
 export type ActionResult = { ok: true } | { ok: false; problems: string[]; needsConfirm?: boolean; blocked?: boolean };
 
 const who = () => { try { return currentUser().name; } catch { return "Unknown"; } };
-const denied = (target: string): ActionResult => {
-  audit("denied", target, { detail: "Needs billing" });
-  return { ok: false, problems: ["Your role cannot change claims. This needs the billing permission."] };
+type Right = "billing" | "coding" | "approvals";
+const RIGHT_WORK: Record<Right, string> = { billing: "change or send claims", coding: "change diagnoses or service codes", approvals: "check eligibility or ask for prior authorization" };
+const denied = (target: string, right: Right = "billing"): ActionResult => {
+  audit("denied", target, { detail: `Needs ${right}` });
+  return { ok: false, problems: [`Your role cannot ${RIGHT_WORK[right]}. This needs the ${right} permission.`] };
 };
 
 function upsertDraft(visit: string, fn: (d: ClaimDraft) => ClaimDraft): ClaimDraft {
@@ -664,8 +666,8 @@ function upsertDraft(visit: string, fn: (d: ClaimDraft) => ClaimDraft): ClaimDra
   return next;
 }
 
-function editable(visit: string, target: string): ActionResult | null {
-  if (!can("billing")) return denied(target);
+function editable(visit: string, target: string, right: Right = "billing"): ActionResult | null {
+  if (!can(right)) return denied(target, right);
   const m = claimFor(visit);
   if (!m) return { ok: false, problems: ["This visit was not found."] };
   if (m.locked) return { ok: false, problems: ["The payer is holding or has approved this claim. It cannot be changed now."] };
@@ -703,7 +705,7 @@ export function saveCareTeam(visit: string, team: CareTeamMember[]): ActionResul
 }
 
 export function saveDx(visit: string, code: string, patch: { type?: DxType; onAdmission?: OnAdmission }): ActionResult {
-  const no = editable(visit, `Claim diagnosis, visit ${visit}`);
+  const no = editable(visit, `Claim diagnosis, visit ${visit}`, "coding");
   if (no) return no;
   upsertDraft(visit, (d) => ({ ...d, dx: { ...(d.dx ?? {}), [code]: { ...(d.dx?.[code] ?? {}), ...patch } } }));
   audit("update", `Claim diagnosis ${code}, visit ${visit}`, { patient: nameFor(visit), detail: [patch.type && `Type ${DX_TYPE_LABEL[patch.type]}`, patch.onAdmission && `On admission ${ON_ADMISSION_LABEL[patch.onAdmission]}`].filter(Boolean).join(", ") });
@@ -731,7 +733,7 @@ export function removeSupport(visit: string, id: string): ActionResult {
 }
 
 export function saveLine(visit: string, key: string, patch: LineEdit): ActionResult {
-  const no = editable(visit, `Claim service line, visit ${visit}`);
+  const no = editable(visit, `Claim service line, visit ${visit}`, "coding");
   if (no) return no;
   if (patch.start && patch.end && patch.end < patch.start) return { ok: false, problems: ["The line end date is before its start date."] };
   if (patch.code !== undefined && !patch.code.trim()) return { ok: false, problems: ["The service code cannot be empty."] };
@@ -741,7 +743,7 @@ export function saveLine(visit: string, key: string, patch: LineEdit): ActionRes
 
 /** Adds a procedure from the chart as an ACHI line. It carries no price, so the review warns about it. */
 export function addProcedureLine(visit: string, pr: Pick<Pr, "code" | "text" | "at" | "dxCode">): ActionResult {
-  const no = editable(visit, `Claim service line, visit ${visit}`);
+  const no = editable(visit, `Claim service line, visit ${visit}`, "coding");
   if (no) return no;
   const s = store.get();
   store.set({ ...s, seq: s.seq + 1 });
@@ -756,7 +758,7 @@ export function addProcedureLine(visit: string, pr: Pick<Pr, "code" | "text" | "
 }
 
 export function removeExtraLine(visit: string, key: string): ActionResult {
-  const no = editable(visit, `Claim service line, visit ${visit}`);
+  const no = editable(visit, `Claim service line, visit ${visit}`, "coding");
   if (no) return no;
   upsertDraft(visit, (d) => ({ ...d, extraLines: (d.extraLines ?? []).filter((x) => x.key !== key) }));
   return { ok: true };
@@ -788,7 +790,8 @@ export function confirmSoftStops(visit: string, ids: string[], reason: string): 
  * review has no hard stop and every soft stop is confirmed. Checking for an answer is never held back.
  */
 export function sendFromClaim(visit: string, use: ClaimUse, today: Date = new Date(), batchId?: string): ActionResult {
-  if (!can("billing")) return denied(`Claim send, visit ${visit}`);
+  const right: Right = use === "claim" ? "billing" : "approvals";
+  if (!can(right)) return denied(`${use === "claim" ? "Claim" : "Prior authorization"} send, visit ${visit}`, right);
   const m = claimFor(visit, today);
   if (!m) return { ok: false, problems: ["This visit was not found."] };
   const opt = sendOptions(m.enc)[use === "claim" ? "claim" : "priorAuth"];
@@ -1009,7 +1012,7 @@ export function pollRequest(payer = ""): ActionResult & { polled?: number } {
 
 /** Eligibility comes first in NPHIES Financial. Offered on the claim so the biller does not have to leave it. */
 export function checkEligibility(visit: string): ActionResult {
-  if (!can("billing")) return denied(`Eligibility, visit ${visit}`);
+  if (!can("approvals")) return denied(`Eligibility, visit ${visit}`, "approvals");
   const his = getState();
   const enc = his.encounters.find((e) => e.visitNumber === visit);
   if (!enc) return { ok: false, problems: ["This visit was not found."] };

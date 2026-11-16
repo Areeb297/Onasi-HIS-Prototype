@@ -3,6 +3,9 @@
  * Pure functions, no React, so they are easy to test. The React side is in UnsavedChangesGuard.tsx.
  */
 
+/** shortcut: the demo is a UI mockup, so leaving a form never asks "Leave without saving?"; set true when built into the HIS. */
+export const ASK_BEFORE_LEAVING = false;
+
 /** Values that mean "nothing entered" all count as the same: undefined, null, "", false and []. */
 function normal(v: unknown): unknown {
   if (v === undefined || v === null || v === false) return undefined;

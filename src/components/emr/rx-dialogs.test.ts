@@ -87,7 +87,7 @@ describe("pharmacy screens render", () => {
     switchUser("U1");
     const enc = getState().encounters.find((e) => e.visitNumber === rx.visitNumber)!;
     const out = text(renderToString(h(PrescriptionSection, { enc })));
-    expect(out).toContain("Query Sent");
+    expect(out).toContain("Queried");
     expect(out).toContain("Is this dose right for the weight?");
     expect(out).toContain("Answer The Pharmacist");
     expect(out).toContain("The pharmacy asked a question about 1 item");

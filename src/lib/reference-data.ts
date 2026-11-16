@@ -607,20 +607,20 @@ export const REACTION_OUTCOMES = ["Recovered", "Ongoing", "Unknown"];
 
 /** Made-up patients. No real people. */
 const RAW_PATIENTS: Omit<Patient, "healthId" | "nationality" | "maritalStatus" | "address">[] = [
-  { id: "P001", mrn: "MRN0000101", nationalId: "1000000011", family: "Almutairi", given: "Saad", dob: "1968-03-14", sex: "M" },
-  { id: "P002", mrn: "MRN0000102", nationalId: "1000000029", family: "Alghamdi", given: "Reem", dob: "1991-07-02", sex: "F" },
-  { id: "P003", mrn: "MRN0000103", nationalId: "1000000037", family: "Alsubaie", given: "Yousef", dob: "1955-11-23", sex: "M" },
-  { id: "P004", mrn: "MRN0000104", nationalId: "1000000045", family: "Alanazi", given: "Layla", dob: "1984-01-30", sex: "F" },
-  { id: "P005", mrn: "MRN0000105", nationalId: "1000000052", family: "Aldosari", given: "Majed", dob: "1977-09-09", sex: "M" },
-  { id: "P006", mrn: "MRN0000106", nationalId: "1000000060", family: "Alrashid", given: "Dana", dob: "2001-05-18", sex: "F" },
-  { id: "P007", mrn: "MRN0000107", nationalId: "1000000078", family: "Almalki", given: "Turki", dob: "1949-12-01", sex: "M" },
-  { id: "P008", mrn: "MRN0000108", nationalId: "1000000086", family: "Alshammari", given: "Hanan", dob: "1996-04-26", sex: "F" },
-  { id: "P009", mrn: "MRN0000109", nationalId: "1000000094", family: "Alyami", given: "Bader", dob: "1989-08-15", sex: "M" },
-  { id: "P010", mrn: "MRN0000110", nationalId: "1000000102", family: "Alsalem", given: "Mona", dob: "1972-02-07", sex: "F" },
-  { id: "P011", mrn: "MRN0000111", nationalId: "1000000110", family: "Alharthi", given: "Ahmed", dob: "1999-06-21", sex: "M" },
-  { id: "P012", mrn: "MRN0000112", nationalId: "1000000128", family: "Alsaif", given: "Lina", dob: "1987-10-03", sex: "F" },
-  { id: "P013", mrn: "MRN0000113", nationalId: "1000000136", family: "Albishi", given: "Rakan", dob: "2012-04-17", sex: "M" },
-  { id: "P014", mrn: "MRN0000114", nationalId: "1000000144", family: "Almansour", given: "Faisal", dob: "1961-12-12", sex: "M" },
+  { id: "P001", mrn: "MR-26-000101", nationalId: "1000000011", family: "Almutairi", given: "Saad", dob: "1968-03-14", sex: "M" },
+  { id: "P002", mrn: "MR-26-000102", nationalId: "1000000029", family: "Alghamdi", given: "Reem", dob: "1991-07-02", sex: "F" },
+  { id: "P003", mrn: "MR-26-000103", nationalId: "1000000037", family: "Alsubaie", given: "Yousef", dob: "1955-11-23", sex: "M" },
+  { id: "P004", mrn: "MR-26-000104", nationalId: "1000000045", family: "Alanazi", given: "Layla", dob: "1984-01-30", sex: "F" },
+  { id: "P005", mrn: "MR-26-000105", nationalId: "1000000052", family: "Aldosari", given: "Majed", dob: "1977-09-09", sex: "M" },
+  { id: "P006", mrn: "MR-26-000106", nationalId: "1000000060", family: "Alrashid", given: "Dana", dob: "2001-05-18", sex: "F" },
+  { id: "P007", mrn: "MR-26-000107", nationalId: "1000000078", family: "Almalki", given: "Turki", dob: "1949-12-01", sex: "M" },
+  { id: "P008", mrn: "MR-26-000108", nationalId: "1000000086", family: "Alshammari", given: "Hanan", dob: "1996-04-26", sex: "F" },
+  { id: "P009", mrn: "MR-26-000109", nationalId: "1000000094", family: "Alyami", given: "Bader", dob: "1989-08-15", sex: "M" },
+  { id: "P010", mrn: "MR-26-000110", nationalId: "1000000102", family: "Alsalem", given: "Mona", dob: "1972-02-07", sex: "F" },
+  { id: "P011", mrn: "MR-26-000111", nationalId: "1000000110", family: "Alharthi", given: "Ahmed", dob: "1999-06-21", sex: "M" },
+  { id: "P012", mrn: "MR-26-000112", nationalId: "1000000128", family: "Alsaif", given: "Lina", dob: "1987-10-03", sex: "F" },
+  { id: "P013", mrn: "MR-26-000113", nationalId: "1000000136", family: "Albishi", given: "Rakan", dob: "2012-04-17", sex: "M" },
+  { id: "P014", mrn: "MR-26-000114", nationalId: "1000000144", family: "Almansour", given: "Faisal", dob: "1961-12-12", sex: "M" },
 ];
 
 export const SEED_PATIENTS: Patient[] = RAW_PATIENTS.map((p, i) => ({

@@ -6,7 +6,7 @@ import { ApproveDialog } from "@/components/admission/ApproveDialog";
 import { DecisionDialog } from "@/components/admission/DecisionDialog";
 import { AdmissionRequestsPage } from "@/pages/AdmissionRequestsPage";
 import {
-  approvalDefaults, approveRequest, cancelRequest, createRequest, getAdmissionRequests, rejectRequest, resetAdmissionRequests,
+  approvalDefaults, approvalProblems, approveRequest, cancelRequest, createRequest, getAdmissionRequests, rejectRequest, resetAdmissionRequests,
   type AdmissionRequest, type ApprovalInput, type RequestInput,
 } from "./admission-requests";
 import { bedInfo } from "./beds";
@@ -71,6 +71,20 @@ describe("raising a request", () => {
 });
 
 describe("approval", () => {
+  beforeEach(() => switchUser("U14")); // Insurance Approvals Officer
+
+  it("holds an insured elective admission until the payer authorizes it; emergency and pre-admit go ahead (CHI)", () => {
+    switchUser("U1");
+    const made = createRequest(input("P004")); // Layla Alanazi, insured, open outpatient visit
+    switchUser("U14");
+    if (!made.ok) throw new Error(made.errors.join(" "));
+    const r = made.value;
+    const auth = /has not approved this elective admission/;
+    expect(approvalProblems(r, approval(r, { admissionType: "14", bedId: "302-A" })).some((e) => auth.test(e))).toBe(true);
+    expect(approvalProblems(r, approval(r, { admissionType: "15", bedId: "302-A" })).some((e) => auth.test(e))).toBe(false);
+    expect(approvalProblems(r, approval(r, { admissionType: "14", preAdmit: true, bedId: "", admitAt: nowLocal(24 * 60) })).some((e) => auth.test(e))).toBe(false);
+  });
+
   it("admits with a bed when there is no open visit (A01)", () => {
     const r = req("P009");
     const visits = getState().encounters.length;
@@ -150,7 +164,7 @@ describe("approval", () => {
     expect(!later.ok && later.errors[0]).toMatch(/in the future/);
   });
 
-  it("needs the right to send ADT", () => {
+  it("needs the approvals permission", () => {
     switchUser("U4");
     const r = req("P009");
     const res = approveRequest(r.id, approval(r, { bedId: "302-A" }));
@@ -166,13 +180,15 @@ describe("approval", () => {
 });
 
 describe("reject and cancel", () => {
+  beforeEach(() => switchUser("U14"));
+
   it("reject needs a reason and leaves no visit and no message", () => {
     const r = req("P009");
     const visits = getState().encounters.length;
     const log = getState().log.length;
     expect(rejectRequest(r.id, "").ok).toBe(false);
     const res = rejectRequest(r.id, "Can be treated as an outpatient");
-    expect(res.ok && res.value).toMatchObject({ status: "rejected", decisionReason: "Can be treated as an outpatient", decidedBy: "Dr. Khalid Alharbi" });
+    expect(res.ok && res.value).toMatchObject({ status: "rejected", decisionReason: "Can be treated as an outpatient", decidedBy: "Hessa Aldossary" });
     expect(getState().encounters).toHaveLength(visits);
     expect(getState().log).toHaveLength(log);
     expect(approveRequest(r.id, approval(r, { bedId: "302-A" })).ok).toBe(false);
@@ -187,10 +203,11 @@ describe("reject and cancel", () => {
     expect(res.ok && res.value.status).toBe("cancelled");
     expect(getState().encounters.find((e) => e.visitNumber === r.fromVisit)).toEqual(before);
     expect(getState().log).toHaveLength(log);
+    switchUser("U1");
     expect(createRequest({ ...input("P012"), fromVisit: r.fromVisit }).ok).toBe(true);
   });
 
-  it("needs the right to send ADT", () => {
+  it("needs the approvals permission", () => {
     switchUser("U4");
     expect(cancelRequest(req("P009").id, "Duplicate request").ok).toBe(false);
   });

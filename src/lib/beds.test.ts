@@ -127,7 +127,7 @@ describe("bed setup", () => {
 
   it("gives seed beds sensible defaults from their ward", () => {
     const icu = bedInfo(seedState(), "ICU1-A")!.bed;
-    expect(icu).toMatchObject({ floor: "2", roomType: "Intensive Care", ventilator: true, monitor: true, oxygen: true, gender: "Any", active: true });
+    expect(icu).toMatchObject({ floor: "2", roomType: "Intensive Care Unit", ventilator: true, monitor: true, oxygen: true, gender: "Any", active: true });
     expect(equipmentOf(icu)).toEqual(["Oxygen", "Ventilator", "Monitor"]);
     expect(bedInfo(seedState(), "301-A")!.bed).toMatchObject({ floor: "3", ventilator: false });
   });

@@ -29,6 +29,7 @@ import { coverageLabel } from "./order-fields";
 import { can, currentUser, type DemoUser } from "./session";
 import { getState, patientName } from "./store";
 import { pushToast } from "./toast";
+import { LAB_TEST_FEE, requestOrderAuthorization, serviceBlocked, type ApprovalService, type ServiceGate } from "./nphies-financial";
 
 export * from "./fhir/lab-catalog";
 export { buildLabOrderBundle, buildLabReportBundle, formatResult, placerNumber } from "./fhir/lab-bundles";
@@ -295,6 +296,8 @@ export function placeLabOrder(enc: Encounter, input: LabOrderFields): LabOrder |
     ...(input.coverage ? { coverage: input.coverage } : {}),
   };
   store.set({ ...s, counter, orders: [order, ...s.orders] });
+  // CHI: a lab order that needs approval (by price) asks for it when it is placed.
+  if (order.coverage !== "self-pay") requestOrderAuthorization(enc.visitNumber, labService(order));
   audit("create", `Lab order ${order.id}`, {
     patient: patientName(patient),
     detail: `Visit ${order.visitNumber}: ${codes.map((c) => testByCode(c)?.short).join(", ")}${order.diagnosis ? `. Diagnosis ${order.diagnosis.code}` : ""}${order.coverage ? `. ${coverageLabel(order.coverage)}` : ""}`,
@@ -348,10 +351,24 @@ function nameOf(o: LabOrder): string | undefined {
 
 /* ---------- laboratory side ---------- */
 
+/** A lab order as a priced service for the approval rule: it needs approval only at or above AUTH_FROM SAR. */
+const labService = (o: Pick<LabOrder, "id" | "codes">): ApprovalService => ({ kind: "service", label: `Lab order ${o.id}`, price: o.codes.length * LAB_TEST_FEE });
+
+/** Whether sample collection must wait for the payer's approval (insured, not an emergency, billed to the plan). */
+export function labApproval(o: Pick<LabOrder, "id" | "codes" | "visitNumber" | "coverage">): ServiceGate {
+  if (o.coverage === "self-pay") return { blocked: false, label: "", reason: "" };
+  return serviceBlocked({ visitNumber: o.visitNumber, service: labService(o) });
+}
+
 export function collectSpecimens(id: string, collectedAt: string = new Date().toISOString()): boolean {
   const o = getOrder(id);
   if (!o || !allowed("lab.result", `Lab order ${id}`)) return false;
   if (o.status !== "received") return false;
+  const gate = labApproval(o);
+  if (gate.blocked) {
+    pushToast({ tone: "warn", text: `${gate.label}: the sample cannot be collected yet.`, detail: gate.reason });
+    return false;
+  }
   mutate(id, (x) => {
     x.specimens = specimensFor(x, collectedAt, currentUser().name);
     x.status = "collected";

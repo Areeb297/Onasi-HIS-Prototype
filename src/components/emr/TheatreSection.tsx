@@ -235,7 +235,7 @@ function AssessmentDialog({ c, enc, onClose, report }: DialogProps) {
   const [notes, setNotes] = React.useState("");
   const data = { result, asa: asa || undefined, anaesthesia: anaesthesia || undefined, notes };
   const problem = validateAssessment(data);
-  const needsNote = !!result && result !== "Fit";
+  const needsNote = !!result && result !== "Fit For Anesthesia";
   return (
     <Dialog open wide onClose={onClose} title="Pre-Anesthesia Assessment" subtitle={`Step 2. ${c.request.procedure}`}
       footer={<StepFooter problem={problem} onCancel={onClose} saveLabel="Save Assessment" onSave={() => result && report(saveAssessment(c.id, { ...data, result }))} />}>
@@ -251,7 +251,7 @@ function AssessmentDialog({ c, enc, onClose, report }: DialogProps) {
         <Field label="Planned Anaesthesia">
           <Select value={anaesthesia} onChange={(e) => setAnaesthesia(e.target.value)}>{pick(ANAESTHESIA_TYPES)}</Select>
         </Field>
-        <Field label={result === "Needs More Tests" ? "Tests needed" : result === "Not Fit" ? "Why the patient is not fit" : result === "Fit With High Risk" ? "The high risk" : "Notes"} required={needsNote} className="sm:col-span-2">
+        <Field label={result === "Need More Investigation" ? "Tests needed" : result === "Not Fit For Anesthesia" ? "Why the patient is not fit" : result === "Fit With High Risk" ? "The high risk" : "Notes"} required={needsNote} className="sm:col-span-2">
           <Textarea rows={3} className={textareaClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
       </div>
@@ -508,9 +508,9 @@ function OpNoteDialog({ c, enc, onClose, report }: DialogProps) {
   const [f, setF] = React.useState<OpNoteData>(() => {
     if (c.opNote) return formOf<OpNoteData>(c.opNote) as OpNoteData;
     const team: TeamMember[] = [
-      { role: "Surgeon", staff: c.request.surgeon, primary: true },
+      { role: "Lead Surgeon", staff: c.request.surgeon, primary: true },
       ...(s?.assistant ? [{ role: "Assistant Surgeon", staff: s.assistant }] : []),
-      ...(s ? [{ role: "Anaesthetist", staff: s.anaesthetist, primary: true }, { role: "Scrub Nurse", staff: s.scrubNurse }, { role: "Circulating Nurse", staff: s.circulatingNurse }] : []),
+      ...(s ? [{ role: "Anesthetist", staff: s.anaesthetist, primary: true }, { role: "Scrub Nurse", staff: s.scrubNurse }, { role: "Circulating Nurse", staff: s.circulatingNurse }] : []),
     ];
     return {
       noteDate: s?.date ?? today(), start: s ? `${s.date}T${s.start}` : "", end: "", theatre: s?.room, theatreNurse: s?.circulatingNurse, anaesthetist: s?.anaesthetist,
@@ -821,7 +821,7 @@ function StepRow({ n, c, step, canWrite, open, report }: { n: number; c: Surgery
       stamp = c.assessment?.done;
       summary = c.assessment && (
         <span className="flex flex-wrap items-center gap-2">
-          <Badge tone={fitForSurgery(c.assessment.result) ? (c.assessment.result === "Fit" ? "ok" : "warn") : "danger"}>{c.assessment.result}</Badge>
+          <Badge tone={fitForSurgery(c.assessment.result) ? (c.assessment.result === "Fit For Anesthesia" ? "ok" : "warn") : "danger"}>{c.assessment.result}</Badge>
           {c.assessment.asa && <span>ASA class {c.assessment.asa}</span>}
           {c.assessment.anaesthesia && <span>{c.assessment.anaesthesia} anaesthesia</span>}
           {c.assessment.notes && <span className="text-muted-foreground">{c.assessment.notes}</span>}

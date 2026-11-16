@@ -8,19 +8,19 @@ import type { ControlClass, Drug, Frequency } from "./rx-types";
  */
 
 /**
- * Routes. `snomed` is set only where the official sample shows the real code (oral route, 26643006).
- * The rest of the "KSA Medication Route of Administration" value set (page 117965427) is in IS0200, so demo codes are sent.
+ * Routes. Labels and SNOMED codes are the HIS lookup "Drug Route" (Prescription.RouteId); the oral route also matches the official sample.
+ * Inhaled medicines use the HIS route Respiratory Tract.
  */
 export const ROUTES: { code: string; label: string; snomed?: string; snomedName?: string }[] = [
   { code: "PO", label: "Oral", snomed: "26643006", snomedName: "oral route" },
-  { code: "SL", label: "Sublingual" },
-  { code: "IV", label: "Intravenous" },
-  { code: "IM", label: "Intramuscular" },
-  { code: "SC", label: "Subcutaneous" },
-  { code: "INH", label: "Inhaled" },
-  { code: "TOP", label: "Topical" },
-  { code: "TD", label: "Transdermal" },
-  { code: "PR", label: "Rectal" },
+  { code: "SL", label: "Sublingual", snomed: "37839007" },
+  { code: "IV", label: "Intravenous", snomed: "47625008" },
+  { code: "IM", label: "Intramuscular", snomed: "78421000" },
+  { code: "SC", label: "Subcutaneous", snomed: "34206005" },
+  { code: "INH", label: "Respiratory Tract", snomed: "447694001" },
+  { code: "TOP", label: "Topical", snomed: "6064005" },
+  { code: "TD", label: "Transdermal", snomed: "45890007" },
+  { code: "PR", label: "Rectal", snomed: "37161004" },
 ];
 
 export const ROUTE_LABEL: Record<string, string> = Object.fromEntries(ROUTES.map((r) => [r.code, r.label]));

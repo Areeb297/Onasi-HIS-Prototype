@@ -94,6 +94,8 @@ export interface Patient {
   confidential?: boolean;
   /** Consent to process and share the record. ISO time when given. */
   consentAt?: string;
+  /** The patient agreed to share their health data (HIS Patients.ShareData). Off unless the patient says yes. */
+  shareData?: boolean;
   extra?: PatientExtra;
   /** Set when this file was merged into another one (the patient id kept). A merged file leaves the patient lists. */
   mergedInto?: string;
@@ -146,7 +148,7 @@ export interface Dx {
    * Empty on older records, which are read from `type` and their place in the list. HIS only:
    * DG1-6 still carries A, W or F in `type`, and DG1-15 is 1 for the Principal diagnosis.
    */
-  kind?: "P" | "S" | "AD" | "DF";
+  kind?: "P" | "S" | "AD" | "DF" | "WK" | "FN" | "DC";
   /** The condition was present on admission. Sets the ZDG1-3 onset flag of an inpatient. HIS only. */
   onAdmission?: boolean;
   /** Who entered or last changed the diagnosis. HIS only. */

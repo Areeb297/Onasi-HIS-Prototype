@@ -1263,12 +1263,12 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
       open
       onClose={close}
       wide
-      title="Discharge Patient"
+      title={enc.cls === "O" ? "End Visit" : "Discharge Patient"}
       subtitle={dev ? "Sends A03. The outcome sets PV1-36 and the discharge time PV1-45. A03 needs at least one diagnosis (DG1). Everything else is kept in the HIS." : inpatient ? "Work through the four tabs, check what will happen, then confirm." : "Choose the outcome first, then check what will happen."}
       footer={
         <>
           <Button variant="ghost" onClick={close}>Go Back</Button>
-          <ConfirmButton problems={problems} onClick={confirm}>Discharge Patient</ConfirmButton>
+          <ConfirmButton problems={problems} onClick={confirm}>{enc.cls === "O" ? "End Visit" : "Discharge Patient"}</ConfirmButton>
         </>
       }
     >
@@ -1905,7 +1905,7 @@ export function MoveVisitDialog({ visit, onClose }: { visit: string; onClose: ()
           <Group label="Find The Correct Patient" required hint="Search by name, MRN, national ID or mobile number.">
             <div className="relative [--field-h:2.5rem]">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input className="pl-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="For example Alharbi or MRN0000105" aria-label="Search patients" aria-controls={listId} />
+              <Input className="pl-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="For example Alharbi or MR-26-000105" aria-label="Search patients" aria-controls={listId} />
             </div>
             {words.length > 0 && (
               <ul id={listId} className="mt-1 max-h-52 overflow-y-auto rounded-lg border border-border" aria-label="Matching patients">

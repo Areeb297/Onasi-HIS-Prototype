@@ -16,6 +16,9 @@ describe("NPHIES connection status", () => {
     expect(s.claims).toBe("not-yet");
     expect(s.sso).toBe("not-built");
     expect(s["rad-view"]).toBe("not-built");
+    // A rejected claim (NPHIES outcome error) does not prove the claims connection works.
+    const r = connectionStatus([], [{ visit: "V2", messages: [], claim: { status: "rejected", at: "", ref: "", claimNumber: "CL00000001", note: "" } } as never]);
+    expect(r.claims).toBe("not-yet");
   });
 
   it("has an icon entry for every NHIC use case and maps every send-list type", () => {

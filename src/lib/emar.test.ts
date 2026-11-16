@@ -22,7 +22,8 @@ function prescribe(generic: string, over: Partial<RxItem> = {}, sentAt = at(5, 7
   const item: RxItem = {
     id: `t-item-${n}`, identifier: `RXI-T${n}`, drugId: drugId(generic), dose: 1, frequencyId: "BID", asNeeded: false, durationDays: 5,
     quantity: 10, quantityManual: false, route: "PO", patientInstruction: "", fulfillmentNote: "", refills: 0,
-    reason: { code: "R69", text: "Illness, unspecified" }, status: "active", version: 1, ...over,
+    reason: { code: "R69", text: "Illness, unspecified" }, status: "active", version: 1,
+    verify: { status: "verified", version: 1, by: "Pharmacist", byId: "U9", at: new Date(sentAt).toISOString() }, ...over,
   };
   const rx: Prescription = {
     id: `t-rx-${n}`, number: `RX-T${n}`, visitNumber: enc.visitNumber, patientId: enc.patientId, prescriberId: enc.attending,
@@ -205,6 +206,13 @@ describe("recording a dose", () => {
     const who = { id: "U2", name: "Huda Alotaibi, RN" };
     expect(checkAdmin({ visit: "x", itemId: item.id, slot: at(5, 8), outcome: "given", rights: ALL_RIGHTS, at: at(5, 8) }, order, who, at(5, 8))).toEqual([]);
     expect(checkAdmin({ visit: "x", itemId: "nope", slot: at(5, 8), outcome: "given" }, undefined, who, at(5, 8))).toHaveLength(1);
+  });
+
+  it("waits for the pharmacist check before a dose, except a stat dose", () => {
+    const item = prescribe("Metformin", { verify: undefined });
+    const stat = prescribe("Ondansetron", { frequencyId: "STAT", verify: undefined });
+    expect(give(item.id, at(5, 8), at(5, 8)).ok).toBe(false);
+    expect(give(stat.id, at(5, 7), at(5, 7)).ok).toBe(true);
   });
 });
 

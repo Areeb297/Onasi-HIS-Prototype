@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { autoMap, checkRows, IMPORT_FIELDS, IMPORT_LIMITS, missingRequired, parseCsv, readAmount, readDate, readTable, readXlsx, templateCsv, unzip, type ImportContext } from "./rcm-import";
 
 const TODAY = new Date(2026, 10, 15);
-const ctx = (): ImportContext => ({ ledger: new Set(["CLM-26-4436"]), live: new Set(["CLM-00002A"]), mrns: new Set(["MRN-100302"]), nationalIds: new Set(["1072215546"]), today: TODAY });
+const ctx = (): ImportContext => ({ ledger: new Set(["CL00004436"]), live: new Set(["CL00000002"]), mrns: new Set(["MR-26-100302"]), nationalIds: new Set(["1072215546"]), today: TODAY });
 
 /** A zip with stored (uncompressed) entries, enough to test the .xlsx reader without a library. */
 function storedZip(files: Record<string, string>, deflate = false): ArrayBuffer {
@@ -80,14 +80,14 @@ describe("claim import", () => {
     const rows = parseCsv(templateCsv());
     const table = { headers: rows[0], rows: [
       ...rows.slice(1),
-      ["CLM-26-4436", "Wafa Alsubaie", "MRN-100421", "", "Bupa Arabia", "2026-11-13", "Professional", "E03.9", "SBS-SAMPLE-1001", "", "350", "350", "Approved"],
+      ["CL00004436", "Wafa Alsubaie", "MR-26-100421", "", "Bupa Arabia", "2026-11-13", "Professional", "E03.9", "83600-00-00", "", "350", "350", "Approved"],
       ["", "No Number", "", "", "Unknown Co", "2026-12-01", "Dental", "123", "", "", "-5", "10", "Paid"],
-      ["CLM-26-5001", "Dup", "MRN-1", "123", "Daman", "31/02/2026", "", "J06.9", "SBS-1", "", "100", "200", ""],
-      ["CLM-00002A", "Live", "MRN-2", "", "Daman", "2026-11-01", "", "J06.9", "SBS-1", "", "100", "", ""],
+      ["CL00005001", "Dup", "MRN-1", "123", "Daman", "31/02/2026", "", "J06.9", "SBS-1", "", "100", "200", ""],
+      ["CL00000002", "Live", "MR-26-000002", "", "Daman", "2026-11-01", "", "J06.9", "SBS-1", "", "100", "", ""],
     ] };
     const out = checkRows(table, autoMap(table.headers), ctx());
     expect(out.map((r) => r.status)).toEqual(["Ready", "Ready", "Update", "Invalid", "Invalid", "Invalid"]);
-    expect(out[0].claim).toMatchObject({ claimNumber: "CLM-26-5001", state: "Approved", approved: 315, claimed: 350 });
+    expect(out[0].claim).toMatchObject({ claimNumber: "CL00005001", state: "Approved", approved: 315, claimed: 350 });
     expect(out[0].patient).toBe("New");
     expect(out[1].patient).toBe("Existing");
     expect(out[1].claim.state).toBe("Submitted");
@@ -103,7 +103,7 @@ describe("claim import", () => {
       "Claim Status 'Paid' is not one of Submitted, Approved, Partly Approved, Rejected, Denied.",
     ]);
     expect(out[4].issues).toEqual([
-      "Claim CLM-26-5001 is already on row 2 of this file.",
+      "Claim CL00005001 is already on row 2 of this file.",
       "National ID / Iqama 123 must be 10 digits starting with 1 or 2.",
       "Service Date '31/02/2026' is not a date. Use YYYY-MM-DD or DD/MM/YYYY.",
       "Approved Amount cannot be more than the Claimed Amount.",

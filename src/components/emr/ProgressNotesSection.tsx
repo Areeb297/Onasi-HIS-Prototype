@@ -12,7 +12,7 @@ import { pushToast } from "@/lib/toast";
 import { confirmForVisit, confirmPatient } from "@/lib/wrong-patient";
 
 /**
- * Chart section "Progress Notes". Notes can be edited, set to Active or Inactive, and deleted with a reason.
+ * Chart section "Progress Notes". Notes get addenda (never rewritten), can be set to Active or Inactive, and deleted with a reason.
  * Every change goes to the audit trail. Inactive notes stay on this page but leave the timeline and the handoff.
  */
 
@@ -87,7 +87,7 @@ export function ProgressNotesSection({ enc: initial }: { enc: Encounter }) {
                   {!active && <Badge tone="neutral">Inactive</Badge>}
                 </div>
                 <div className={cn("mt-1 whitespace-pre-wrap", !active && "text-muted-foreground")}>{note.text}</div>
-                {note.editedAt && <div className="mt-1 text-xs text-muted-foreground">Edited by {note.editedBy}, {when(note.editedAt)}</div>}
+                {note.editedAt && <div className="mt-1 text-xs text-muted-foreground">Last addendum by {note.editedBy}, {when(note.editedAt)}</div>}
               </div>
               {mayWrite && (
                 <div className="ms-auto flex shrink-0 items-center gap-2">
@@ -95,7 +95,7 @@ export function ProgressNotesSection({ enc: initial }: { enc: Encounter }) {
                   <RowMenu
                     label={`Actions for the note of ${when(note.at)}`}
                     items={[
-                      { label: "Edit Note", icon: <Pencil className="size-4" />, onSelect: () => setEditing({ id, original: note.text }) },
+                      { label: "Add Addendum", icon: <Pencil className="size-4" />, onSelect: () => setEditing({ id, original: note.text }) },
                       { label: "Delete Note", icon: <Trash2 className="size-4" />, onSelect: () => setDeleting(id), danger: true, separated: true },
                     ]}
                   />
@@ -131,25 +131,26 @@ export function ProgressNotesSection({ enc: initial }: { enc: Encounter }) {
 }
 
 function EditSheet({ visit, id, original, onClose }: { visit: string; id: string; original: string; onClose: () => void }) {
-  const [text, setText] = React.useState(original);
-  const changed = text.trim() !== original.trim();
-  const v = useValidation({ text: !text.trim() && "The note cannot be empty. To take it off the chart, delete it." });
+  const [text, setText] = React.useState("");
+  const v = useValidation({ text: !text.trim() && "Write the addendum." });
   const save = async () => {
     if (!v.submit()) return;
-    if (!changed) { onClose(); return; }
     if (!(await confirmForVisit(visit))) return;
-    if (editNote(visit, id, text)) { pushToast({ tone: "ok", text: "Progress note updated" }); onClose(); }
+    if (editNote(visit, id, text)) { pushToast({ tone: "ok", text: "Addendum added" }); onClose(); }
   };
   return (
     <EntrySheet
       onClose={onClose}
-      title="Edit Progress Note"
-      subtitle="The note shows who edited it and when."
-      dirty={changed}
-      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Update Note</Button></>}
+      title="Add Addendum"
+      subtitle="A saved note is not changed. The addendum is added under it with your name and the time."
+      dirty={!!text.trim()}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Add Addendum</Button></>}
     >
-      <FormField label="Note" required error={v.error("text")}>
-        <TextArea rows={10} value={text} onChange={(e) => setText(e.target.value)} onBlur={v.blur("text")} />
+      <FormField label="Note">
+        <div className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{original}</div>
+      </FormField>
+      <FormField label="Addendum" required error={v.error("text")}>
+        <TextArea rows={6} value={text} onChange={(e) => setText(e.target.value)} onBlur={v.blur("text")} />
       </FormField>
     </EntrySheet>
   );

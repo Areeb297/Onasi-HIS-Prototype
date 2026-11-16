@@ -204,6 +204,8 @@ export const bmiOf = (weightKg: number, heightCm: number): number | undefined =>
 
 export type Consciousness = "Alert" | "Confusion" | "Voice" | "Pain" | "Unresponsive";
 export const CONSCIOUSNESS: Consciousness[] = ["Alert", "Confusion", "Voice", "Pain", "Unresponsive"];
+/** Labels of the HIS lookup "Conscious Level" (Vitals.ConsciousLevelId). New Confusion is NEWS2 only and not in the HIS list yet. */
+export const CONSCIOUSNESS_LABEL: Record<Consciousness, string> = { Alert: "Alert", Confusion: "New Confusion", Voice: "Responds to Voice", Pain: "Responds to Pain", Unresponsive: "Unresponsive" };
 
 export interface News2 {
   total: number;

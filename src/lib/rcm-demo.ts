@@ -55,7 +55,7 @@ const RAW: [id: string, given: string, family: string, dob: string, sex: "M" | "
 export const DEMO_MARK = "P101";
 
 export const DEMO_PATIENTS: Patient[] = RAW.map(([id, given, family, dob, sex, nationality, payer, copay, cls], i) => ({
-  id, mrn: `MRN0000${201 + i}`, nationalId: `${nationality === "SAU" ? 1 : 2}0${String(48213570 + i * 7919).slice(0, 8)}`,
+  id, mrn: `MR-26-${String(201 + i).padStart(6, "0")}`, nationalId: `${nationality === "SAU" ? 1 : 2}0${String(48213570 + i * 7919).slice(0, 8)}`,
   family, given, dob, sex, healthId: String(1090100001 + i * 17), nationality, maritalStatus: i % 3 ? "M" : "S",
   address: `RIYA${String(4100 + i * 11)}`,
   extra: { visitPayType: "Insurance", insurance: card(payer, 100 + i, copay, cls ?? "Class A") },

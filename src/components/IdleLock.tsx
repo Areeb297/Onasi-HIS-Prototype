@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Lock } from "lucide-react";
-import { Button } from "@/components/ui/primitives";
-import { lockScreen, unlockScreen, useSession } from "@/lib/session";
+import { Button, Field, Select } from "@/components/ui/primitives";
+import { USERS, lockScreen, roleOf, signInFromLock, unlockScreen, useSession } from "@/lib/session";
 
 /**
  * Locks the screen after a period of inactivity and hides everything behind a cover.
@@ -10,6 +10,7 @@ import { lockScreen, unlockScreen, useSession } from "@/lib/session";
 export function IdleLock() {
   const { idleMinutes, locked, user } = useSession();
   const timer = React.useRef<number | undefined>(undefined);
+  const [other, setOther] = React.useState("");
 
   React.useEffect(() => {
     if (!idleMinutes || locked) return;
@@ -33,10 +34,20 @@ export function IdleLock() {
         <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-move/15 text-move">
           <Lock className="size-6" />
         </div>
-        <h2 className="text-lg font-semibold">Screen locked</h2>
+        <h2 className="text-lg font-semibold">Screen Locked</h2>
         <p className="mt-1 text-sm text-muted-foreground">The screen locked after {idleMinutes} minutes without activity. Patient information is hidden.</p>
         <p className="mt-3 text-sm">Signed in as <strong>{user.name}</strong></p>
-        <Button variant="primary" className="mt-4 w-full" onClick={unlockScreen}>Unlock</Button>
+        <Button variant="primary" className="mt-4 w-full" onClick={unlockScreen}>Unlock As {user.name}</Button>
+        {/* No shared logins: someone else at this screen signs in as themselves, and the locked session ends. */}
+        <div className="mt-4 border-t border-border pt-4 text-left">
+          <Field label="Not You? Sign In As">
+            <Select value={other} onChange={(e) => setOther(e.target.value)} aria-label="Sign in as another user">
+              <option value="">Choose your account</option>
+              {USERS.filter((u) => u.id !== user.id).map((u) => <option key={u.id} value={u.id}>{u.name}, {roleOf(u).label}</option>)}
+            </Select>
+          </Field>
+          <Button variant="secondary" className="mt-2 w-full" disabled={!other} onClick={() => { signInFromLock(other); setOther(""); }}>Sign In</Button>
+        </div>
         <p className="mt-2 text-xs text-muted-foreground">Demo data only. Everything here stays in this browser. Do not enter real patient information.</p>
       </div>
     </div>

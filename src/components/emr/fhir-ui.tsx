@@ -48,19 +48,20 @@ export function FlagPill({ interp }: { interp: Interp }) {
   );
 }
 
+/** Order status labels use the HIS workflow status names (lookups "Laboratory Workflow Status", "Radiology Workflow Status"); Amended is the HIS Observation Status. */
 export const LAB_STATUS_UI: Record<string, { label: string; tone: Tone }> = {
-  received: { label: "Received", tone: "move" },
-  collected: { label: "Specimen Collected", tone: "update" },
-  "in-progress": { label: "In Progress", tone: "merge" },
-  resulted: { label: "Resulted", tone: "ok" },
+  received: { label: "Test Orders", tone: "move" },
+  collected: { label: "Sample Collection", tone: "update" },
+  "in-progress": { label: "Test Processing", tone: "merge" },
+  resulted: { label: "Result Release", tone: "ok" },
   amended: { label: "Amended", tone: "admit" },
   cancelled: { label: "Cancelled", tone: "neutral" },
 };
 
 export const RAD_STATUS_UI: Record<string, { label: string; tone: Tone }> = {
-  received: { label: "Received", tone: "move" },
-  performed: { label: "Exam Performed", tone: "update" },
-  resulted: { label: "Reported", tone: "ok" },
+  received: { label: "Test Orders", tone: "move" },
+  performed: { label: "Test Processing", tone: "update" },
+  resulted: { label: "Result Release", tone: "ok" },
   amended: { label: "Amended", tone: "admit" },
   cancelled: { label: "Cancelled", tone: "neutral" },
 };

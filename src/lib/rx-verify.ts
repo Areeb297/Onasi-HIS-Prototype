@@ -28,11 +28,12 @@ import { fmtDate } from "./format";
  */
 export type VerifyStatus = "to-verify" | "queried" | "answered" | "rejected" | "verified";
 
+/** HIS Prescription.PharmacistVerificationStatus: Pending (shown as To Verify), Queried, Rejected, Verified. Query Answered is worked out, not stored. */
 export const VERIFY_LABEL: Record<VerifyStatus, string> = {
   "to-verify": "To Verify",
-  queried: "Query Sent",
+  queried: "Queried",
   answered: "Query Answered",
-  rejected: "Rejected By Pharmacy",
+  rejected: "Rejected",
   verified: "Verified",
 };
 

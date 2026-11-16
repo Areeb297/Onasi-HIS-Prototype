@@ -278,9 +278,9 @@ describe("discharge details", () => {
   it("needs the condition unless the patient died, and a discharge time inside the stay", () => {
     expect(detailProblems({}, ctx)).toEqual(["Choose the condition on discharge.", "Enter the discharge date and time."]);
     expect(detailProblems({ dischargeAt: "2026-11-14T11:00" }, { ...ctx, outcome: "died" })).toEqual([]);
-    expect(detailProblems({ condition: "Improved", dischargeAt: "2026-11-14T12:30" }, ctx)[0]).toMatch(/future/);
-    expect(detailProblems({ condition: "Improved", dischargeAt: "2026-11-12T12:00" }, ctx)[0]).toMatch(/before the admission/);
-    expect(detailProblems({ condition: "Improved", dischargeAt: "2026-11-14T11:00" }, ctx)).toEqual([]);
+    expect(detailProblems({ condition: "Stable", dischargeAt: "2026-11-14T12:30" }, ctx)[0]).toMatch(/future/);
+    expect(detailProblems({ condition: "Stable", dischargeAt: "2026-11-12T12:00" }, ctx)[0]).toMatch(/before the admission/);
+    expect(detailProblems({ condition: "Stable", dischargeAt: "2026-11-14T11:00" }, ctx)).toEqual([]);
   });
 
   it("checks the attendant's phone and ID, and each doctor approval", () => {
@@ -300,7 +300,7 @@ describe("discharge details", () => {
 
   it("keeps only what was filled in", () => {
     expect(cleanDetails({ condition: " ", attendant: { name: "", phone: "", relation: "", idType: "", idNumber: "" }, ambulance: false, approvals: [] })).toEqual({});
-    expect(cleanDetails({ condition: "Improved ", instructions: " Rest ", ambulance: true })).toEqual({ condition: "Improved", instructions: "Rest", ambulance: true });
+    expect(cleanDetails({ condition: "Stable ", instructions: " Rest ", ambulance: true })).toEqual({ condition: "Stable", instructions: "Rest", ambulance: true });
   });
 });
 
@@ -365,7 +365,7 @@ describe("visit dialogs on the store", () => {
     const v = visit("P001").visitNumber;
     const at = nowLocal(-30);
     const details = {
-      condition: "Improved", dischargeAt: at, attendant: ATTENDANT,
+      condition: "Stable", dischargeAt: at, attendant: ATTENDANT,
       summary: { reasonForAdmission: "Fever and cough", admittingDiagnosis: "J18.9 Pneumonia", procedures: "", findings: "CRP falling", course: "IV antibiotics for three days" },
       instructions: "Finish the antibiotics", educatedBy: "Huda Alotaibi, RN", ambulance: true,
       approvals: [{ role: "Consultant", doctor: "D1001", at: nowLocal(-40), remarks: "Fit to go home" }],
@@ -381,7 +381,7 @@ describe("visit dialogs on the store", () => {
     expect(pv1(out.entry?.message)[45]).toBe(ts(at));
     const e = visit("P001");
     expect(e.dischargeAt).toBe(at);
-    expect(e.discharge).toMatchObject({ outcome: "home", condition: "Improved", dischargeAt: at, attendant: ATTENDANT, ambulance: true, educatedBy: "Huda Alotaibi, RN", instructions: "Finish the antibiotics" });
+    expect(e.discharge).toMatchObject({ outcome: "home", condition: "Stable", dischargeAt: at, attendant: ATTENDANT, ambulance: true, educatedBy: "Huda Alotaibi, RN", instructions: "Finish the antibiotics" });
     expect(e.discharge?.summary?.course).toBe("IV antibiotics for three days");
     expect(e.discharge?.approvals).toEqual(details.approvals);
     // The four-clearance override is untouched by the new details.

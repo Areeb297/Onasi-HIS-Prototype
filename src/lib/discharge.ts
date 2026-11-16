@@ -128,7 +128,8 @@ export function outcomeProblems(input: OutcomeInput, ctx: { admitAt?: string; no
 /* ---------- discharge details: condition, time, attendant, summary, instructions, approvals ---------- */
 
 /** Condition On Discharge. The HIS loads its list from the database; these are the usual clinical values. */
-export const DISCHARGE_CONDITIONS = ["Recovered", "Improved", "Stable", "Unchanged", "Worse"];
+/** HIS lookup "Condition on Discharge". */
+export const DISCHARGE_CONDITIONS = ["Stable", "Critical", "Hold", "Referred", "Other", "DAMA", "LAMA"];
 export const ATTENDANT_ID_TYPES = ["National ID", "Iqama", "Passport", "GCC ID"];
 export const ATTENDANT_RELATIONS = ["Father", "Mother", "Husband", "Wife", "Son", "Daughter", "Brother", "Sister", "Other Relative", "Friend", "Ambulance Crew"];
 export const APPROVAL_ROLES = ["Attending Doctor", "Consultant", "Head Of Department", "Resident"];

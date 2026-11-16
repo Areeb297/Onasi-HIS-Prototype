@@ -13,7 +13,7 @@ export function RefundDialog({ open, onClose, view }: { open: boolean; onClose: 
   const [reference, setReference] = React.useState("");
   const [proof, setProof] = React.useState("");
   const [errors, setErrors] = React.useState<string[]>([]);
-  const allowed = can("billing");
+  const allowed = can("cashier");
 
   React.useEffect(() => {
     if (open) { setMethod("Cash"); setReference(""); setProof(""); setErrors([]); }
@@ -35,7 +35,7 @@ export function RefundDialog({ open, onClose, view }: { open: boolean; onClose: 
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={submit} disabled={!allowed} title={allowed ? undefined : "This needs the billing permission."}>Confirm Refund</Button>
+          <Button variant="primary" onClick={submit} disabled={!allowed} title={allowed ? undefined : "This needs the cashier permission."}>Confirm Refund</Button>
         </>
       }
     >

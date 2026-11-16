@@ -66,6 +66,8 @@ export function InvoicePage() {
   const allowed = can("billing");
   const reported = inv.zatca.status === "Reported";
   const noPerm = "This needs the billing permission.";
+  const cashier = can("cashier");
+  const noCash = "This needs the cashier permission.";
 
   const sendZatca = () => {
     const r = sendToZatca([visit]);
@@ -81,7 +83,7 @@ export function InvoicePage() {
     <div>
       <PageHeader
         mark={<Button size="sm" variant="ghost" onClick={() => navigate("/invoices")} aria-label="Back to the Invoice Worklist"><ArrowLeft className="size-4" /></Button>}
-        title={`Invoice #${inv.number}`}
+        title={`Invoice ${inv.number}`}
         subtitle={v.status === "Draft" ? "Draft: the lines follow the visit's orders until the visit ends." : v.status === "Submitted" ? "The visit has ended. The lines are fixed." : inv.insurer ? "Paid in full by the patient and the payer." : "Paid in full by the patient."}
         right={
           <div className="flex flex-wrap items-center gap-2">
@@ -96,7 +98,7 @@ export function InvoicePage() {
       <Card className="mb-4">
         <div className="flex flex-wrap items-start justify-between gap-4 p-4">
           <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
-            <Fact label="Invoice Number">#{inv.number}</Fact>
+            <Fact label="Invoice Number">{inv.number}</Fact>
             <Fact label="Patient">{patientName(patient)}</Fact>
             <Fact label="MRN">{patient.mrn}</Fact>
             <Fact label="Date">{when(inv.createdAt)}</Fact>
@@ -106,7 +108,7 @@ export function InvoicePage() {
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-2.5">
           <ZatcaTag invoice={inv} now={now} />
-          {!reported && <span className="text-xs text-muted-foreground">Simplified invoices must reach ZATCA within 24 hours. The first payment reports it.</span>}
+          {!reported && <span className="text-xs text-muted-foreground">Simplified invoices must reach ZATCA within 24 hours. The first payment reports it automatically.</span>}
         </div>
       </Card>
 
@@ -256,15 +258,15 @@ export function InvoicePage() {
           </div>
           <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3">
             {t.patientBalance > 0.004 && (
-              <Button variant="primary" onClick={() => setPayOpen(true)} disabled={!allowed} title={allowed ? undefined : noPerm}>
+              <Button variant="primary" onClick={() => setPayOpen(true)} disabled={!cashier} title={cashier ? undefined : noCash}>
                 <CreditCard className="size-4" /> Take Payment
               </Button>
             )}
             {v.overpaid > 0 && (
-              <Button onClick={() => setRefundOpen(true)} disabled={!allowed} title={allowed ? undefined : noPerm}>Process Refund</Button>
+              <Button onClick={() => setRefundOpen(true)} disabled={!cashier} title={cashier ? undefined : noCash}>Process Refund</Button>
             )}
             {Math.abs(t.patientBalance) <= 0.004 && Object.keys(v.unallocated).length > 0 && (
-              <Button onClick={() => setPayOpen(true)} disabled={!allowed} title={allowed ? undefined : noPerm}>Adjust Payment</Button>
+              <Button onClick={() => setPayOpen(true)} disabled={!cashier} title={cashier ? undefined : noCash}>Adjust Payment</Button>
             )}
             {Math.abs(t.patientBalance) <= 0.004 && Object.keys(v.unallocated).length === 0 && (
               <Button disabled><CreditCard className="size-4" /> {t.waived > 0 && t.patientPaid <= 0 ? "Waived Off" : "Paid In Full"}</Button>

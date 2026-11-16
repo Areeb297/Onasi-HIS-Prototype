@@ -134,7 +134,7 @@ describe("the store keeps a future slot shut", () => {
   const readyFuture = () => {
     const r = requestSurgery("V900001", "P900", { procedure: "Hernia repair", side: "Left", surgeon: "Dr. S", urgency: "Elective", plannedDate: tomorrow });
     if (!r.ok) throw new Error(r.message);
-    saveAssessment(r.id, { result: "Fit", anaesthesia: "Spinal" });
+    saveAssessment(r.id, { result: "Fit For Anesthesia", anaesthesia: "Spinal Anesthesia" });
     const slot = { room: "Theatre 1", date: tomorrow, start: "09:00", durationMin: 90, anaesthetist: "Dr. A", scrubNurse: "Nurse S", circulatingNurse: "Nurse C" };
     if (!saveSchedule(r.id, slot).ok) throw new Error("schedule");
     confirmSchedule(r.id);

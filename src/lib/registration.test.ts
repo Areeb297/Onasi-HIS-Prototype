@@ -149,7 +149,7 @@ describe("registration form checks", () => {
 
   it("names each missing required field", () => {
     expect(fields({ idNumber: "", healthId: "", first: " ", family: "", dob: "", mobile: "", consent: false, addressLine1: " " }))
-      .toEqual(["idNumber", "first", "family", "dob", "addressLine1", "mobile", "healthId", "consent"]);
+      .toEqual(["idNumber", "first", "family", "dob", "addressLine1", "mobile", "healthId"]);
   });
 
   it("checks the date of birth, short address, mobile and email", () => {
@@ -184,10 +184,10 @@ describe("registration form checks", () => {
   it("needs only the title for an unknown or unconscious patient", () => {
     const blank = { idNumber: "", healthId: "", first: "", family: "", dob: "", mobile: "", consent: false, addressLine1: "", visit: "E" as const };
     expect(fields({ ...blank, unknown: true })).toEqual(["title"]);
-    expect(fields({ ...blank, unknown: true, title: "Mr" })).toEqual([]);
+    expect(fields({ ...blank, unknown: true, title: "Mr." })).toEqual([]);
     // An unknown newborn does not need the parent either, and what is typed is still checked.
-    expect(fields({ ...blank, unknown: true, title: "Baby", newborn: true })).toEqual([]);
-    expect(fields({ ...blank, unknown: true, title: "Mr", email: "x" })).toEqual(["email"]);
+    expect(fields({ ...blank, unknown: true, newborn: true })).toEqual([]);
+    expect(fields({ ...blank, unknown: true, title: "Mr.", email: "x" })).toEqual(["email"]);
   });
 
   it("needs the doctor and date for Do Not Resuscitate, and the language for an interpreter", () => {
@@ -206,11 +206,11 @@ describe("registration form checks", () => {
 
 describe("title, Health ID and list name", () => {
   it("fills the usual title from the sex and marital status", () => {
-    expect(defaultTitle("M", "S")).toBe("Mr");
-    expect(defaultTitle("F", "M")).toBe("Mrs");
+    expect(defaultTitle("M", "S")).toBe("Mr.");
+    expect(defaultTitle("F", "M")).toBe("Mrs.");
     expect(defaultTitle("F", "S")).toBe("Miss");
     expect(defaultTitle("F", "U")).toBe("Ms");
-    expect(defaultTitle("F", "S", true)).toBe("Baby");
+    expect(defaultTitle("F", "S", true)).toBe("");
   });
 
   it("fetches the Health ID from the registry with the ID number and the date of birth", () => {

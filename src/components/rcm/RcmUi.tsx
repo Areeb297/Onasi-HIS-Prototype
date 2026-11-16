@@ -251,7 +251,7 @@ export function LedgerBar({ claim }: { claim: Pick<RcmClaim, "claimed" | "approv
 
 type Tone = React.ComponentProps<typeof Badge>["tone"];
 const TONES: Record<string, Tone> = {
-  Open: "warn", "In Review": "info", Corrected: "update", Resubmitted: "admit", Closed: "neutral", Appealed: "info", Resolved: "ok", "Follow Up": "move",
+  Open: "warn", "In Review": "info", Closed: "neutral", Resolved: "ok", "Follow Up": "move",
   Received: "warn", "Partly Adjusted": "info", Adjusted: "admit", "Notice Sent": "ok", Paid: "ok", "Partly Paid": "warn", "Not Paid": "neutral",
   Ready: "ok", Update: "info", Invalid: "danger", High: "danger", Medium: "warn", Low: "neutral", Pending: "warn", Approved: "ok", Declined: "danger",
   Submitted: "info", Rejected: "danger", Denied: "danger", "Partly Approved": "warn", Active: "ok", Inactive: "neutral",
@@ -284,7 +284,7 @@ function NoteItem({ n }: { n: Note }) {
       {(n.medium || n.reference || n.followUp) && (
         <p className="mt-1 flex flex-wrap gap-1.5">
           {n.medium && <Badge>{n.medium}</Badge>}
-          {n.outcome && <Badge tone={n.outcome === "Resolved" ? "ok" : n.outcome === "Escalated" ? "danger" : "warn"}>{n.outcome}</Badge>}
+          {n.outcome && <Badge tone={n.outcome === "Resolved" ? "ok" : n.outcome === "No Response" ? "danger" : "warn"}>{n.outcome}</Badge>}
           {n.person && <span className="text-xs text-muted-foreground">{n.person}</span>}
           {n.reference && <span className="text-xs text-muted-foreground">Reference {n.reference}</span>}
           {n.followUp && <span className="text-xs text-muted-foreground">Follow up {fmtDay(n.followUp)}</span>}

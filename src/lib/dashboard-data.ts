@@ -297,7 +297,7 @@ export function sampleClaims(): Claim[] {
         ? (preAuth === "Denied" ? "Prior authorization missing" : pick(r, DENIAL_REASONS, [26, 9, 15, 17, 14, 7, 6, 6]))
         : undefined;
       const payDays = status === "Paid" || status === "Partially Paid" ? Math.max(4, Math.round(prof.days * (0.45 + r() * 1.25) + (r() < 0.08 ? 45 : 0))) : undefined;
-      out.push({ id: `CLM-${out.length + 100_001}`, day, payer, type, dept, group: g.group, system: g.system, amount, paid, denied, status, reason, preAuth, payDays });
+      out.push({ id: `CL${String(out.length + 1).padStart(8, "0")}`, day, payer, type, dept, group: g.group, system: g.system, amount, paid, denied, status, reason, preAuth, payDays });
     }
   }
   CLAIMS_CACHE = out;

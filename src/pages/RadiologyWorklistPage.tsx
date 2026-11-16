@@ -26,9 +26,9 @@ import { fmtDateTime } from "@/lib/format";
 
 const FILTERS: { id: "all" | RadStatus; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "received", label: "Received" },
-  { id: "performed", label: "Exam Performed" },
-  { id: "resulted", label: "Reported" },
+  { id: "received", label: "Test Orders" },
+  { id: "performed", label: "Test Processing" },
+  { id: "resulted", label: "Result Release" },
   { id: "amended", label: "Amended" },
   { id: "cancelled", label: "Cancelled" },
 ];
@@ -54,6 +54,8 @@ export function RadiologyWorklistPage() {
   const activeVisits = his.encounters.filter((e) => e.status === "active");
   const [sampleVisit, setSampleVisit] = React.useState("");
   const canReport = can("rad.report");
+  // The technician performs the exam, the radiologist reports it.
+  const canPerform = can("rad.perform");
 
   /** Date range, priority and search, the same for the table and the board. */
   const matches = (o: RadOrder) => {
@@ -89,8 +91,8 @@ export function RadiologyWorklistPage() {
     return (
       <div className="flex flex-wrap items-center gap-1.5">
         {o.status === "received" && (
-          <Gate allowed={canReport} reason="Your role cannot record exams.">
-            <Button size="sm" variant="primary" disabled={!canReport} onClick={() => openExam(o.id)}>
+          <Gate allowed={canPerform} reason="Your role cannot record exams.">
+            <Button size="sm" variant="primary" disabled={!canPerform} onClick={() => openExam(o.id)}>
               Mark Exam Done
             </Button>
           </Gate>
@@ -106,7 +108,7 @@ export function RadiologyWorklistPage() {
     <div>
       <PageHeader
         title="Radiology Worklist"
-        subtitle="Record the exam, write the report, then a radiologist signs and releases it. Send it to NPHIES from NPHIES Clinical. STAT and urgent orders are listed first."
+        subtitle="The technician records the exam; the radiologist writes, signs and releases the report. Send it to NPHIES from NPHIES Clinical. STAT and urgent orders are listed first."
         right={
           <div className="flex flex-wrap items-center gap-2">
             <ViewToggle value={view} onChange={setView} />
@@ -251,9 +253,9 @@ export function RadiologyWorklistPage() {
                   </option>
                 ))}
               </Select>
-              <Gate allowed={can("order.rad") && canReport} reason="Needs the order.rad and rad.report permissions. Switch to the System Administrator role.">
+              <Gate allowed={can("order.rad") && canPerform && canReport} reason="Needs the order.rad, rad.perform and rad.report permissions. Switch to the System Administrator role.">
                 <Button
-                  disabled={!(can("order.rad") && canReport)}
+                  disabled={!(can("order.rad") && canPerform && canReport)}
                   onClick={() => {
                     const enc = activeVisits.find((e) => e.visitNumber === (sampleVisit || activeVisits[0]?.visitNumber));
                     const o = enc && createRadConformanceSample(enc);

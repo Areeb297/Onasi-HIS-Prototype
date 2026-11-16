@@ -4,7 +4,7 @@ import { currentUser, roleOf } from "./session";
 import { getState, updateEncounter } from "./store";
 
 /**
- * Progress notes on a visit: add, edit, set Active or Inactive, delete with a reason.
+ * Progress notes on a visit: add, add an addendum (never rewrite), set Active or Inactive, delete with a reason.
  * Active notes stay in `enc.notes`, so the timeline, the handoff and the documents read active notes only.
  * Inactive notes move to `enc.notesInactive`; deleted ones to `enc.notesDeleted` with who removed them and why.
  * Progress notes are not part of the ADT message, so no change here marks the chart for an update.
@@ -61,12 +61,17 @@ export function applyAdd(e: Encounter, text: string, by: { name: string; role: s
   return note;
 }
 
-export function applyEdit(e: Encounter, id: string, text: string, by: { name: string }): Note | null {
+/**
+ * Adds an addendum. A saved note is never rewritten (CBAHI, JCI): the original text stays and the addendum is appended
+ * with its author and time, all in the one text column the HIS has (emr.ProgressNote.Notes).
+ */
+export function applyEdit(e: Encounter, id: string, text: string, by: { name: string }, at: string = localNow()): Note | null {
   const loc = locate(e, id);
   if (!loc || !text.trim()) return null;
   const list = [...(e[loc.list] ?? [])];
   const old = list[loc.index];
-  const next: Note = { ...old, id: noteId(old), text: text.trim(), editedAt: new Date().toISOString(), editedBy: by.name };
+  const addendum = `Addendum by ${by.name}, ${at.replace("T", " ")}: ${text.trim()}`;
+  const next: Note = { ...old, id: noteId(old), text: `${old.text}\n\n${addendum}`, editedAt: new Date().toISOString(), editedBy: by.name };
   list[loc.index] = next;
   e[loc.list] = list;
   return next;
@@ -111,7 +116,7 @@ export function addNote(visit: string, text: string): Note | null {
 export function editNote(visit: string, id: string, text: string): boolean {
   const out: { note?: Note | null } = {};
   updateEncounter(visit, (e) => { out.note = applyEdit(e, id, text, who()); }, { touch: false });
-  if (out.note) audit("update", `Progress note ${id}`, { patient: patientOf(visit), detail: `Visit ${visit}. Text edited` });
+  if (out.note) audit("update", `Progress note ${id}`, { patient: patientOf(visit), detail: `Visit ${visit}. Addendum added` });
   return !!out.note;
 }
 
