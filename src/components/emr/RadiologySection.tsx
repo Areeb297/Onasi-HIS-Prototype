@@ -246,7 +246,7 @@ export function RadiologySection({ enc }: { enc: Encounter }) {
         subtitle={cancellingOrder ? `${cancellingOrder.id}: ${procByCode(cancellingOrder.procCode)?.display}` : undefined}
         footer={
           <>
-            <Button onClick={() => setCancelling(null)}>Keep Order</Button>
+            <Button variant="ghost" onClick={() => setCancelling(null)}>Keep Order</Button>
             <Button
               variant="danger"
               onClick={() => {

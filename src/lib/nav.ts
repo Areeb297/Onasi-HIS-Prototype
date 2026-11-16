@@ -20,7 +20,6 @@ export interface NavGroup {
   id: string;
   label: string;
   icon: Icon;
-  color: string; // text color class
   pages: NavPage[];
   /** Hidden unless the user has this permission. */
   perm?: Permission;
@@ -36,14 +35,14 @@ const m = (id: string, label: string, perm?: Permission): NavPage => ({ id, labe
  */
 export const NAV: NavGroup[] = [
   {
-    id: "dashboard", label: "Dashboard", icon: IconDeviceDesktopAnalytics, color: "text-admit",
+    id: "dashboard", label: "Dashboard", icon: IconDeviceDesktopAnalytics,
     pages: [
       { id: "dashboard", label: "Dashboard", path: "/dashboard", perm: "patient.read" },
       { id: "my-patients", label: "My Patients", path: "/my-patients", perm: "emr.read" },
     ],
   },
   {
-    id: "patient", label: "Patient", icon: IconUsers, color: "text-merge",
+    id: "patient", label: "Patient", icon: IconUsers,
     pages: [
       { id: "patients", label: "Patient", path: "/patients", perm: "patient.read" },
       { id: "confidential", label: "Confidential Patient", path: "/confidential", perm: "patient.read" },
@@ -52,18 +51,18 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "appointments", label: "Appointments", icon: IconCalendar, color: "text-move",
+    id: "appointments", label: "Appointments", icon: IconCalendar,
     pages: [{ id: "appointments", label: "Appointments", path: "/appointments", perm: "patient.read" }],
   },
   {
-    id: "opd", label: "OPD", icon: IconStethoscope, color: "text-admit",
+    id: "opd", label: "OPD", icon: IconStethoscope,
     pages: [
       { id: "opd", label: "OPD Worklist", path: "/opd", perm: "patient.read" },
       { id: "reclassified", label: "Reclassified To Outpatient", path: "/reclassified", perm: "patient.read" },
     ],
   },
   {
-    id: "ipd", label: "IPD", icon: IconBuildingHospital, color: "text-move",
+    id: "ipd", label: "IPD", icon: IconBuildingHospital,
     pages: [
       { id: "admission-requests", label: "Admission Requests", path: "/admission-requests", perm: "patient.read" },
       { id: "beds", label: "Beds", path: "/beds", perm: "patient.read" },
@@ -72,23 +71,23 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "er", label: "Emergency", icon: IconHeartbeat, color: "text-cancel",
+    id: "er", label: "Emergency", icon: IconHeartbeat,
     pages: [{ id: "er", label: "Emergency Worklist", path: "/er", perm: "patient.read" }],
   },
   {
-    id: "lab", label: "Laboratory", icon: IconFlask, color: "text-update",
+    id: "lab", label: "Laboratory", icon: IconFlask,
     pages: [{ id: "lab", label: "Worklist", path: "/lab", perm: "lab.result" }],
   },
   {
-    id: "rad", label: "Radiology", icon: IconRadioactive, color: "text-move",
+    id: "rad", label: "Radiology", icon: IconRadioactive,
     pages: [{ id: "rad", label: "Worklist", path: "/radiology", perm: "rad.report" }],
   },
   {
-    id: "theatre", label: "Theatre", icon: IconScissors, color: "text-cancel",
+    id: "theatre", label: "Theatre", icon: IconScissors,
     pages: [{ id: "theatre", label: "Theatre List", path: "/theatre", perm: "emr.read" }],
   },
   {
-    id: "pharmacy", label: "Pharmacy", icon: IconPill, color: "text-ok",
+    id: "pharmacy", label: "Pharmacy", icon: IconPill,
     pages: [
       { id: "pharmacy-home", label: "Pharmacy", path: "/pharmacy", perm: "rx.dispense" },
       { id: "pharmacy-stock", label: "Stock", path: "/pharmacy/stock", perm: "rx.dispense" },
@@ -99,15 +98,15 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "onasi-ai", label: "Onasi AI", icon: IconRobot, color: "text-admit", perm: "ai.use",
+    id: "onasi-ai", label: "Onasi AI", icon: IconRobot, perm: "ai.use",
     pages: [{ id: "agents", label: "Agents", path: "/agents", perm: "ai.use" }],
   },
   {
-    id: "invoice", label: "Invoice", icon: IconFileInvoice, color: "text-merge", perm: "billing",
+    id: "invoice", label: "Invoice", icon: IconFileInvoice, perm: "billing",
     pages: [{ id: "invoices", label: "Invoice Worklist", path: "/invoices", perm: "billing" }, m("contractual-discounts", "Contractual Discounts", "billing")],
   },
   {
-    id: "rcm", label: "RCM", icon: IconCash, color: "text-ok", perm: "billing",
+    id: "rcm", label: "RCM", icon: IconCash, perm: "billing",
     pages: [
       m("daman-dashboard", "Daman Dashboard", "billing"),
       { id: "billing", label: "Billing Worklist", path: "/billing", perm: "billing" },
@@ -124,18 +123,18 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "nphies", label: "NPHIES", icon: IconCloudUpload, color: "text-move",
+    id: "nphies", label: "NPHIES", icon: IconCloudUpload,
     pages: [{ id: "nphies-clinical", label: "Clinical", path: "/nphies-clinical", perm: "patient.read" }],
   },
   {
-    id: "scheduler", label: "Scheduler", icon: IconCalendar, color: "text-update", perm: "admin",
+    id: "scheduler", label: "Scheduler", icon: IconCalendar, perm: "admin",
     pages: [
       m("shift-management", "Shift Management"), m("shift-assignment", "Shift Assignment"), m("plans-management", "Plans Management"),
       m("patient-plans", "Patient Plans"), m("task-scheduler", "Task Scheduler"),
     ],
   },
   {
-    id: "rehab", label: "Rehabilitation Section", icon: IconHeartRateMonitor, color: "text-admit", perm: "admin",
+    id: "rehab", label: "Rehabilitation Section", icon: IconHeartRateMonitor, perm: "admin",
     pages: [
       m("rehab-schedules", "Rehabilitation Schedules"), m("rehab-classes", "Rehabilitation Classes"),
       m("rehab-attendance", "Rehabilitation Attendance"), m("rehab-dashboard", "Rehabilitation Dashboard"),
@@ -143,14 +142,14 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "client-setup", label: "Client Setup", icon: IconBuildingBank, color: "text-move", perm: "admin",
+    id: "client-setup", label: "Client Setup", icon: IconBuildingBank, perm: "admin",
     pages: [
       m("client", "Client"), m("clinic", "Clinic"), m("department", "Department"), m("sub-department", "Sub Department"), m("client-branding", "Client Branding"),
       m("care-faculty-module", "Care Faculty Module"), m("country", "Country"), m("state", "State"), m("city", "City"),
     ],
   },
   {
-    id: "settings", label: "Settings", icon: IconSettings, color: "text-muted-foreground", perm: "admin",
+    id: "settings", label: "Settings", icon: IconSettings, perm: "admin",
     pages: [
       { id: "integrations", label: "Integrations", path: "/integrations", perm: "admin" },
       m("lookup", "Lookup"), m("module", "Module"), m("page", "Page"), m("clinical-integrations", "Clinical Integrations"),
@@ -160,49 +159,49 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "lab-setup", label: "Laboratory Setup", icon: IconFlask, color: "text-update", perm: "admin",
+    id: "lab-setup", label: "Laboratory Setup", icon: IconFlask, perm: "admin",
     pages: [m("lab-groups", "Group & Sub-Group"), m("lab-test-details", "Test Details"), m("lab-test-components", "Test Result Components"), m("lab-permissions", "Permissions")],
   },
   {
-    id: "rad-setup", label: "Radiology Setup", icon: IconRadioactive, color: "text-move", perm: "admin",
+    id: "rad-setup", label: "Radiology Setup", icon: IconRadioactive, perm: "admin",
     pages: [m("rad-groups", "Group & Sub-Group"), m("rad-permissions", "Permissions"), m("rad-machines", "Machines")],
   },
   {
-    id: "insurance-setup", label: "Insurance Setup", icon: IconShieldCheck, color: "text-ok", perm: "admin",
+    id: "insurance-setup", label: "Insurance Setup", icon: IconShieldCheck, perm: "admin",
     pages: [
       m("tpa", "TPA"), m("insurance", "Insurance"), m("insurance-policy", "Insurance Policy"), m("insurance-class", "Insurance Class"),
       m("insurance-network", "Insurance Network"), m("insurance-master", "Insurance Master Setup"),
     ],
   },
   {
-    id: "emr-setup", label: "EMR Setup", icon: IconClipboardHeart, color: "text-admit", perm: "admin",
+    id: "emr-setup", label: "EMR Setup", icon: IconClipboardHeart, perm: "admin",
     pages: [m("emr-form-builder", "EMR Form Builder"), m("emr-module", "EMR Module"), m("emr-page", "EMR Page"), m("emr-page-permissions", "EMR Page Permissions")],
   },
   {
-    id: "reporting", label: "Reporting", icon: IconReportMedical, color: "text-merge", perm: "admin",
+    id: "reporting", label: "Reporting", icon: IconReportMedical, perm: "admin",
     pages: [m("report-designer", "Report Designer"), m("report-groups", "Report Groups"), m("report-subgroups", "Report Sub Groups"), m("reports", "Reports")],
   },
   {
-    id: "speciality", label: "Speciality", icon: IconStethoscope, color: "text-update", perm: "admin",
+    id: "speciality", label: "Speciality", icon: IconStethoscope, perm: "admin",
     pages: [m("specialty", "Specialty"), m("sub-specialty", "Sub-Specialty")],
   },
   {
-    id: "users", label: "Users", icon: IconUserShield, color: "text-move", perm: "admin",
+    id: "users", label: "Users", icon: IconUserShield, perm: "admin",
     pages: [m("users", "User"), m("superuser", "Super User")],
   },
   {
-    id: "roles", label: "Role Permissions", icon: IconLock, color: "text-cancel", perm: "admin",
+    id: "roles", label: "Role Permissions", icon: IconLock, perm: "admin",
     pages: [m("role", "Role"), m("role-module", "Role Module"), m("role-rights", "Role Rights"), { id: "access", label: "Access Matrix", path: "/access", perm: "admin" }],
   },
   {
-    id: "automations", label: "Automations", icon: IconRoute, color: "text-admit", perm: "patient.read",
+    id: "automations", label: "Automations", icon: IconRoute, perm: "patient.read",
     pages: [
       { id: "automations", label: "Automations", path: "/automations", perm: "admin" },
       { id: "automation-history", label: "Run History", path: "/automations/history", perm: "patient.read" },
     ],
   },
   {
-    id: "governance", label: "Governance", icon: IconShieldCheck, color: "text-ok", perm: "audit.read",
+    id: "governance", label: "Governance", icon: IconShieldCheck, perm: "audit.read",
     pages: [
       { id: "audit", label: "Audit Trail", path: "/audit", perm: "audit.read" },
       { id: "compliance", label: "Compliance Map", path: "/compliance", perm: "audit.read" },
@@ -211,10 +210,10 @@ export const NAV: NavGroup[] = [
   },
   // Developer View only
   {
-    id: "dev-adt", label: "ADT Event Forms", icon: IconActivity, color: "text-update", devOnly: true, pages: [],
+    id: "dev-adt", label: "ADT Event Forms", icon: IconActivity, devOnly: true, pages: [],
   },
   {
-    id: "dev-tools", label: "Test Tools", icon: IconTool, color: "text-ok", devOnly: true,
+    id: "dev-tools", label: "Test Tools", icon: IconTool, devOnly: true,
     pages: [
       { id: "runner", label: "Scenario Runner", path: "/runner" },
       { id: "log", label: "Message Log", path: "/log" },
@@ -223,6 +222,14 @@ export const NAV: NavGroup[] = [
     ],
   },
 ];
+
+/** Listing pages and worklists: they open with the sidebar collapsed to its icon rail, so the grid gets the width. */
+const LIST_PATHS = new Set([
+  "/patients", "/confidential", "/my-patients", "/appointments", "/opd", "/reclassified", "/ipd", "/admission-requests", "/er",
+  "/lab", "/radiology", "/theatre", "/pharmacy", "/pharmacy/stock", "/pharmacy/dispense", "/invoices", "/billing", "/transactions", "/audit",
+]);
+/** Every /m/ page is a setup table or an RCM case list, except the Daman dashboard. */
+export const isListPage = (path: string) => LIST_PATHS.has(path) || (path.startsWith("/m/") && path !== "/m/daman-dashboard");
 
 export const NAV_ICONS = {
   IconBed, IconDeviceDesktopAnalytics, IconId, IconPlayerPlay, IconXboxX, IconNotebook, IconTable, IconListDetails, IconSchool, IconRobot, IconFolders,

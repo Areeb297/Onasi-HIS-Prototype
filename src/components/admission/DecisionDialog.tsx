@@ -37,7 +37,7 @@ export function DecisionDialog({ request: r, kind, onClose }: { request: Admissi
       subtitle={`Request ${r.id}, ${departmentLabel(r.department)}, requested by ${r.requestedBy}. Approver ${doctorLabel(r.approvingDoctor)}.`}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
+          <Button variant="ghost" onClick={onClose}>Go Back</Button>
           <Button variant="danger" disabled={missing.length > 0} onClick={confirm}>{kind === "reject" ? "Reject Request" : "Cancel Request"}</Button>
         </>
       }

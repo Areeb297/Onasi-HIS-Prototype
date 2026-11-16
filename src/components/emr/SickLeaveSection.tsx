@@ -14,6 +14,7 @@ import { printDocument, printableName } from "@/lib/print-doc";
 import { useSession } from "@/lib/session";
 import { nowLocal, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 /** The chart "Sick Leave" tab: a doctor issues a sick leave or a companion leave on Seha, prints it, checks it or cancels it. */
 
@@ -86,7 +87,7 @@ export function SickLeaveSection({ enc }: { enc: Encounter }) {
               ]}
               right={(
                 <>
-                  <Button size="sm" onClick={() => print(l)}><Printer className="size-4" aria-hidden="true" /> Print</Button>
+                  <ActionIcon kind="print" name="sick leave" onClick={() => print(l)} />
                   <RowMenu
                     label={`More actions for ${l.number}`}
                     items={[
@@ -117,7 +118,7 @@ export function SickLeaveSection({ enc }: { enc: Encounter }) {
         onClose={closeCancel}
         title="Cancel Sick Leave"
         subtitle={cancelling ? `${cancelling.number}. Seha marks the leave as cancelled.` : undefined}
-        footer={<><Button onClick={closeCancel}>Keep The Leave</Button><Button variant="danger" onClick={cancel}>Cancel Sick Leave</Button></>}
+        footer={<><Button variant="ghost" onClick={closeCancel}>Keep The Leave</Button><Button variant="danger" onClick={cancel}>Cancel Sick Leave</Button></>}
       >
         <FormField label="Reason" required error={error || undefined}>
           <Input value={why} onChange={(e) => { setWhy(e.target.value); setError(""); }} placeholder="For example: issued with the wrong dates" />
@@ -193,7 +194,7 @@ function SickLeaveForm({ enc, patientLine, onClose }: { enc: Encounter; patientL
       title="New Sick Leave"
       subtitle={patientLine}
       dirty={dirty}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Issue On Seha</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Issue On Seha</Button></>}
     >
       <div className="space-y-4">
         <RequiredNote />

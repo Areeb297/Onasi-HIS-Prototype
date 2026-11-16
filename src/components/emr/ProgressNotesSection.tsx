@@ -146,7 +146,7 @@ function EditSheet({ visit, id, original, onClose }: { visit: string; id: string
       title="Edit Progress Note"
       subtitle="The note shows who edited it and when."
       dirty={changed}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Update Note</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Update Note</Button></>}
     >
       <FormField label="Note" required error={v.error("text")}>
         <TextArea rows={10} value={text} onChange={(e) => setText(e.target.value)} onBlur={v.blur("text")} />
@@ -171,7 +171,7 @@ function DeleteDialog({ visit, id, onClose }: { visit: string; id: string; onClo
       onClose={onClose}
       title="Delete Progress Note"
       subtitle="The note leaves the chart. The note and your reason are kept in the audit trail."
-      footer={<><Button onClick={onClose}>Keep The Note</Button><Button variant="danger" onClick={confirm}>Delete Note</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Keep The Note</Button><Button variant="danger" onClick={confirm}>Delete Note</Button></>}
     >
       <div className="space-y-4">
         <FormField label="Reason" required>

@@ -170,7 +170,7 @@ function AppealDialog({ open, onClose, c }: { open: boolean; onClose: () => void
   };
   return (
     <Dialog open={open} onClose={onClose} wide title="Appeal Denied Lines" subtitle={`Creates appeal claim ${c.claim.claimNumber}-AP linked to ${c.claim.claimNumber}, for the lines you choose.`}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={save}>Send Appeal</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={save}>Send Appeal</Button></>}>
       <div className="grid gap-4">
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium">Lines To Appeal</legend>

@@ -55,7 +55,7 @@ export function RuleDialog({ open, onClose, rule, source, fields }: { open: bool
   return (
     <Dialog open={open} onClose={onClose} wide title={rule ? `Edit Rule ${rule.id}` : source === "nphies" ? "Add NPHIES Rule" : "Add Rule"}
       subtitle={builtIn ? "A built-in check of the claim review. You can change its severity, when it runs and its wording." : "The rule fires when every condition holds."}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>{rule ? "Save Rule" : "Add Rule"}</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>{rule ? "Save Rule" : "Add Rule"}</Button></>}>
       <div className="flex flex-col gap-4">
         <div className="grid gap-3 sm:grid-cols-2">
           {!rule && source === "nphies" && <Field label="Rule ID" required hint="As in the NPHIES workbook, for example BV-00501."><Input value={form.id ?? ""} onChange={(e) => set("id", e.target.value)} /></Field>}
@@ -133,7 +133,7 @@ export function TestRuleDialog({ rule, fields, onClose }: { rule: Rule | null; f
   const results = m && one ? (["priorauth", "claim"] as const).map((use) => ({ use, findings: reviewClaim(reviewInputOf(m), use, one) })) : [];
   const facts = m ? claimFacts(m) : null;
   return (
-    <Dialog open={!!rule} onClose={onClose} wide title={rule ? `Test Rule ${rule.id}` : "Test Rule"} subtitle={rule ? `${rule.name}. The rule runs on the chosen claim even if it is switched off.` : undefined} footer={<Button onClick={onClose}>Close</Button>}>
+    <Dialog open={!!rule} onClose={onClose} wide title={rule ? `Test Rule ${rule.id}` : "Test Rule"} subtitle={rule ? `${rule.name}. The rule runs on the chosen claim even if it is switched off.` : undefined} footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
       <Field label="Claim">
         <Select value={visit} onChange={(e) => setVisit(e.target.value)}>
           {visits.map((v) => <option key={v.enc.visitNumber} value={v.enc.visitNumber}>{patientName(v.patient)}, visit {v.enc.visitNumber}, {v.payer}</option>)}

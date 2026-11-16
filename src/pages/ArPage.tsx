@@ -134,7 +134,7 @@ function ArDialog({ c, action, today, onClose }: { c: ArCase; action: ArAction; 
   const min = dayOf(today);
   return (
     <Dialog open onClose={onClose} title={AR_ACTION_LABEL[action]} subtitle={`${c.ref}, ${c.patientName}. Outstanding ${c.outstanding.toFixed(2)} SAR.`}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={submit}>Submit Action</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={submit}>Submit Action</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         {action === "follow-up" && <Field label="Next Follow-Up Date" required><Input type="date" min={min} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>}
         {action === "promise" && (

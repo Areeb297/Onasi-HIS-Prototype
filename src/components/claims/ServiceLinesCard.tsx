@@ -5,6 +5,7 @@ import { Sar } from "@/components/invoice/InvoiceParts";
 import { Badge, Button, Card, Empty, Input, Select, Table, Td, Th, cn } from "@/components/ui/primitives";
 import { addProcedureLine, removeExtraLine, saveLine, type ClaimModel, type ClaimServiceLine, type CodeSystem, type Finding, type LineEdit } from "@/lib/claims";
 import { pushToast } from "@/lib/toast";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 const KIND_LABEL: Record<ClaimServiceLine["kind"], string> = { visit: "Visit", lab: "Laboratory", rad: "Radiology", rx: "Medication", proc: "Procedure" };
 const flash = "transition-shadow data-[flash=true]:ring-2 data-[flash=true]:ring-inset data-[flash=true]:ring-[#03c1ac]";
@@ -170,7 +171,7 @@ export function ServiceLinesCard({ m, findings, readOnly }: { m: ClaimModel; fin
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div><p className="mb-1 text-xs text-muted-foreground">Diagnoses</p><Chips label={`Diagnoses for line ${l.seq}`} options={dxOptions} selected={l.dxCodes} disabled={readOnly} onToggle={(id) => toggle(l, "dxCodes", id)} /></div>
                 <div><p className="mb-1 text-xs text-muted-foreground">Care Team</p><Chips label={`Care team for line ${l.seq}`} options={careOptions} selected={l.careIds} disabled={readOnly} onToggle={(id) => toggle(l, "careIds", id)} /></div>
-                {l.extra && <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => remove(l)}><Trash2 className="size-4" /> Remove</Button>}
+                {l.extra && <ActionIcon kind="delete" label="Remove" name={`line ${l.seq}, ${l.text}`} disabled={readOnly} onClick={() => remove(l)} />}
               </div>
             </div>
           </li>

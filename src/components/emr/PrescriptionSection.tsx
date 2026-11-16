@@ -380,7 +380,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
         subtitle={confirm ? `${getDrug(confirm.item.drugId).generic}, ${rx.number}` : undefined}
         footer={
           <>
-            <Button onClick={() => setConfirm(null)}>Keep As Is</Button>
+            <Button variant="ghost" onClick={() => setConfirm(null)}>Keep As Is</Button>
             <Button variant="primary" onClick={doAction}>
               <IconSend className="size-4" />
               {confirm ? `${ACTION_TEXT[confirm.key].verb} And Send To NPHIES` : "Send"}
@@ -406,7 +406,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
         subtitle={answering ? `${getDrug(answering.drugId).generic} ${getDrug(answering.drugId).strengthValue} ${getDrug(answering.drugId).strengthUnit}, ${rx.number}` : undefined}
         footer={
           <>
-            <Button onClick={() => setAnswering(null)}>Close</Button>
+            <Button variant="ghost" onClick={() => setAnswering(null)}>Close</Button>
             <Button variant="primary" onClick={sendAnswer}>Send Answer To Pharmacy</Button>
           </>
         }
@@ -432,7 +432,7 @@ function RxCard({ rx, onEdit }: { rx: Prescription; onEdit: (itemId: string) => 
         subtitle={removing ? `${getDrug(removing.drugId).generic}, ${rx.number}` : undefined}
         footer={
           <>
-            <Button onClick={() => setRemoving(null)}>Keep Item</Button>
+            <Button variant="ghost" onClick={() => setRemoving(null)}>Keep Item</Button>
             <Button variant="danger" onClick={() => { if (removing) removeDraftItem(rx.id, removing.id); setRemoving(null); }}>Remove Item</Button>
           </>
         }

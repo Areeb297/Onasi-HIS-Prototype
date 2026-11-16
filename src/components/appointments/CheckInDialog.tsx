@@ -56,7 +56,7 @@ export function CheckInDialog({ appt, onClose, now }: { appt: Appointment | null
       subtitle={`${shownName(patient)}, ${dayLabel(appt.date)} at ${appt.start} with ${doctorName(appt.doctorId)}`}
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
           {stops ? (
             <>
               <Button onClick={fix} disabled={fixNote}>Fix Coverage</Button>

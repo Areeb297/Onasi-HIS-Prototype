@@ -865,7 +865,7 @@ export function startCorrection(c: RejectionCase): Res {
  * Resubmit. A live claim goes through the claim review and NPHIES Financial (sendFromClaim); a ledger claim goes back to
  * Submitted and waits for the payer's answer (Manual Responses).
  */
-export function resubmitRejection(c: RejectionCase, note: string): Res {
+export function resubmitRejection(c: RejectionCase, note: string, today: Date = new Date()): Res {
   const no = guard(`${KIND_WORD.rejections} ${c.id}`);
   if (no) return no;
   if (!canMove(REJECTION_FLOW, c.status, "Resubmitted")) return { ok: false, errors: [`A case that is ${c.status} cannot be resubmitted. Correct it first.`] };
@@ -874,7 +874,7 @@ export function resubmitRejection(c: RejectionCase, note: string): Res {
     if (!r.ok) return { ok: false, errors: r.problems };
   } else {
     const s = store.get();
-    store.set({ ...s, claims: s.claims.map((x) => (x.claimNumber === c.claim.claimNumber ? { ...x, state: "Submitted", answeredOn: undefined, errors: [], submittedOn: dayOf(new Date()) } : x)) });
+    store.set({ ...s, claims: s.claims.map((x) => (x.claimNumber === c.claim.claimNumber ? { ...x, state: "Submitted", answeredOn: undefined, errors: [], submittedOn: dayOf(today) } : x)) });
   }
   return move("rejections", REJECTION_FLOW, c.id, c.status, "Resubmitted", "Resubmit", note || "Sent the corrected claim to the payer.", c.claim.patientName);
 }
@@ -884,7 +884,7 @@ export function resubmitRejection(c: RejectionCase, note: string): Res {
 export interface AppealInput { seqs: number[]; reason: string; attachments: string[] }
 
 /** Appeal: a new claim linked to the denied one, for the chosen denied lines, with the reason and the attachment names. */
-export function appealDenial(c: DenialCase, input: AppealInput): Res {
+export function appealDenial(c: DenialCase, input: AppealInput, today: Date = new Date()): Res {
   const no = guard(`${KIND_WORD.denials} ${c.id}`);
   if (no) return no;
   const errors: string[] = [];
@@ -900,7 +900,7 @@ export function appealDenial(c: DenialCase, input: AppealInput): Res {
   const src = s.claims.find((x) => x.claimNumber === base);
   const appeal: LedgerClaim = {
     claimNumber, patientName: c.claim.patientName, mrn: c.claim.mrn, nationalId: src?.nationalId, payer: c.claim.payer, type: c.claim.type,
-    serviceDate: c.claim.serviceDate, submittedOn: dayOf(new Date()), diagnosis: src?.diagnosis ?? "", state: "Submitted", appealOf: base, source: "appeal",
+    serviceDate: c.claim.serviceDate, submittedOn: dayOf(today), diagnosis: src?.diagnosis ?? "", state: "Submitted", appealOf: base, source: "appeal",
     lines: lines.map((l, i) => ({ seq: i + 1, code: l.code, text: l.text, claimed: l.denied })),
   };
   store.set({ ...s, claims: [...s.claims, appeal] });

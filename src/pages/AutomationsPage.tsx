@@ -197,7 +197,7 @@ export function AutomationsPage() {
 
       {creating && <NewDialog initial={creating.template} onClose={() => setCreating(null)} />}
       <Dialog open={!!deleting} onClose={() => setDeleting(null)} title={`Delete ${deleting?.name ?? ""}?`} subtitle="Its run history is kept. Runs waiting for a wait or an approval stop."
-        footer={<><Button onClick={() => setDeleting(null)}>Keep It</Button><Button variant="danger" onClick={() => { if (deleting) { deleteAutomation(deleting.id); pushToast({ tone: "ok", text: "Automation deleted." }); } setDeleting(null); }}>Delete</Button></>}>
+        footer={<><Button variant="ghost" onClick={() => setDeleting(null)}>Keep It</Button><Button variant="danger" onClick={() => { if (deleting) { deleteAutomation(deleting.id); pushToast({ tone: "ok", text: "Automation deleted." }); } setDeleting(null); }}>Delete</Button></>}>
         <p className="text-sm">{deleting?.status === "active" ? "This automation is active. Pausing it keeps the flow if you may need it again." : "The flow is removed from the list."}</p>
       </Dialog>
     </div>
@@ -228,7 +228,7 @@ function NewDialog({ initial, onClose }: { initial: string; onClose: () => void 
   }
   return (
     <Dialog open onClose={onClose} title="New Automation" subtitle="It starts as a draft. Nothing runs until you activate it."
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={create}>Create And Open</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={create}>Create And Open</Button></>}>
       <div className="space-y-4">
         <Field label="Start From">
           <Select value={template} onChange={(e) => setTemplate(e.target.value)}>
@@ -390,7 +390,7 @@ export function AutomationRunHistoryPage() {
       </section>
 
       <Dialog open={!!declining} onClose={() => setDeclining(null)} title="Decline This Step" subtitle="The path stops here. Nothing after the approval runs."
-        footer={<><Button onClick={() => setDeclining(null)}>Cancel</Button><Button variant="danger" disabled={!reason.trim()} onClick={() => { if (declining) report(declineStep(declining.run.id, declining.index, reason), "Declined."); setDeclining(null); }}>Decline</Button></>}>
+        footer={<><Button variant="ghost" onClick={() => setDeclining(null)}>Cancel</Button><Button variant="danger" disabled={!reason.trim()} onClick={() => { if (declining) report(declineStep(declining.run.id, declining.index, reason), "Declined."); setDeclining(null); }}>Decline</Button></>}>
         <Field label="Reason" required>
           <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: already booked by the clinic" autoFocus />
         </Field>

@@ -69,7 +69,7 @@ export function LabVerifyDialog({ order, patient, onClose }: { order: LabOrder; 
           </>
         ) : (
           <>
-            <Button onClick={onClose}>Close</Button>
+            <Button variant="ghost" onClick={onClose}>Close</Button>
             <Button onClick={() => setMode("send-back")}>Send Back</Button>
             <Button
               variant="primary"

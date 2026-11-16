@@ -11,3 +11,4 @@ Thumbs.db
 # Private documents: keep out of the public repository
 onasi-journeys.html
 *.docx
+docs/ct-his-db/

@@ -101,7 +101,7 @@ export function VerifyDialog({ rx, itemId, onClose }: { rx: Prescription; itemId
       subtitle={`${drug.generic} ${drug.strengthValue} ${drug.strengthUnit} · ${rx.number}`}
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
           <span title={blockedWhy}>
             <Button variant={choice === "reject" ? "danger" : "primary"} disabled={!!blockedWhy} onClick={save}>
               {choice === "verify" ? "Verify Item" : choice === "query" ? "Send Question To Prescriber" : "Reject Item"}

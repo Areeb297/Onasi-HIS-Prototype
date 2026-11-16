@@ -68,7 +68,7 @@ export function BedSetupDialog({ bedId, ward, onClose }: { bedId?: string; ward?
       subtitle={editing ? `${wardName}. The ward, room and bed number stay the same.` : "Add one bed, or several beds in the same room at once."}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={save} disabled={tried && problems.length > 0}>
             {editing ? "Save Bed" : planned.length > 1 ? `Add ${planned.length} Beds` : "Add Bed"}
           </Button>

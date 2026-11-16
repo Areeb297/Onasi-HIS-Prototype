@@ -26,6 +26,7 @@ import { can, useSession } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 import { useVitals } from "@/lib/vitals";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 const warn = (r: { ok: boolean; problems?: string[] }) => { if (!r.ok) pushToast({ tone: "warn", text: r.problems?.[0] ?? "Not saved." }); return r.ok; };
 const CLASS_LABEL: Record<string, string> = { O: "Outpatient", E: "Emergency", I: "Inpatient" };
@@ -438,7 +439,7 @@ function EncounterSection({ m }: { m: ClaimModel }) {
   const doc = (id?: string) => { const d = DOCTORS.find((x) => x.id === id); return d ? `Dr. ${d.given} ${d.family}` : "Not Recorded"; };
   const start = e.admitAt ?? e.ed?.arrivalAt;
   return (
-    <Section id="claim-encounter" title="Encounter" subtitle="From the visit. Change it in registration or the chart, not here." right={<Button size="sm" variant="ghost" onClick={() => navigate("/chart", { visit: m.visit })}>Open Chart</Button>}>
+    <Section id="claim-encounter" title="Encounter" subtitle="From the visit. Change it in registration or the chart, not here." right={<ActionIcon kind="chart" name={m.visit} onClick={() => navigate("/chart", { visit: m.visit })} />}>
       <dl className="grid gap-2.5 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Fact label="Encounter Class">{CLASS_LABEL[e.cls]}</Fact>
         <Fact label="Encounter Status">{STATUS_LABEL[e.status] ?? e.status}</Fact>
@@ -512,7 +513,7 @@ function SupportSection({ m, readOnly }: { m: ClaimModel; readOnly: boolean }) {
     <Section
       id="claim-support" title="Supporting Information"
       subtitle="Vital signs and the chief complaint come from the chart. Fix them in the chart; add anything else the payer needs below."
-      right={<Button size="sm" variant="ghost" onClick={() => navigate("/chart", { visit: m.visit })}>Open Chart</Button>}
+      right={<ActionIcon kind="chart" name={m.visit} onClick={() => navigate("/chart", { visit: m.visit })} />}
     >
       <Table>
         <thead><tr><Th>From The Chart</Th><Th>State</Th><Th>Value</Th></tr></thead>

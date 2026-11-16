@@ -588,15 +588,22 @@ export const SNOMED_COMPLAINTS: CodedTerm[] = [
   { code: "125666000", text: "Burn" },
 ];
 
-/** Value lists for the allergy form. The HIS loads these from its lookup tables; these follow the FHIR AllergyIntolerance values. */
-export const ALLERGY_CATEGORIES = ["Medication", "Food", "Environment", "Biologic"] as const;
+/**
+ * Value lists for the allergy form, from the HIS lookups (Allergy Category, Allergy Type, Allergy Clinical Status, Allergy Verification Status,
+ * Allergy Criticality, Allergy Source Type, Allergy Exposure Route, Allergy Reaction Outcome). The category keeps its stored value and shows the HIS label.
+ */
+export const ALLERGY_CATEGORIES: { value: "Medication" | "Food" | "Environment"; label: string }[] = [
+  { value: "Medication", label: "Drug Allergy" },
+  { value: "Food", label: "Food Allergy" },
+  { value: "Environment", label: "Allergy (Other Than Drug Or Food)" },
+];
 export const ALLERGY_REACTION_TYPES = ["Allergy", "Intolerance"] as const;
 export const ALLERGY_CLINICAL_STATUSES = ["Active", "Inactive", "Resolved"] as const;
-export const ALLERGY_VERIFICATION = ["Unconfirmed", "Presumed", "Confirmed", "Refuted", "Entered In Error"] as const;
+export const ALLERGY_VERIFICATION = ["Unconfirmed", "Confirmed", "Refuted", "Entered In Error"] as const;
 export const ALLERGY_CRITICALITY = ["Low", "High", "Unable To Assess"] as const;
-export const ALLERGY_SOURCES = ["Patient", "Family Member", "Clinician", "Previous Records", "Referring Hospital"];
-export const EXPOSURE_ROUTES = ["Oral", "Intravenous", "Intramuscular", "Subcutaneous", "Topical", "Inhalation", "Ingestion", "Contact", "Injection Or Sting", "Other"];
-export const REACTION_OUTCOMES = ["Resolved", "Resolving", "Not Resolved", "Resolved With Lasting Effects", "Fatal", "Unknown"];
+export const ALLERGY_SOURCES = ["Patient Reported", "Clinician Observed", "Imported Record", "Other"];
+export const EXPOSURE_ROUTES = ["Ingestion", "Injection", "Topical", "Inhalation", "Other", "Unknown"];
+export const REACTION_OUTCOMES = ["Recovered", "Ongoing", "Unknown"];
 
 /** Made-up patients. No real people. */
 const RAW_PATIENTS: Omit<Patient, "healthId" | "nationality" | "maritalStatus" | "address">[] = [

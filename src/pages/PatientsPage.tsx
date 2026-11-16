@@ -34,7 +34,7 @@ function HealthIdDialog({ patient, onClose }: { patient: Patient | undefined; on
     audit("view", "National registry Health ID lookup", { patient: name, detail: a.ok ? (a.healthId === patient!.healthId ? "Matches the file" : "Differs from the file") : a.message });
   }
   return (
-    <Dialog open onClose={onClose} title="National Health ID" subtitle={`${name}, ${patient.mrn}`} footer={<Button onClick={onClose}>Close</Button>}>
+    <Dialog open onClose={onClose} title="National Health ID" subtitle={`${name}, ${patient.mrn}`} footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted-foreground">Health ID</dt><dd className="font-mono font-semibold">{patient.healthId || "None"}</dd>
         <dt className="text-muted-foreground">ID Number</dt><dd className="font-mono">{idNumber || "None"}</dd>

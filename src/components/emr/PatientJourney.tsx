@@ -15,6 +15,7 @@ import { currentUser } from "@/lib/session";
 import { useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 import { fmtDateTime } from "@/lib/format";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 /**
  * The patient journey on the chart overview. Timeline: every step of this visit with who did it, their role and the time
@@ -72,7 +73,7 @@ export function PatientJourney({ enc, patient }: { enc: Encounter; patient: Pati
       <CardHeader
         title="Patient Journey"
         subtitle="Every step of this visit with who did it, the patient's other visits, and who opened or changed this chart."
-        right={<Button size="sm" onClick={print}><Printer className="size-3.5" aria-hidden="true" /> Print</Button>}
+        right={<ActionIcon kind="print" name="Patient Journey" onClick={print} />}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2" >
         <div className="flex rounded-lg border border-border p-0.5" role="tablist" aria-label="Journey views">

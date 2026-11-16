@@ -5,16 +5,16 @@ import { YES_NO_UNKNOWN, area, chk, date, dt, multi, num, radio, scoreRange, sec
 const bal = (key: string, label: string, min: number, max: number, hint: string) =>
   radio(key, label, scoreRange(min, max), { hint });
 
-/* Option lists shared by the labour and maternity forms. In the HIS these come from lookup tables kept by the hospital. */
-const MEMBRANES = ["Intact", "Ruptured Spontaneously", "Ruptured Artificially", "Unknown"];
-const AMNIOTIC_FLUID = ["Clear", "Meconium Stained", "Blood Stained", "Foul Smelling", "Not Seen"];
+/* Option lists shared by the labour and maternity forms, from the HIS lookups of the same name (Membranes Status, Amniotic Fluid Type and so on). */
+const MEMBRANES = ["Intact", "Ruptured"];
+const AMNIOTIC_FLUID = ["Clear", "Meconium-Stained", "Bloody", "Turbid / Foul Smelling"];
 const FETAL_STATION = ["-3", "-2", "-1", "0", "+1", "+2", "+3"];
-const FETAL_PRESENTATION = ["Vertex", "Breech", "Transverse", "Oblique"];
+const FETAL_PRESENTATION = ["Cephalic", "Breech", "Shoulder", "Compound"];
 const FETAL_POSITION = [
   "Left Occiput Anterior (LOA)", "Right Occiput Anterior (ROA)", "Left Occiput Posterior (LOP)", "Right Occiput Posterior (ROP)",
-  "Left Occiput Transverse (LOT)", "Right Occiput Transverse (ROT)", "Occiput Anterior (OA)", "Occiput Posterior (OP)",
+  "Left Occiput Transverse (LOT)", "Right Occiput Transverse (ROT)",
 ];
-const OUTCOME_TYPES = ["Live Birth", "Stillbirth", "Miscarriage", "Termination", "Ectopic Pregnancy"];
+const OUTCOME_TYPES = ["Live Birth", "Stillbirth", "Miscarriage", "Ectopic Pregnancy", "Termination"];
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
 /** The six maternal vital signs, as the HIS lays them out. */
@@ -35,7 +35,7 @@ const WOMENS_DEFS: FormDef[] = [
     description: "Work-up of a couple who have not conceived. Infertility is usually defined as 12 months of regular unprotected intercourse without pregnancy.",
     summaryKeys: ["infertilityType", "duration", "ovulation", "tubes"],
     fields: [
-      ...section("History", sel("infertilityType", "Infertility Type", ["Primary", "Secondary"], { required: true }),
+      ...section("History", sel("infertilityType", "Infertility Type", [{ value: "Primary", label: "Primary Infertility" }, { value: "Secondary", label: "Secondary Infertility" }], { required: true }),
         num("duration", "Duration of Infertility", { unit: "years", min: 0, required: true }),
         num("marriedYears", "Duration of Marriage", { unit: "years", min: 0 }),
         chk("consanguinity", "Consanguinity", { placeholder: "The couple are related" }),
@@ -85,14 +85,14 @@ const WOMENS_DEFS: FormDef[] = [
       ...section("Period", date("periodStartDate", "Period Start Date", { required: true }),
         date("periodEndDate", "Period End Date", { hint: "Cannot be before the start date. Leave empty if the period is ongoing." }),
         num("durationDays", "Duration (Days)", { unit: "days", min: 1, hint: "Count from the start date to the end date, both days included." }),
-        sel("flowIntensity", "Flow Intensity", ["Spotting", "Light", "Moderate", "Heavy", "Very Heavy"]),
-        sel("flowDescription", "Flow Description", ["Bright Red", "Dark Red", "Brown", "Pink", "Watery", "With Clots"]),
+        sel("flowIntensity", "Flow Intensity", ["Light", "Moderate", "Heavy"]),
+        sel("flowDescription", "Flow Description", ["Normal", "Spotting Only", "With Small Clots", "With Large Clots", "Flooding", "Breakthrough Bleeding"]),
         sel("painLevel", "Pain Level", ["None", "Mild", "Moderate", "Severe"]),
         area("notes", "Notes", { placeholder: "Enter notes" })),
       ...section("Symptoms",
-        multi("periodSymptoms", "Period Symptoms", ["Cramps", "Back Pain", "Headache", "Bloating", "Nausea", "Fatigue", "Breast Tenderness", "Mood Changes"]),
-        multi("ovulationSymptoms", "Ovulation Symptoms", ["Mid-Cycle Pain", "Cervical Mucus Change", "Spotting", "Breast Tenderness", "Bloating", "Increased Libido"]),
-        multi("premenstrualSymptoms", "Premenstrual Symptoms", ["Mood Swings", "Irritability", "Bloating", "Breast Tenderness", "Food Cravings", "Acne", "Fatigue", "Headache", "Sleep Disturbance"])),
+        multi("periodSymptoms", "Period Symptoms", ["Cramps", "Lower Back Pain", "Headache", "Nausea", "Diarrhea", "Bloating", "Dizziness", "Fatigue", "Breast Tenderness"]),
+        multi("ovulationSymptoms", "Ovulation Symptoms", ["Cervical Mucus", "LH Surge", "Mittelschmerz", "Mid-Cycle Spotting", "Breast Tenderness", "Basal Body Temperature Rise", "None"]),
+        multi("premenstrualSymptoms", "Premenstrual Symptoms", ["Mood Swings", "Irritability", "Anxiety", "Depression", "Crying Spells", "Poor Concentration", "Insomnia", "Hypersomnia", "Fatigue", "Increased Appetite", "Bloating", "Breast Tenderness", "Headache", "Pelvic Cramps", "Joint / Muscle Pain"])),
     ],
   },
   {
@@ -104,19 +104,20 @@ const WOMENS_DEFS: FormDef[] = [
     legend: [["EDD", "Estimated delivery date"], ["LMP", "Last menstrual period"]],
     summaryKeys: ["pregnancyStatus", "estimatedDeliveryDate", "gestationalAgeWeeks", "gravida", "riskFactors"],
     fields: [
-      ...section("Pregnancy", sel("pregnancyStatus", "Pregnancy Status", ["Ongoing", "Delivered", "Miscarriage", "Terminated", "Ectopic"], { required: true }),
+      ...section("Pregnancy", sel("pregnancyStatus", "Pregnancy Status", [{ value: "Ongoing", label: "Currently Pregnant" }, { value: "Not Pregnant", label: "Not Pregnant" }], { required: true }),
         date("menstrualCycleStart", "Menstrual Cycle", { hint: "Start date of the last period, as recorded on the Menstrual Cycle form." }),
         text("diagnosis", "Diagnosis", { placeholder: "e.g. Z34.0 Supervision of normal first pregnancy", hint: "One of the diagnoses recorded for this visit (ICD-10-AM)." }),
-        sel("datingMethod", "Dating Method", ["Last Menstrual Period", "Ultrasound", "Embryo Transfer Date", "Clinical Estimate"]),
+        sel("datingMethod", "Dating Method", ["Last Menstrual Period", "Ultrasound", "Unknown"]),
         date("estimatedDeliveryDate", "Estimated Delivery Date", { hint: "Period start date plus 280 days." }),
         num("gestationalAgeWeeks", "Gestational Age (weeks)", { unit: "weeks", min: 0, max: 45, required: true, hint: "Days since the period start date, divided by 7." }),
         sel("trimester", "Trimester", ["First", "Second", "Third"], { hint: "First is under 14 weeks, second is 14 to under 28 weeks, third is 28 weeks or more." }),
-        sel("fetalMovement", "Fetal Movement", ["Not Yet Felt", "Normal", "Reduced", "Absent"])),
+        sel("fetalMovement", "Fetal Movement", ["Normal", "Reduced", "Absent"])),
       ...section("Obstetric history", num("gravida", "Gravida", { min: 0 }), num("para", "Para", { min: 0 }), num("abortions", "Abortions", { min: 0 }),
-        num("numberOfFetuses", "No. of Fetuses", { min: 0, placeholder: "1" }),
+        num("numberOfFetuses", "No. of Fetuses", { min: 0, placeholder: "1" }), chk("multiplePregnancy", "Multiple Pregnancy", { placeholder: "Twins or more" }),
         num("livingChildrenMale", "Living Children (Male)", { min: 0 }), num("livingChildrenFemale", "Living Children (Female)", { min: 0 })),
       ...section("Risk and notes",
-        multi("riskFactors", "Risk Factors", ["Advanced Maternal Age", "Previous Cesarean", "Multiple Pregnancy", "Gestational Diabetes", "Pre-Existing Diabetes", "Chronic Hypertension", "Preeclampsia", "Anemia", "Rh Negative", "Placenta Previa", "Previous Preterm Birth", "Thyroid Disease", "Obesity", "Other"]),
+        multi("riskFactors", "Risk Factors", ["Age Under 18", "Age Over 35", { value: "Previous Cesarean", label: "Previous Cesarean Section" }, "Multiple Pregnancy", "Diabetes", "Hypertension", "Anemia"]),
+        text("riskFactorNotes", "Risk Factor Notes"),
         area("notes", "Notes")),
       ...section("Outcome / Delivery", chk("markDelivered", "Mark Delivered", { placeholder: "Delivered", hint: "When ticked, complete Delivery Outcomes (date and time, outcome type and delivery method are required) and add a Pregnancy Newborn record for each baby." })),
     ],
@@ -132,7 +133,7 @@ const WOMENS_DEFS: FormDef[] = [
         num("gestationalAgeWeeks", "Gestation", { unit: "weeks", min: 0, max: 45 }), num("fundalHeight", "Fundal Height", { unit: "cm", min: 0 }),
         num("weightKg", "Weight", { unit: "kg", min: 0 }), num("bpSystolic", "BP Systolic", { unit: "mmHg", min: 0 }), num("bpDiastolic", "BP Diastolic", { unit: "mmHg", min: 0 }),
         num("fetalHeartRate", "Fetal Heart Rate", { unit: "bpm", min: 0 }), sel("presentation", "Presentation", FETAL_PRESENTATION),
-        sel("edema", "Edema", ["None", "+1 (Mild)", "+2 (Moderate)", "+3 (Severe)", "+4 (Very Severe)"]),
+        sel("edema", "Edema", ["None", "Trace", "1+", "2+", "3+", "4+"]),
         text("urineProtein", "Urine Protein", { placeholder: "Neg/Trace/+" }), text("urineGlucose", "Urine Glucose", { placeholder: "Neg/Trace/+" })),
       ...section("Next appointment", date("nextAppointmentDate", "Target Date"), text("nextAppointmentDoctor", "Doctor", { placeholder: "Select doctor" }),
         time("nextAppointmentTime", "Appointment Time", { hint: "The booked slot. Book the slot itself in Appointments." })),
@@ -216,6 +217,7 @@ const WOMENS_DEFS: FormDef[] = [
         num("contractionDuration", "Contraction Duration", { unit: "seconds", min: 0 }),
         sel("contractionIntensity", "Contraction Intensity", ["Mild", "Moderate", "Strong"]),
         num("cervicalDilationCm", "Dilation", { unit: "cm", min: 0, max: 10, placeholder: "0 to 10" }),
+        num("cervicalEffacement", "Cervical Effacement", { unit: "%", min: 0, max: 100, placeholder: "0 to 100" }),
         sel("fetalStation", "Fetal Station", FETAL_STATION),
         num("fetalKickCount", "Fetal Kick Count", { min: 0, placeholder: "Count" })),
       ...section("Maternal vitals", num("maternalPulse", "Maternal Pulse", { unit: "bpm", min: 0 }), num("maternalTemp", "Maternal Temp", { unit: "°C", min: 30, max: 45 }),
@@ -245,17 +247,17 @@ const WOMENS_DEFS: FormDef[] = [
     fields: [
       ...section("Delivery", dt("deliveredAt", "Delivery Date and Time", { required: true, hl7: "Labor and Delivery Events Procedure Entry" }),
         sel("outcomeType", "Pregnancy Outcome Type", OUTCOME_TYPES, { required: true }),
-        sel("mode", "Delivery Mode", ["Spontaneous vaginal", "Vacuum assisted", "Forceps assisted", "Elective cesarean", "Emergency cesarean", "Vaginal birth after cesarean", "Breech vaginal"], { required: true }),
+        sel("mode", "Delivery Mode", ["Vaginal, non-instrumental", "Vaginal, with instruments", "Vaginal, vacuum extraction", { value: "Cesarean section", label: "Cesarean Section" }, "Not stated or inadequately described"], { required: true }),
         num("gestationalAge", "Gestational Age at Birth (Weeks)", { unit: "weeks", min: 20, max: 45, placeholder: "e.g. 39.2" }),
         sel("presentation", "Presentation", ["Cephalic", "Breech", "Transverse", "Other"]),
         sel("anesthesia", "Anesthesia or Analgesia", ["None", "Epidural", "Spinal", "General", "Pudendal or local", "Nitrous oxide"])),
       ...section("Instrumental intervention details (if applicable)",
-        sel("instrumentUsed", "Instrument Used", ["None", "Vacuum", "Forceps", "Vacuum Then Forceps"]),
+        sel("instrumentUsed", "Instrument Used", ["Forceps", { value: "Vacuum", label: "Vacuum Extractor" }, { value: "None", label: "None (Spontaneous Vaginal)" }]),
         text("instrumentIndication", "Indication for Instrumental Delivery", { placeholder: "e.g. fetal distress, maternal exhaustion" }),
         num("numberOfPulls", "Pulls", { min: 0, placeholder: "Count" }), num("tractionTimeMinutes", "Traction", { unit: "min", min: 0 })),
       ...section("Perineum", chk("episiotomy", "Episiotomy", { placeholder: "Episiotomy done" }),
-        sel("episiotomyType", "Episiotomy Type", ["None", "Mediolateral", "Midline", "Lateral"]),
-        sel("perinealTear", "Perineal Tear Classification", ["None", "First Degree", "Second Degree", "Third Degree", "Fourth Degree"])),
+        sel("episiotomyType", "Episiotomy Type", ["Midline", "Mediolateral", "Lateral"]),
+        sel("perinealTear", "Perineal Tear Classification", ["First Degree", "Second Degree", "Third Degree", "Fourth Degree"], { hint: "Leave empty when there is no tear." })),
       ...section("Baby", sel("birthStatus", "Birth Status", ["Live birth", "Stillbirth (fresh)", "Stillbirth (macerated)"], { required: true, hl7: "Delivery Event Outcome Section" }),
         sel("sex", "Sex of Baby", ["Female", "Male", "Indeterminate"]), num("birthWeight", "Birth Weight", { unit: "g", min: 200, max: 6500 }),
         num("apgar1", "Apgar Score at 1 Minute", { min: 0, max: 10, hl7: "Apgar Observation Entry" }), num("apgar5", "Apgar Score at 5 Minutes", { min: 0, max: 10, hl7: "Apgar Observation Entry" }),
@@ -264,7 +266,7 @@ const WOMENS_DEFS: FormDef[] = [
         sel("babyDisposition", "Baby Went To", ["Mother, rooming in", "Nursery", "NICU", "Transferred to another hospital"])),
       ...section("Mother", multi("complications", "Complications", ["None", "Postpartum hemorrhage", "Perineal tear 3rd or 4th degree", "Retained placenta", "Shoulder dystocia", "Eclampsia", "Infection", "Uterine rupture", "Other"], { hl7: "Section Complications" }),
         num("bloodLoss", "Estimated Blood Loss", { unit: "mL", min: 0 }),
-        sel("placentaDeliveryMethod", "Placenta Delivery Method", ["Spontaneous", "Controlled Cord Traction", "Manual Removal"]),
+        sel("placentaDeliveryMethod", "Placenta Delivery Method", [{ value: "Spontaneous", label: "Spontaneous (Schultze / Duncan)" }, "Manual Removal", "Assisted"]),
         sel("placenta", "Placenta", ["Complete", "Incomplete", "Manual removal"]),
         area("notes", "Complications and Delivery Notes", { placeholder: "Apgar checks timeline, postpartum hemorrhage interventions, suture types used" })),
     ],
@@ -278,9 +280,10 @@ const WOMENS_DEFS: FormDef[] = [
     summaryKeys: ["newbornNumber", "babyStatus", "gender", "birthAt", "weightKg"],
     fields: [
       ...section("Newborn", num("newbornNumber", "Newborn Number", { min: 1, placeholder: "1", hint: "1 for a single baby. For twins or more, number the babies in birth order." }),
-        sel("babyStatus", "Baby Status", ["Alive", "Stillborn", "Neonatal Death"], { required: true }),
-        sel("gender", "Gender", ["Male", "Female"]), sel("bloodGroup", "Blood Group", BLOOD_GROUPS),
-        dt("birthAt", "Date and Time", { prefill: "now" }), chk("nicuRequired", "NICU Required", { placeholder: "NICU admission required" })),
+        sel("babyStatus", "Baby Status", [{ value: "Alive", label: "Live Birth" }, { value: "Stillborn", label: "Still Birth" }, "Neonatal Death"], { required: true }),
+        sel("gender", "Gender", ["Male", "Female", "Undetermined"]), sel("bloodGroup", "Blood Group", BLOOD_GROUPS),
+        dt("birthAt", "Date and Time", { prefill: "now" }), chk("nicuRequired", "NICU Required", { placeholder: "NICU admission required" }),
+        chk("registeredAsPatient", "Registered as a Patient", { placeholder: "The baby has its own medical record" }), text("mrNumber", "Baby MRN", { placeholder: "Medical record number" })),
       ...section("Measurements", num("heightCm", "Height", { unit: "cm", min: 0 }), num("weightKg", "Weight", { unit: "kg", min: 0 }),
         num("headCircumferenceCm", "Head Circumference", { unit: "cm", min: 0 })),
       ...section("APGAR", num("apgar1", "1 min", { min: 0, max: 10, hl7: "Apgar Observation Entry" }), num("apgar5", "5 min", { min: 0, max: 10, hl7: "Apgar Observation Entry" }),

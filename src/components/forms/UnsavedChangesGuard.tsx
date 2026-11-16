@@ -67,7 +67,7 @@ export function useUnsavedChangesGuard(
           </AlertDialog.Description>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <AlertDialog.Cancel asChild>
-              <Button>Keep Editing</Button>
+              <Button variant="ghost">Keep Editing</Button>
             </AlertDialog.Cancel>
             {opts.onSaveDraft && (
               <Button onClick={() => { const p = ask; setAsk(null); opts.onSaveDraft?.(); p?.proceed(); }}>Save As Draft</Button>

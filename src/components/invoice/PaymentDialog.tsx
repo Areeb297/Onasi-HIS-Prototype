@@ -104,7 +104,7 @@ export function PaymentDialog({ open, onClose, view }: { open: boolean; onClose:
       subtitle={`Invoice #${view.invoice.number}`}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={submit} disabled={!allowed} title={allowed ? undefined : "This needs the billing permission."}>
             {tab === "new" ? "Submit Payment" : "Allocate Payment"}
           </Button>

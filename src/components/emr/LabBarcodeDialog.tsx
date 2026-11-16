@@ -84,7 +84,7 @@ export function LabBarcodeDialog({ order, patient, onClose }: { order: LabOrder;
       wide
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
           <Button variant="primary" disabled={labels.length === 0} onClick={print}>
             <Printer className="size-4" />Print Labels
           </Button>

@@ -110,7 +110,7 @@ export function BookingDialog({ open, onClose, now }: { open: boolean; onClose: 
       subtitle="Search the patient, pick the doctor and a free time. The appointment is saved as Booked."
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={save}>Book Appointment</Button>
         </>
       }

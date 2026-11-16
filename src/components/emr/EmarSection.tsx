@@ -720,7 +720,7 @@ function DoseDetail({ record, canRecord, onClose }: { record: AdminRecord; canRe
           <p className="text-[0.8125rem] text-muted-foreground">{record.doseText} · {record.routeText}</p>
           <p className="mt-1 text-sm">{OUTCOME_LABEL[record.outcome]} by <strong>{record.by}</strong> ({record.byRole}) on {dateTime(record.at)}</p>
         </div>
-        <Button size="sm" onClick={onClose}>Close</Button>
+        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
       </div>
       <ul className="mt-2 space-y-0.5 text-[0.8125rem]">
         {recordFacts(record).map((f) => <li key={f}>{f}</li>)}
@@ -744,7 +744,7 @@ function DoseDetail({ record, canRecord, onClose }: { record: AdminRecord; canRe
               </Field>
               <div className="flex gap-2">
                 <Button variant="danger" disabled={!why.trim()} onClick={() => { if (voidRecord(record.id, why)) { pushToast({ tone: "warn", text: "Record marked as entered in error" }); onClose(); } }}>Confirm Entered In Error</Button>
-                <Button onClick={() => setVoiding(false)}>Keep The Record</Button>
+                <Button variant="ghost" onClick={() => setVoiding(false)}>Keep The Record</Button>
               </div>
             </div>
           )}

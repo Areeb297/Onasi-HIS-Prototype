@@ -82,10 +82,10 @@ function GlassGate({ patient }: { patient: Patient }) {
           <Input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="Add a short note" />
         </Field>
         <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => navigate("/opd")}>Go Back</Button>
           <Button variant="primary" disabled={reason === "Other" && !detail.trim()} onClick={() => breakGlass(patient.id, patientName(patient), detail ? `${reason}: ${detail}` : reason)}>
             Break The Glass And Open
           </Button>
-          <Button onClick={() => navigate("/opd")}>Go Back</Button>
         </div>
       </div>
     </Card>

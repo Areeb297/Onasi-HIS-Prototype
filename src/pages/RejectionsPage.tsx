@@ -164,7 +164,7 @@ function CorrectDialog({ open, onClose, c }: { open: boolean; onClose: () => voi
   };
   return (
     <Dialog open={open} onClose={onClose} wide title="Correct Claim" subtitle={`${c.claim.claimNumber} came from before this system, so it is corrected here. Write what you changed for each error.`}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button onClick={() => save(false)}>Save Correction</Button><Button variant="primary" onClick={() => save(true)}>Save And Resubmit</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={() => save(false)}>Save Correction</Button><Button variant="primary" onClick={() => save(true)}>Save And Resubmit</Button></>}>
       <div className="grid gap-3">
         {c.errors.map((e, i) => (
           <Field key={i} required label={`${e.code} ${e.scope === "Item" ? `(Line ${e.seq})` : "(Whole Claim)"}`} hint={e.text}>

@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Check, FileClock, Pencil, Plus, Trash2 } from "lucide-react";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { flushSync } from "react-dom";
+import { ArrowLeft, Check, FileClock, Pencil, Plus, Trash2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, RequiredNote, Table, Td, Th, cn } from "@/components/ui/primitives";
 import {
@@ -15,7 +15,7 @@ import { EMR_FORM_BY_ID, sexProblem } from "@/lib/emr-forms";
 import { ADULT_FROM_YEARS, ageYears, allergyText, computeValues, fitsAge, fluidDays, hasScores, prefillValues, scoreOf, scoreSummary, signedMl, SHIFT_NAMES } from "@/lib/flowsheet";
 import type { Encounter } from "@/lib/model";
 import { addFormRecord, deleteFormRecord, getFormRecords, updateFormRecord, useRecords } from "@/lib/records";
-import { navigate } from "@/lib/router";
+import { navigate, useRoute } from "@/lib/router";
 import type { FieldDef, FieldOption, FormDef, FormRecord } from "@/lib/schema";
 import { useHis } from "@/lib/store";
 
@@ -63,6 +63,16 @@ function display(f: FieldDef, v: Values): string {
 
 const toOpt = (o: string | FieldOption) => ({ value: optValue(o), label: optLabel(o) });
 
+/**
+ * The options of a field, plus any saved value no longer in the list (the lists follow the HIS lookups, which change),
+ * so editing an old record never blanks the field.
+ */
+export function optionsWithSaved(options: FieldDef["options"], val: Values[string] | undefined) {
+  const opts = (options ?? []).map(toOpt);
+  const saved = (Array.isArray(val) ? val : typeof val === "string" && val ? [val] : []).filter((x) => !opts.some((o) => o.value === x));
+  return [...opts, ...saved.map((x) => ({ value: x, label: x }))];
+}
+
 /** A radio field with two to four short choices is a segmented control. Longer lists are chips. */
 const segmented = (f: FieldDef) => f.type === "radio" && fitsSegmented((f.options ?? []).map(toOpt));
 
@@ -92,13 +102,13 @@ function FieldInput({ f, v, onChange }: { f: FieldDef; v: Values; onChange: (val
     case "time":
       return <Input type={f.type} value={(val as string) ?? ""} onChange={(e) => onChange(e.target.value)} aria-label={f.label} />;
     case "select":
-      return <ChoiceSelect options={(f.options ?? []).map(toOpt)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} placeholder="Select" label={f.label} />;
+      return <ChoiceSelect options={optionsWithSaved(f.options, val)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} placeholder="Select" label={f.label} />;
     case "radio":
       return segmented(f)
-        ? <SegmentedControl options={(f.options ?? []).map(toOpt)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} label={f.label} />
-        : <ChipSingle options={(f.options ?? []).map(toOpt)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} label={f.label} />;
+        ? <SegmentedControl options={optionsWithSaved(f.options, val)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} label={f.label} />
+        : <ChipSingle options={optionsWithSaved(f.options, val)} value={(val as string) ?? ""} onChange={(x) => onChange(x)} label={f.label} />;
     case "multiselect":
-      return <ChipMulti options={(f.options ?? []).map(toOpt)} value={Array.isArray(val) ? val : []} onChange={(x) => onChange(x)} label={f.label} />;
+      return <ChipMulti options={optionsWithSaved(f.options, val)} value={Array.isArray(val) ? val : []} onChange={(x) => onChange(x)} label={f.label} />;
     case "checkbox":
       return <CheckRow checked={!!val} onChange={(x) => onChange(x)}>{f.placeholder ?? "Yes"}</CheckRow>;
     case "scale": {
@@ -141,7 +151,7 @@ function fieldErrors(form: FormDef, v: Values): Errors {
   return out;
 }
 
-/* ---------- the form in a side sheet ---------- */
+/* ---------- the record form, a full page inside the chart ---------- */
 
 const isEmpty = (val: Values[string] | undefined) => val === undefined || val === "" || val === false || (Array.isArray(val) && val.length === 0);
 /** Fields the user fills in. The ones the system works out or fills by itself are not counted. */
@@ -174,14 +184,16 @@ function fillCount(fields: FieldDef[], v: Values) {
 const LONG_FORM_FIELDS = 30;
 const LONG_FORM_SECTIONS = 4;
 
-function FormSheet({
-  form, open, initial, ctx, draftKey, onClose, onSave,
-}: { form: FormDef; open: boolean; initial: Values; ctx: AutoContext; draftKey: string; onClose: () => void; onSave: (v: Values) => void }) {
+/** Mounted once per record (keyed by its draft key), so it reads the draft when it opens. */
+function RecordForm({
+  form, isNew, initial, ctx, draftKey, onClose, onSave,
+}: { form: FormDef; isNew: boolean; initial: Values; ctx: AutoContext; draftKey: string; onClose: () => void; onSave: (v: Values) => void }) {
   const dev = useDevMode();
-  const [v, setV] = React.useState<Values>(() => withAuto(form, initial, ctx));
-  /** The values the form opened with. A change from these asks before closing. */
+  const [draft] = React.useState(() => loadDraft<Values>(draftKey));
+  const [v, setV] = React.useState<Values>(() => withAuto(form, draft ? { ...initial, ...draft.values } : initial, ctx));
+  /** The values the form opened with. A change from these asks before leaving. */
   const [base, setBase] = React.useState<Values>(v);
-  const [draftAt, setDraftAt] = React.useState<string | null>(null);
+  const [draftAt, setDraftAt] = React.useState<string | null>(draft ? draft.savedAt : null);
   const sections = React.useMemo(() => formSections(form), [form]);
   const named = sections.filter((s) => s.name).length;
   const long = form.fields.length >= LONG_FORM_FIELDS && named >= LONG_FORM_SECTIONS;
@@ -197,30 +209,29 @@ function FormSheet({
   const errors = fieldErrors(form, v);
   const fe = useFormErrors(errors, order);
 
-  React.useEffect(() => {
-    if (!open) return;
-    const start = withAuto(form, initial, ctx);
-    const d = loadDraft<Values>(draftKey);
-    const restored = d ? withAuto(form, { ...initial, ...d.values }, ctx) : start;
-    setV(restored);
-    setBase(restored);
-    setDraftAt(d ? d.savedAt : null);
-    setOpenParts(startOpen());
-    fe.reset();
-  }, [open, initial]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const dirty = open && isDirty(base, v);
+  const dirty = isDirty(base, v);
   const all = fillCount(form.fields, v);
   const score = scoreSummary(form, v);
   const shownCount = Object.keys(fe.shown).length;
 
+  /** Marks the values as kept before the address changes, so the guard lets this move through. */
+  const leave = (then: () => void) => { flushSync(() => setBase(v)); then(); };
   function saveDraftAndClose() {
     saveDraft(draftKey, v);
     pushToast({ tone: "ok", text: "Draft saved", detail: `${form.title} is kept on this computer. Open it again to finish and save it to the chart.` });
-    onClose();
+    leave(onClose);
   }
   const { guard, dialog } = useUnsavedChangesGuard(dirty, { onSaveDraft: () => { saveDraft(draftKey, v); pushToast({ tone: "ok", text: "Draft saved", detail: form.title }); } });
-  const close = () => guard(onClose);
+  // Ask before the address changes: the workspace swaps the page on hashchange before the guard's own listener runs.
+  const back = () => guard(() => leave(onClose));
+  // A move nothing could stop first (another chart tab, the sidebar) keeps the typing as a draft rather than losing it.
+  const live = React.useRef({ dirty, v });
+  live.current = { dirty, v };
+  React.useEffect(() => () => {
+    if (!live.current.dirty) return;
+    saveDraft(draftKey, live.current.v);
+    pushToast({ tone: "ok", text: "Draft saved", detail: `${form.title} is kept on this computer. Open it again to finish and save it to the chart.` });
+  }, [draftKey, form.title]);
 
   function save() {
     if (!fe.attempt()) {
@@ -228,7 +239,8 @@ function FormSheet({
       return;
     }
     clearDraft(draftKey);
-    onSave(withAuto(form, v, ctx));
+    const out = withAuto(form, v, ctx);
+    leave(() => onSave(out));
   }
 
   function discardDraft() {
@@ -262,14 +274,16 @@ function FormSheet({
   );
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && close()}>
-      <SheetContent className={cn("flex w-full flex-col gap-0 bg-background", long ? "sm:max-w-4xl" : "sm:max-w-2xl")}>
-        <SheetHeader className="border-b border-border bg-[color:var(--glass-solid)] px-5 pr-12">
-          <SheetTitle className="text-lg">{form.title}</SheetTitle>
-          <SheetDescription>{form.description ?? "Fill in the form and save it to the chart."}{dev && form.nphies ? ` NPHIES: ${form.nphies}` : ""}</SheetDescription>
-        </SheetHeader>
+    <section aria-label={`${isNew ? "New" : "Edit"} ${form.title}`} className="rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg)] shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)]">
+        <header className="flex flex-wrap items-start gap-x-3 gap-y-1 rounded-t-2xl border-b border-border bg-[color:var(--glass-solid)] px-4 py-3 sm:px-5">
+          <Button size="sm" variant="ghost" onClick={back} className="-ms-2 shrink-0"><ArrowLeft className="size-4" />Back To List</Button>
+          <div className="min-w-0 flex-1 basis-64">
+            <h2 className="text-lg font-semibold">{isNew ? "New" : "Edit"} {form.title}</h2>
+            <p className="text-sm text-muted-foreground">{form.description ?? "Fill in the form and save it to the chart."}{dev && form.nphies ? ` NPHIES: ${form.nphies}` : ""}</p>
+          </div>
+        </header>
         {collapsible && (
-          <nav aria-label="Sections of this form" className="flex items-center gap-2 border-b border-border bg-[color:var(--glass-solid)] px-5 py-2">
+          <nav aria-label="Sections of this form" className="flex items-center gap-2 border-b border-border bg-[color:var(--glass-solid)] px-4 py-2 sm:px-5">
             <ul className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto p-0.5 [scrollbar-width:thin]">
               {sections.map((s, i) => {
                 if (!s.name) return null;
@@ -300,7 +314,7 @@ function FormSheet({
             </Button>
           </nav>
         )}
-        <div ref={bodyRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-5" {...fe.bind}>
+        <div ref={bodyRef} className="space-y-4 px-4 py-5 sm:px-5 [&_*]:scroll-mt-64" {...fe.bind}>
           {draftAt && (
             <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[#03C1AC]/60 bg-card px-4 py-2.5 text-sm">
               <FileClock className="size-4 shrink-0 text-[#035D53] dark:text-[#39EDD5]" aria-hidden="true" />
@@ -329,7 +343,7 @@ function FormSheet({
               return <div key={i} data-part={i} className="rounded-2xl border border-[color:var(--glass-border)] bg-[color:var(--glass-bg-strong)] px-4 py-5 shadow-[inset_0_1px_0_var(--glass-hi),var(--glass-shadow)] sm:px-5">{fieldsOf(s.fields)}</div>;
             }
             return (
-              <div key={i} data-part={i} className="scroll-mt-2">
+              <div key={i} data-part={i}>
                 <FormSection
                   title={s.name}
                   filled={c.filled}
@@ -346,8 +360,10 @@ function FormSheet({
           })}
         </div>
         <FormActions
-          className="bg-[color:var(--glass-solid)] px-4 sm:px-5"
-          onCancel={close}
+          sticky
+          reserveEnd
+          className="bg-[color:var(--glass-solid)] ps-4 sm:ps-5"
+          onCancel={back}
           onDraft={saveDraftAndClose}
           onSave={save}
           status={
@@ -375,19 +391,22 @@ function FormSheet({
           }
         />
         {dialog}
-      </SheetContent>
-    </Sheet>
+    </section>
   );
 }
 
-/** Generic EMR page: a table of records for one visit, with Add New. Built from a FormDef. */
+/**
+ * Generic EMR page, built from a FormDef: a table of records for one visit, with Add New. Adding or editing a record
+ * opens the form as a full page in the chart, as in the HIS, with its own address: &new=<form id> or &r=<record id>.
+ * The new link names the form so that, in a split chart, only the pane showing that form opens it.
+ */
 export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
   useRecords();
   const dev = useDevMode();
   const his = useHis();
+  const route = useRoute();
   const { user } = useSession();
   const records = getFormRecords(enc.visitNumber, form.id);
-  const [editing, setEditing] = React.useState<{ id: string | null; initial: Values } | null>(null);
   const canWrite = can("emr.write");
   const patient = his.patients.find((p) => p.id === enc.patientId);
   const age = patient ? ageYears(patient.dob) : NaN;
@@ -399,7 +418,32 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
   const keys = form.summaryKeys ?? form.fields.slice(0, 4).map((f) => f.key);
   const cols = keys.map((k) => form.fields.find((f) => f.key === k)).filter(Boolean) as FieldDef[];
   const scored = hasScores(form);
+  const editRecord = records.find((r) => r.id === route.params.get("r"));
+  // A link the user may not act on (no write right, wrong sex or age, a record that is gone) shows the list instead.
+  const editing = !blocked && route.params.get("new") === form.id ? { id: null, initial: prefillValues(form) } : canWrite && editRecord ? { id: editRecord.id, initial: editRecord.values } : null;
   const hasDraft = !blocked && !editing && !!loadDraft(`${enc.visitNumber}:${form.id}:new`);
+  const go = (to: { new?: string; r?: string }) => navigate(route.path, { ...Object.fromEntries(route.params), new: undefined, r: undefined, ...to });
+  const toList = () => go({});
+
+  if (editing) {
+    const draftKey = `${enc.visitNumber}:${form.id}:${editing.id ?? "new"}`;
+    return (
+      <RecordForm
+        key={draftKey}
+        form={form}
+        isNew={!editing.id}
+        initial={editing.initial}
+        ctx={ctx}
+        draftKey={draftKey}
+        onClose={toList}
+        onSave={(v) => {
+          if (editing.id) updateFormRecord(enc.visitNumber, form.id, editing.id, v, enc.patientId);
+          else addFormRecord(enc.visitNumber, form.id, v, enc.patientId); // never reached with the wrong sex or age: editing is null then
+          toList();
+        }}
+      />
+    );
+  }
 
   return (
     <Card>
@@ -407,7 +451,7 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
         title={form.title}
         subtitle={dev && form.nphies ? `NPHIES: ${form.nphies}` : form.description}
         right={
-          <ReasonButton variant="primary" reason={blocked || undefined} onClick={() => setEditing({ id: null, initial: prefillValues(form) })}>
+          <ReasonButton variant="primary" reason={blocked || undefined} onClick={() => go({ new: form.id })}>
             {hasDraft ? <><FileClock className="size-4" />Continue Draft</> : <><Plus className="size-4" />Add New</>}
           </ReasonButton>
         }
@@ -447,7 +491,7 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
               <Td className="whitespace-nowrap text-sm text-muted-foreground">{r.author}</Td>
               <Td className="text-right">
                 <span className="inline-flex gap-1.5">
-                  <ReasonButton size="sm" reason={canWrite ? undefined : "Your role cannot change records."} onClick={() => setEditing({ id: r.id, initial: r.values })}><Pencil className="size-4" />Edit</ReasonButton>
+                  <ReasonButton size="sm" reason={canWrite ? undefined : "Your role cannot change records."} onClick={() => go({ r: r.id })}><Pencil className="size-4" />Edit</ReasonButton>
                   <ReasonButton size="sm" variant="danger" reason={canWrite ? undefined : "Your role cannot delete records."} onClick={() => deleteFormRecord(enc.visitNumber, form.id, r.id, enc.patientId)}><Trash2 className="size-4" />Delete</ReasonButton>
                 </span>
               </Td>
@@ -455,19 +499,6 @@ export function EmrFormPage({ form, enc }: { form: FormDef; enc: Encounter }) {
           ))}
         </tbody>
       </Table>
-      <FormSheet
-        form={form}
-        open={!!editing}
-        initial={editing?.initial ?? {}}
-        ctx={ctx}
-        draftKey={`${enc.visitNumber}:${form.id}:${editing?.id ?? "new"}`}
-        onClose={() => setEditing(null)}
-        onSave={(v) => {
-          if (editing?.id) updateFormRecord(enc.visitNumber, form.id, editing.id, v, enc.patientId);
-          else if (!wrongSex) addFormRecord(enc.visitNumber, form.id, v, enc.patientId); // a new record needs the right sex, as it needs the right age
-          setEditing(null);
-        }}
-      />
     </Card>
   );
 }

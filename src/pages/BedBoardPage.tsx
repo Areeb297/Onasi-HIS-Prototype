@@ -13,6 +13,7 @@ import { WARDS } from "@/lib/reference-data";
 import { navigate } from "@/lib/router";
 import { can, hasGlass, useSession } from "@/lib/session";
 import { nowLocal, patientName, useHis } from "@/lib/store";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 const WARD_BAR: Record<string, string> = { "3A": "border-t-move", "4B": "border-t-update", ICU: "border-t-cancel" };
 
@@ -267,7 +268,7 @@ export function BedBoardPage() {
                             <div className="mt-3 flex flex-wrap gap-1.5">
                               <Button size="sm" disabled={!mayAdt} onClick={() => act("A02", enc.visitNumber)}>Transfer</Button>
                               <Button size="sm" disabled={!mayAdt} onClick={() => act("A03", enc.visitNumber)}>Discharge</Button>
-                              <Button size="sm" variant="ghost" onClick={() => navigate("/chart", { visit: enc.visitNumber })}>Open Chart</Button>
+                              <ActionIcon kind="chart" name={enc.visitNumber} onClick={() => navigate("/chart", { visit: enc.visitNumber })} />
                             </div>
                           </>
                         )}
@@ -290,7 +291,7 @@ export function BedBoardPage() {
                             </div>
                             <div className="mt-3 flex flex-wrap gap-1.5">
                               <Button size="sm" variant="primary" disabled={!mayWard} onClick={() => openLeftWard(enc.visitNumber)}>Patient Left The Ward</Button>
-                              <Button size="sm" variant="ghost" onClick={() => navigate("/chart", { visit: enc.visitNumber })}>Open Chart</Button>
+                              <ActionIcon kind="chart" name={enc.visitNumber} onClick={() => navigate("/chart", { visit: enc.visitNumber })} />
                             </div>
                           </>
                         )}

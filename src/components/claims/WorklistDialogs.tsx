@@ -28,7 +28,7 @@ export function ReviewBatchDialog({ open, onClose, rows }: { open: boolean; onCl
   React.useEffect(() => { if (open && key) setResults(reviewBatch(key.split(","))); }, [open, key]);
   const clear = results.filter((r) => !r.findings.some((f) => f.severity === "hard")).length;
   return (
-    <Dialog open={open} onClose={onClose} wide title="Review Batch" subtitle={`${rows.length} claim${rows.length === 1 ? "" : "s"} for ${rows[0]?.payer ?? ""}. ${clear} without a Hard Stop.`} footer={<Button onClick={onClose}>Close</Button>}>
+    <Dialog open={open} onClose={onClose} wide title="Review Batch" subtitle={`${rows.length} claim${rows.length === 1 ? "" : "s"} for ${rows[0]?.payer ?? ""}. ${clear} without a Hard Stop.`} footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
       <ul className="flex flex-col gap-2">
         {results.map(({ visit, findings }) => (
           <li key={visit} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5">
@@ -65,7 +65,7 @@ export function SubmitBatchDialog({ open, onClose, rows, onDone }: { open: boole
       open={open} onClose={onClose} wide title="Submit Batch Request"
       subtitle={result ? `Batch ${result.batchId} for ${check.payer}.` : `Choose a priority for every claim in the batch, then submit it to NPHIES. Each claim still passes its own review.`}
       footer={result ? <Button variant="primary" onClick={onClose}>Done</Button> : <>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={!check.ok} onClick={submit}>Submit Batch To NPHIES</Button>
       </>}
     >
@@ -124,7 +124,7 @@ export function PollRequestDialog({ open, onClose, payers }: { open: boolean; on
   };
   return (
     <Dialog open={open} onClose={onClose} title="Poll Request" subtitle="Asks NPHIES for answers the payer has not sent yet." footer={<>
-      <Button onClick={onClose}>Cancel</Button>
+      <Button variant="ghost" onClick={onClose}>Cancel</Button>
       <Button variant="primary" disabled={!targets.length} onClick={send}>Send Poll Request</Button>
     </>}>
       <div className="flex flex-col gap-4">
@@ -158,7 +158,7 @@ export function CreateClaimDialog({ open, onClose, rows }: { open: boolean; onCl
   const insured = new Set(rows.map((r) => r.patient.id));
   const cash = term ? getState().patients.filter((p) => !p.mergedInto && !insured.has(p.id) && !insurerOf(p) && hit(p)).slice(0, 5) : [];
   return (
-    <Dialog open={open} onClose={onClose} wide title="Create Claim / PreAuth" subtitle="Find the patient and choose the insured visit. The claim opens with its diagnoses, care team and invoice lines filled in." footer={<Button onClick={onClose}>Cancel</Button>}>
+    <Dialog open={open} onClose={onClose} wide title="Create Claim / PreAuth" subtitle="Find the patient and choose the insured visit. The claim opens with its diagnoses, care team and invoice lines filled in." footer={<Button variant="ghost" onClick={onClose}>Cancel</Button>}>
       <label className="relative block">
         <span className="sr-only">Search patient or visit</span>
         <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

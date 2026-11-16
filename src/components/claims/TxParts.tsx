@@ -5,6 +5,7 @@ import { copyText, downloadText } from "@/components/ui/code-block";
 import { Badge, Button, cn } from "@/components/ui/primitives";
 import { responseTimeText, TX_TYPE_LABEL, type RcmTransaction, type TxType } from "@/lib/rcm-transactions";
 import { fmtDate, fmtTime } from "./RcmUi";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 const TYPE_ICON: Record<TxType, typeof IconCash> = {
   eligibility: IconUserCheck, priorauth: IconShieldCheck, claim: IconFileInvoice, communication: IconMessageCircle, poll: IconRefresh, cancel: IconCircleX, "payment-notice": IconCash,
@@ -129,7 +130,7 @@ export function JsonViewer({ json, filename, emptyText = "No message." }: { json
             <Button size="sm" variant="ghost" onClick={() => setAll(99)}><ChevronsUpDown className="size-3.5" /> Expand All</Button>
             <Button size="sm" variant="ghost" onClick={() => setAll(1)}><ChevronsDownUp className="size-3.5" /> Collapse All</Button>
           </>}
-          <Button size="sm" variant="ghost" onClick={() => downloadText(filename, json)}><Download className="size-3.5" /> Download</Button>
+          <ActionIcon kind="download" name={filename} onClick={() => downloadText(filename, json)} />
           <Button size="sm" variant="ghost" onClick={copy} aria-live="polite">{copied ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}</Button>
         </span>
       </figcaption>

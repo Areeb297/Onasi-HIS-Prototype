@@ -498,7 +498,7 @@ SidebarItem.displayName = "SidebarItem";
 
 export const SidebarNested = React.forwardRef<HTMLDivElement, SidebarNestedProps>(
   ({ icon, label, open: controlledOpen, defaultOpen = false, onOpenChange, active = false, children }, ref) => {
-    const { collapsed } = useSidebarContext();
+    const { collapsed, toggleCollapsed } = useSidebarContext();
     const prefersReducedMotion = useReducedMotion();
     const reactId = React.useId();
 
@@ -523,7 +523,8 @@ export const SidebarNested = React.forwardRef<HTMLDivElement, SidebarNestedProps
           data-active={active ? "true" : undefined}
           aria-expanded={open}
           aria-controls={contentId}
-          onClick={toggle}
+          // On the icon rail the pages are hidden, so a click expands the sidebar with this group open, as in the HIS.
+          onClick={collapsed ? () => { if (!open) toggle(); toggleCollapsed(); } : toggle}
           title={collapsed ? label : undefined}
           className={cn(itemBaseClasses, active && collapsed ? itemActiveClasses : itemInactiveClasses)}
         >

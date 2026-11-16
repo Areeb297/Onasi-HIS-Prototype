@@ -24,6 +24,14 @@
 - Plain short text, Title Case labels, no em dashes. Never write the word "prototype" in the UI. Amounts in SAR.
 - Developer View is for the System Administrator only.
 
+## UI standards (product lead feedback, 16 Nov 2026)
+- Row and record actions are standard icon buttons, not text buttons: one shared set (View, Open Chart, Edit, Print, Download, Delete, More), each with a tooltip and an aria-label, the same icon for the same action on every page. One primary action per row may stay a labelled button only when it is the next step (for example Check In).
+- Listing pages open with the left sidebar collapsed to its icon rail, so the grid gets the width; the user can still expand it, and other pages keep their state.
+- Buttons, everywhere, in this order from left to right: Cancel or Back (ghost), secondary actions (outline), Save As Draft (outline), then the one primary action (solid Dark Green) on the far right. Destructive actions are red and always ask first. Page headers: secondary actions in a More menu or outline, the primary action solid on the right. Never two solid primary buttons side by side.
+
+## CT-HIS database reference
+- `docs/ct-his-db/` (kept out of git) holds a read-only snapshot of the real CT-HIS SQL Server database: `SCHEMA.md` (310 tables with columns and keys), `LOOKUPS.md` (303 dropdown lists in English and Arabic), `EMR-PAGES.md` (EMR pages and routes) and `form-templates/` (the dynamic form JSON). Read these before designing a form or a list; query the database (`sqlcmd -S . -E -C -d CT-HIS`, read-only) only when the snapshot is not enough.
+
 ## Epic benchmarking (physician feedback, see `MoM Onasi HIS Epic Benchmarking.docx`, kept out of git)
 - Fewer clicks: every routine doctor task (labs, vitals, imaging) in one or two clicks.
 - The whole visit on one page with module tabs (Lab, Imaging, Vitals and so on), not list menus; a patient list is the doctor's landing view.

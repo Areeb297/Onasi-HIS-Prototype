@@ -106,12 +106,13 @@ function DialogFooter({
       )}
       {...props}
     >
-      {children}
+      {/* Close comes first: the primary action stays on the far right. */}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          <Button variant="ghost">Close</Button>
         </DialogPrimitive.Close>
       )}
+      {children}
     </div>
   )
 }

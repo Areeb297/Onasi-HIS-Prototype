@@ -141,7 +141,7 @@ export function ProceduresSection({ enc }: { enc: Encounter }) {
         open={removing !== null}
         onClose={() => setRemoving(null)}
         title="Remove Procedure"
-        footer={<><Button onClick={() => setRemoving(null)}>Keep Procedure</Button><Button variant="danger" onClick={() => removing !== null && remove(removing)}>Remove</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setRemoving(null)}>Keep Procedure</Button><Button variant="danger" onClick={() => removing !== null && remove(removing)}>Remove</Button></>}
       >
         <p className="text-sm">
           Remove <strong>{removing !== null ? `${enc.pr[removing]?.code} ${enc.pr[removing]?.text}` : ""}</strong> from this visit? It will no longer be sent with the visit.
@@ -193,7 +193,7 @@ function ProcedureSheet({ enc, visitPay, initial, onClose, onSave }: {
       dirty={JSON.stringify(p) !== JSON.stringify(start)}
       title={initial ? "Edit Procedure" : "Add Procedure"}
       subtitle={initial ? "Change the details of this procedure." : "Search the ACHI list, then check the details."}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{initial ? "Update Procedure" : "Save Procedure"}</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{initial ? "Update Procedure" : "Save Procedure"}</Button></>}
     >
       <div className="space-y-6">
         <FormSection title="Procedure">

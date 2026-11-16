@@ -210,8 +210,8 @@ export function LabOrderPad({
             <span className="font-semibold">Already ordered for this visit:</span> {dupes.join(", ")}. The laboratory has not resulted the earlier order yet. Order the test again only if a new sample is needed.
           </p>
           <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" onClick={() => setPending(null)}>Go Back</Button>
             <Button variant="primary" onClick={() => { const p = pending; setPending(null); onSubmit(value, p.andSend); }}>Order Anyway</Button>
-            <Button onClick={() => setPending(null)}>Go Back</Button>
           </div>
         </div>
       )}

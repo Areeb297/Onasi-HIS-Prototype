@@ -180,7 +180,7 @@ function ConsultRow({ c, now, isDoctor }: { c: Consult; now: number; isDoctor: b
         onClose={stopClosing}
         title="Close Consult"
         subtitle={`${c.specialty}, ${URGENCY_LABEL[c.urgency].toLowerCase()}`}
-        footer={<><Button onClick={stopClosing}>Keep It Open</Button><Button variant="primary" onClick={close}>Close Consult</Button></>}
+        footer={<><Button variant="ghost" onClick={stopClosing}>Keep It Open</Button><Button variant="primary" onClick={close}>Close Consult</Button></>}
       >
         <div className="space-y-3 text-sm">
           <p>{c.status === "seen" ? "The patient was seen and the answer is in the chart. Closing means the treating team has read it." : "The patient was not seen yet. Give the reason for closing."}</p>
@@ -213,7 +213,7 @@ function AnswerSheet({ c, onClose }: { c: Consult; onClose: () => void }) {
       title="Write Consult Answer"
       subtitle={`${c.specialty}, asked by ${c.requestedBy}`}
       dirty={!!(answer.trim() || recs.trim())}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Save Answer And Mark Seen</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Save Answer And Mark Seen</Button></>}
     >
       <div className="space-y-4">
         <ErrorSummary problems={failed} title="The answer was not saved" />
@@ -263,7 +263,7 @@ function ConsultForm({ enc, onClose }: { enc: Encounter; onClose: () => void }) 
       title="New Consult Request"
       subtitle="Ask another specialty to see this patient."
       dirty={!!(specialty || question.trim() || findings.trim())}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Send Consult Request</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Send Consult Request</Button></>}
     >
       <div className="space-y-4">
         <RequiredNote />

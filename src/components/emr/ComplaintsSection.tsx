@@ -130,7 +130,7 @@ export function ComplaintsSection({ enc }: { enc: Encounter }) {
         open={!!removing}
         onClose={() => setRemoving(null)}
         title="Remove Chief Complaint"
-        footer={<><Button onClick={() => setRemoving(null)}>Keep Complaint</Button><Button variant="danger" onClick={() => removing && remove(removing)}>Remove</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setRemoving(null)}>Keep Complaint</Button><Button variant="danger" onClick={() => removing && remove(removing)}>Remove</Button></>}
       >
         <p className="text-sm">Remove <strong>{removing ? get(removing)?.text : ""}</strong> from this visit?</p>
       </Dialog>
@@ -169,7 +169,7 @@ function ComplaintSheet({ initial, taken, onClose, onSave }: {
       dirty={dirty}
       title={initial ? "Edit Chief Complaint" : "Add Chief Complaint"}
       subtitle="Pick one or more codes, or type the complaint in words."
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{initial ? "Update Complaint" : "Save Complaint"}</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{initial ? "Update Complaint" : "Save Complaint"}</Button></>}
     >
       <div className="space-y-5">
         <FormField label="How To Record It" group>

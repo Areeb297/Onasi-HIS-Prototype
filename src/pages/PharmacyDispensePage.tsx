@@ -484,7 +484,7 @@ function LineDialog({ action, onClose }: { action: { mode: "cancel" | "update"; 
       subtitle={`${d.number}, ${drug.generic}`}
       footer={
         <>
-          <Button onClick={onClose}>Keep As Is</Button>
+          <Button variant="ghost" onClick={onClose}>Keep As Is</Button>
           <Button variant="primary" onClick={go}>{mode === "cancel" ? "Cancel And Send To NPHIES" : "Save And Send To NPHIES"}</Button>
         </>
       }

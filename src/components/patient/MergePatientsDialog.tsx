@@ -98,12 +98,12 @@ export function MergePatientsDialog({ open, onClose, keepId: initialKeep }: { op
       footer={
         confirming ? (
           <>
-            <Button onClick={() => setConfirming(false)}>Go Back</Button>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>Go Back</Button>
             <Button variant="danger" onClick={merge}>Yes, Merge The Files</Button>
           </>
         ) : (
           <>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <Button variant="primary" disabled={!ready} onClick={() => setConfirming(true)}>Prepare Merge</Button>
           </>
         )

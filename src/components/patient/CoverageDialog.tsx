@@ -12,6 +12,7 @@ import { can, hasGlass, useSession } from "@/lib/session";
 import { nowLocal, useHis } from "@/lib/store";
 import { pushToast } from "@/lib/toast";
 import { EligibilityBadge } from "./EligibilityDialog";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 const blank = (priority: number): CoverageInput => {
   const today = nowLocal().slice(0, 10);
@@ -100,7 +101,7 @@ export function CoverageDialog({ patientId, onClose }: { patientId: string | nul
               <Td className="text-right">
                 {c.active && (
                   <span className="inline-flex gap-1.5">
-                    <Button size="sm" disabled={!allowed} onClick={() => { setEditing({ id: c.id, form: toInput(c) }); setTried(false); }} aria-label={`Edit coverage ${c.memberId}`}><Pencil className="size-4" />Edit</Button>
+                    <ActionIcon kind="edit" name={`coverage ${c.memberId}`} disabled={!allowed} onClick={() => { setEditing({ id: c.id, form: toInput(c) }); setTried(false); }} />
                     <Button size="sm" variant="danger" disabled={!allowed} onClick={() => setConfirmInactive(c)}>Mark Inactive</Button>
                   </span>
                 )}
@@ -116,7 +117,7 @@ export function CoverageDialog({ patientId, onClose }: { patientId: string | nul
           <p className="mt-1">It stays on file but is no longer used for the coverage check or for new visits.</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" variant="danger" onClick={() => inactive(confirmInactive)}>Mark Inactive</Button>
-            <Button size="sm" onClick={() => setConfirmInactive(null)}>Keep It Active</Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmInactive(null)}>Keep It Active</Button>
           </div>
         </div>
       )}
@@ -174,8 +175,8 @@ export function CoverageDialog({ patientId, onClose }: { patientId: string | nul
             </ul>
           )}
           <div className="mt-4 flex flex-wrap gap-2">
+            <Button variant="ghost" onClick={() => { setEditing(null); setTried(false); }}>Cancel</Button>
             <Button type="submit" variant="primary">Save Coverage</Button>
-            <Button onClick={() => { setEditing(null); setTried(false); }}>Cancel</Button>
           </div>
         </form>
       )}

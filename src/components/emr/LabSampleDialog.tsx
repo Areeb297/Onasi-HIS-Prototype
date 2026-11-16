@@ -57,7 +57,7 @@ export function LabSampleDialog({
       wide
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
           <Button variant="primary" disabled={mode === "collect" && !at} onClick={save}>{mode === "collect" ? "Confirm Collection" : "Save Details"}</Button>
         </>
       }

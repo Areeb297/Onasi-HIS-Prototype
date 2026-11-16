@@ -24,7 +24,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:pointer-events-none disabled:opacity-45",
         size === "sm" ? "h-8 px-2.5 text-sm" : "h-9 px-3.5 text-sm",
-        variant === "primary" && "bg-primary text-primary-foreground shadow-sm hover:brightness-110",
+        // The one primary action: solid Onasi Dark Green (cyan on dark), the same on every page (CLAUDE.md UI standards).
+        variant === "primary" && "bg-[#032c26] text-white shadow-sm hover:bg-[#035d53] dark:bg-[#39edd5] dark:text-[#032c26] dark:hover:bg-[#03c1ac]",
         variant === "secondary" && "border border-border bg-card text-foreground hover:bg-muted",
         variant === "ghost" && "text-muted-foreground hover:bg-muted hover:text-foreground",
         variant === "danger" && "border border-destructive/50 bg-card text-destructive hover:bg-destructive/10",

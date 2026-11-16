@@ -68,7 +68,7 @@ export function CloseDialog({ appt, onClose, now }: { appt: Appointment | null; 
       subtitle={`${shownName(patient)}, ${dayLabel(appt.date)} at ${appt.start} with ${doctorName(appt.doctorId)}`}
       footer={
         <>
-          <Button onClick={onClose}>Keep Appointment</Button>
+          <Button variant="ghost" onClick={onClose}>Keep Appointment</Button>
           <Button variant={choice === "rescheduled" ? "primary" : "danger"} onClick={save}>
             {choice === "rescheduled" ? "Reschedule" : `Mark ${STATUS_LABEL[choice]}`}
           </Button>

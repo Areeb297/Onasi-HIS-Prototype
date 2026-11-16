@@ -185,7 +185,7 @@ function FollowUpForm({ enc, onClose }: { enc: Encounter; onClose: () => void })
       title="New Follow-Up"
       subtitle="The appointments desk books the visit."
       dirty={dirty}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Order Follow-Up</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Order Follow-Up</Button></>}
     >
       <div className="space-y-4">
         <RequiredNote />

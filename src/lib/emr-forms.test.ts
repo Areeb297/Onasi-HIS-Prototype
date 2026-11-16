@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EMR_FORMS, EMR_FORM_BY_ID } from "./emr-forms";
 import { EMR_MENU } from "./emr-menu";
-import { scoreOf } from "@/components/EmrFormPage";
+import { optionsWithSaved, scoreOf } from "@/components/EmrFormPage";
 
 const menuForms = EMR_MENU.filter((m) => m.kind === "form");
 
@@ -87,5 +87,13 @@ describe("EMR form definitions", () => {
     const scores = braden.map((x) => x.options!.map((o) => (typeof o === "string" ? 0 : (o.score ?? 0))));
     expect(scores.reduce((n, s) => n + Math.min(...s), 0)).toBe(6);
     expect(scores.reduce((n, s) => n + Math.max(...s), 0)).toBe(23);
+  });
+});
+
+describe("saved values outside the option list", () => {
+  it("keeps an old saved value as an extra option so editing never blanks it", () => {
+    expect(optionsWithSaved(["Yes", { value: "N", label: "No" }], "Maybe").map((o) => o.value)).toEqual(["Yes", "N", "Maybe"]);
+    expect(optionsWithSaved(["A", "B"], ["B", "Old"]).map((o) => o.label)).toEqual(["A", "B", "Old"]);
+    expect(optionsWithSaved(["A"], "")).toHaveLength(1);
   });
 });

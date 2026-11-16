@@ -4,6 +4,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Button, Td, Th, cn } from "@/components/ui/primitives";
 import { PAGE_SIZES, pageWindow, rangeLabel } from "./list-logic";
 import { BRAND_BUTTON } from "./ListPage";
+import { ActionIcon, deleteQuestion, useConfirm, type ConfirmSpec } from "@/components/ui/action-icons";
 import type { Column, ListApi } from "./useList";
 
 /**
@@ -27,6 +28,8 @@ export interface RowAction {
   dot?: boolean;
   /** Draws a line above this item in the More menu. */
   separate?: boolean;
+  /** A destructive action asks first with this question (rowAction("delete") sets it). False: the caller asks itself. */
+  confirm?: false | Partial<Omit<ConfirmSpec, "run">>;
 }
 
 export interface BulkAction<T> {
@@ -333,27 +336,29 @@ function defaultCard<T>(r: T, cols: Column<T>[]): CardSpec {
  * touch screen they always show. A labelled next-step button always shows.
  */
 export function RowActionBar({ actions, inline = 1, name, labelled, reveal, className }: { actions: RowAction[]; inline?: number; name: string; labelled?: boolean; reveal?: boolean; className?: string }) {
+  const [ask, dialog] = useConfirm();
   if (!actions.length) return null;
   const shown = actions.slice(0, inline);
   const rest = actions.slice(inline);
   const quiet = reveal && "[@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 transition-opacity";
+  // Destructive actions with a question ask first, from the row button and from the More menu alike.
+  const run = (a: RowAction) => () => {
+    if (a.danger && a.confirm) ask({ ...deleteQuestion(a.label, name), ...a.confirm, run: a.onClick });
+    else a.onClick();
+  };
   return (
     <div className={cn("flex flex-nowrap items-center gap-0.5", labelled && "flex-wrap gap-1.5", className)}>
       {shown.map((a) =>
         a.emphasis || labelled ? (
-          <Button key={a.id} size="sm" variant={a.emphasis ? "primary" : "secondary"} className={cn("relative", !labelled && "h-7 px-2.5 text-[0.8125rem]", a.emphasis && BRAND_BUTTON, a.danger && !a.emphasis && "text-destructive")}
-            disabled={a.disabled} title={a.title ?? a.label} aria-label={`${a.label}, ${name}`} onClick={a.onClick}>
+          <Button key={a.id} size="sm" variant={a.emphasis ? "primary" : a.danger ? "danger" : "secondary"} className={cn("relative", !labelled && "h-7 px-2.5 text-[0.8125rem]", a.emphasis && BRAND_BUTTON)}
+            disabled={a.disabled} title={a.title ?? a.label} aria-label={`${a.label}, ${name}`} onClick={run(a)}>
             <span className="flex [&_svg]:size-3.5 [&_svg]:!text-current" aria-hidden="true">{a.icon}</span>
             {a.label}
             {a.dot && <Dot />}
           </Button>
         ) : (
-          <button key={a.id} type="button" onClick={a.onClick} disabled={a.disabled} title={a.title ?? a.label} aria-label={`${a.label}, ${name}`}
-            className={cn("relative flex size-7 shrink-0 items-center justify-center rounded-md text-[#035d53] hover:bg-[#39edd5]/15 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40 dark:text-[#39edd5] [&_svg]:size-4 [&_svg]:!text-current",
-              a.danger && "text-destructive hover:bg-destructive/10 dark:text-destructive", quiet)}>
-            {a.icon}
-            {a.dot && <Dot />}
-          </button>
+          <ActionIcon key={a.id} label={a.label} icon={a.icon} name={name} hint={a.title && a.title !== a.label ? a.title : undefined}
+            danger={a.danger} confirm={false} dot={a.dot} disabled={a.disabled} onClick={run(a)} className={cn(quiet || undefined)} />
         ),
       )}
       {rest.length > 0 && (
@@ -369,7 +374,7 @@ export function RowActionBar({ actions, inline = 1, name, labelled, reveal, clas
             {rest.map((a, i) => (
               <React.Fragment key={a.id}>
                 {a.separate && i > 0 && <DropdownMenuSeparator />}
-                <DropdownMenuItem onClick={a.onClick} disabled={a.disabled} title={a.title} variant={a.danger ? "destructive" : "default"} className="gap-3 py-2">
+                <DropdownMenuItem onClick={run(a)} disabled={a.disabled} title={a.title} variant={a.danger ? "destructive" : "default"} className="gap-3 py-2">
                   <span className="flex [&_svg]:size-4" aria-hidden="true">{a.icon}</span>
                   <span className="flex-1">{a.label}</span>
                   {a.dot && <span className="size-2 rounded-full bg-warn" aria-label="Changes not sent" />}
@@ -379,6 +384,7 @@ export function RowActionBar({ actions, inline = 1, name, labelled, reveal, clas
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+      {dialog}
     </div>
   );
 }

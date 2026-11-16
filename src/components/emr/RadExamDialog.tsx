@@ -42,7 +42,7 @@ export function RadExamDialog({ order, patient, onClose, onDone }: { order: RadO
       wide
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
           <Button
             variant="primary"
             disabled={problems.length > 0}

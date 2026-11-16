@@ -490,7 +490,7 @@ export function ChartLimitDialog() {
           {chartsOldestFirst(s).map((t) => <ChartRow key={t.id} tab={t} onPick={() => tabActions.resolveChart(t.id)} />)}
         </ul>
         <div className="flex justify-end">
-          <Button onClick={() => tabActions.cancelChart()}>Cancel</Button>
+          <Button variant="ghost" onClick={() => tabActions.cancelChart()}>Cancel</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -520,7 +520,7 @@ export function PatientCheckDialog() {
           You were just working on <strong>{other.name}</strong>. Continue?
         </DialogDescription>
         <div className="flex justify-end gap-2">
-          <Button onClick={() => answerPatientCheck(false)}>Cancel</Button>
+          <Button variant="ghost" onClick={() => answerPatientCheck(false)}>Cancel</Button>
           <Button variant="primary" autoFocus onClick={() => answerPatientCheck(true)}>Continue For {target.name}</Button>
         </div>
       </DialogContent>

@@ -160,7 +160,7 @@ function AdjustDialog({ n, claims, onClose }: { n: NoticeView; claims: RcmClaim[
   const save = () => { if (run(adjustToClaims(n.id, nums, claims), `${v.total.toLocaleString("en-US", { minimumFractionDigits: 2 })} SAR adjusted to claims.`)) onClose(); };
   return (
     <Dialog open onClose={onClose} wide title="Adjust To Claim" subtitle={`${n.id} from ${n.payer}. Place the money on the claims it pays.`}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} disabled={!touched || v.errors.length > 0} onClick={save}>Save Adjustment</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} disabled={!touched || v.errors.length > 0} onClick={save}>Save Adjustment</Button></>}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-[0.8125rem]">Available <Money value={n.remaining} className="font-semibold" /></p>
         <Button size="sm" onClick={() => setAmounts(Object.fromEntries(Object.entries(fillInOrder(n, claims)).map(([k, x]) => [k, x.toFixed(2)])))}>Fill Oldest First</Button>
@@ -201,7 +201,7 @@ function NoticeDialog({ n, onClose }: { n: NoticeView; onClose: () => void }) {
   const blocked = n.remaining > 0.004;
   return (
     <Dialog open onClose={onClose} title="Generate Payment Notice" subtitle="Tells the payer through NPHIES that the money arrived."
-      footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" className={BRAND} disabled={blocked} onClick={() => run(generatePaymentNotice(n.id, status), "Payment notice sent.") && onClose()}>Submit</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button variant="primary" className={BRAND} disabled={blocked} onClick={() => run(generatePaymentNotice(n.id, status), "Payment notice sent.") && onClose()}>Submit</Button></>}>
       <Facts items={[["Reconciliation Number", n.id], ["Amount", <Money key="a" value={n.amount} />], ["Claims", n.allocations.map((a) => a.claimNumber).join(", ") || "None"], ["Payer", n.payer]]} />
       <Field label="Payment Status" required className="mt-3">
         <Select value={status} onChange={(e) => setStatus(e.target.value as "Paid" | "Cleared")}><option>Paid</option><option>Cleared</option></Select>
@@ -224,7 +224,7 @@ function ManualPaymentDialog({ onClose, existing, onSaved }: { onClose: () => vo
   };
   return (
     <Dialog open onClose={onClose} wide title="Manual Payment" subtitle="A payment that did not come through NPHIES, such as a cheque or a bank transfer."
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={save}>Save Payment</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={save}>Save Payment</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Payment Method" required><Select value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}><option value="">Choose</option>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</Select></Field>
         <Field label="Reference No" required><Input maxLength={100} value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} placeholder="Cheque or transfer number" /></Field>

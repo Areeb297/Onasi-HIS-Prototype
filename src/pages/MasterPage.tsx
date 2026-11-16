@@ -271,7 +271,7 @@ function EditSheet({ def, open, initial, rows, index, onClose, onSave }: { def: 
         <footer className="flex items-center justify-between gap-2 border-t border-border bg-[color:var(--glass-solid)] px-5 py-3 sm:px-6">
           <span className="text-xs text-muted-foreground" aria-live="polite">{dirty ? "Unsaved changes" : adding ? "" : "No changes yet"}</span>
           <div className="flex gap-2">
-            <Button onClick={requestClose}>Cancel</Button>
+            <Button variant="ghost" onClick={requestClose}>Cancel</Button>
             <Button variant="primary" className={BRAND_BUTTON} onClick={save}>{adding ? `Add ${def.title}` : "Save Changes"}</Button>
           </div>
         </footer>

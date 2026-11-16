@@ -1,7 +1,8 @@
 import type { FormDef } from "../schema";
 import { YES_NO, YES_NO_UNKNOWN, area, chk, date, dt, multi, num, radio, section, sel, text, time } from "./util";
 
-const ANESTHESIA = ["General", "Spinal", "Epidural", "Regional block", "Local with sedation", "Local only", "To be decided"];
+/** HIS lookup Type of Anesthesia. */
+const ANESTHESIA = ["General Anesthesia", "Regional Anesthesia", "Spinal Anesthesia", "Epidural Anesthesia", "Combined Spinal Epidural", "Local Anesthesia", "Sedation", "Monitored Anesthesia Care", "Nerve Block", "Other"];
 const OT_ROOMS = ["OT 1", "OT 2", "OT 3", "Minor OT", "Cath lab", "Labor OT"];
 const OT_SHIFTS = ["Morning", "Evening", "Night", "On call"];
 const OT_DEPARTMENTS = ["Operating Theater", "Day Surgery", "Obstetrics and Gynecology", "Cardiology", "Emergency"];
@@ -15,10 +16,16 @@ const SPECIALITIES = [
   "Plastic Surgery", "Cardiothoracic Surgery", "Vascular Surgery", "Pediatric Surgery", "Oral and Maxillofacial Surgery",
 ];
 const OT_LOCATIONS = ["Main Operating Theater", "Day Surgery Unit", "Labor and Delivery Theater", "Cardiac Theater", "Cath Lab", "Emergency Theater"];
-const OPERATION_TYPES = ["Open", "Laparoscopic", "Endoscopic", "Arthroscopic", "Robotic Assisted", "Percutaneous", "Microscopic"];
+/** HIS lookups Operation Type, Surgery Category, Operation Request Status, OT Schedule Status and OT Schedule Priority. */
+const OPERATION_TYPES = ["Elective", "Emergency"];
+const SURGERY_CATEGORIES = ["Day Case", "Minor", "Major", "Package"];
+const REQUEST_STATUSES = ["New", "Requested", "Pending Anesthesia Review", "Fit For Anesthesia", "Fit With High Risk", "Not Fit For Anesthesia", "Need More Investigation", "Scheduled", "In Progress", "Completed", "Cancelled"];
+const SCHEDULE_STATUSES = ["Draft", "Scheduled", "Confirmed", "In Progress", "Completed", "Cancelled", "Postponed"];
+const SCHEDULE_PRIORITIES = ["Elective", "Urgent", "Emergency", "High Risk"];
 /** One staff member on the roster, with the remarks the HIS keeps for each staff row. */
 const staff = (key: string, label: string, x: Parameters<typeof text>[2] = {}) => [text(key, label, x), text(`${key}Remarks`, `${label} Remarks`)];
-const BODY_REGIONS =["Head", "Face", "Neck", "Chest", "Breast", "Abdomen", "Pelvis", "Back and spine", "Upper limb", "Lower limb", "Skin", "More than one region"];
+/** HIS lookup Body Regions, used for each procedure of an operation request. */
+const BODY_REGIONS = ["Head", "Neck", "Chest", "Abdomen", "Pelvis", "Left Shoulder", "Right Shoulder", "Left Arm", "Right Arm", "Left Hand", "Right Hand", "Left Foot", "Right Foot", "Limbs"];
 
 export const OT_FORMS: FormDef[] = [
   {
@@ -57,14 +64,16 @@ export const OT_FORMS: FormDef[] = [
         sel("operationType", "Operation Type", OPERATION_TYPES),
         sel("speciality", "Speciality", SPECIALITIES), sel("location", "Location", OT_LOCATIONS, { hint: "The unit where the operation takes place." }),
         sel("urgency", "Urgency", ["Elective", "Urgent (within 24 hours)", "Emergency (immediate)"], { required: true }),
-        sel("surgeryCategory", "Surgery Category", ["Minor", "Intermediate", "Major", "Complex"])),
+        sel("surgeryCategory", "Surgery Category", SURGERY_CATEGORIES),
+        sel("requestStatus", "Request Status", REQUEST_STATUSES, { hint: "Moves on by itself as the assessment and the schedule are done." })),
       ...section("Dates And Times", date("admissionDate", "Admission Date"), date("preferredDate", "Operation Date", { required: true }),
         time("startTime", "Start Time", { hint: "Planned time. Record the actual times under After The Operation." }), time("endTime", "End Time"),
         num("duration", "Estimated Duration", { unit: "minutes", min: 0 })),
       ...section("Surgeon And Anesthesia", text("orderingConsultant", "Ordering Consultant"), text("surgeon", "Surgeon"), sel("anesthesiaType", "Anesthesia", ANESTHESIA, { hl7: "Anesthesia Section" }),
         radio("preOpAssessmentRequired", "Pre-Op Assessment Required", YES_NO),
         radio("preAnesthesiaDone", "Pre-Anesthesia Assessment Done", YES_NO, { hint: "The operation can be scheduled only after the assessment result is Fit For Anesthesia or Fit With High Risk." })),
-      ...section("Preparation", text("implants", "Implants Or Special Equipment", { placeholder: "Mesh, C-arm" }), num("bloodUnits", "Blood Units To Cross Match", { min: 0, hint: "Enter 0 when no blood transfusion is expected." }),
+      ...section("Preparation", text("implants", "Implants Or Special Equipment", { placeholder: "Mesh, C-arm" }), radio("bloodTransfusionRequired", "Blood Transfusion Required", YES_NO),
+        num("bloodUnits", "Blood Units To Cross Match", { min: 0, hint: "Enter 0 when no blood transfusion is expected." }),
         radio("icuBed", "Intensive Care (ICU) Bed Needed After The Operation", YES_NO), num("icuStayDays", "Expected ICU Stay", { unit: "days", min: 0 }),
         radio("consent", "Written Consent Obtained", YES_NO, { required: true }),
         area("patientInstructions", "Patient Instructions", { placeholder: "Fasting from midnight, stop blood thinners, arrive at 06:00" }),
@@ -107,15 +116,16 @@ export const OT_FORMS: FormDef[] = [
         radio("familyAnesthesiaComplication", "Anesthesia Complication In The Family", YES_NO_UNKNOWN), text("familyAnesthesiaDetails", "Family Anesthesia Complication Details"),
         radio("ponvHistory", "Nausea And Vomiting After An Earlier Operation (PONV)", YES_NO_UNKNOWN), text("ponvDetails", "Nausea And Vomiting Details")),
       ...section("Airway", sel("mallampati", "Mallampati Class", ["I", "II", "III", "IV"], { hint: "I: soft palate, uvula, pillars visible. II: soft palate and uvula. III: soft palate and base of uvula. IV: hard palate only." }),
+        area("airwayAssessment", "Airway Assessment"), text("chinTongue", "Chin And Tongue"),
         text("mouthOpening", "Mouth Opening", { placeholder: "3 fingers" }), text("thyromental", "Thyromental Distance (Chin To Neck)", { placeholder: "6.5 cm" }),
         sel("neck", "Neck Movement", ["Full", "Limited"]), chk("difficultAirway", "Difficult Airway Expected", { placeholder: "Difficult airway expected" }),
         multi("dentalFindings", "Teeth And Dentures", ["No Airway Problems", "Teeth Appear Normal", "Decayed", "Missing", "Dentures Upper", "Dentures Lower", "Dentures Removed"]),
-        text("dentalRemarks", "Teeth And Dentures Remarks")),
+        text("dentalRemarks", "Teeth And Dentures Remarks"), text("airwayOther", "Other Airway Findings"), area("otherFindings", "Other Findings")),
       ...section("Status", sel("asa", "ASA Physical Status (American Society Of Anesthesiologists Class)", ["I", "II", "III", "IV", "V", "VI"], { required: true, hint: "I healthy. II mild systemic disease. III severe systemic disease. IV severe disease that is a constant threat to life. V moribund, not expected to survive without the operation. VI brain-dead organ donor." }),
         chk("emergency", "Emergency Case (Add E)", { placeholder: "Emergency" }),
         text("npoStatus", "Fasting Status (Nil By Mouth)", { required: true, placeholder: "Solids last 22:00, clear fluids last 05:00", hint: "Usual minimum fasting: clear fluids 2 hours, breast milk 4 hours, light meal or formula 6 hours, fatty meal 8 hours." }),
         text("investigations", "Key Investigations Reviewed", { placeholder: "Hemoglobin, heart tracing (ECG), chest X-ray, blood availability" }),
-        area("plan", "Anesthesia Plan, Risks Discussed And Recommendations"), radio("consent", "Anesthesia Consent Obtained", YES_NO)),
+        area("plan", "Anesthetic Plan And Risks Discussed"), area("recommendations", "Recommendations"), radio("consent", "Anesthesia Consent Obtained", YES_NO)),
       ...section("Test Results Reviewed", chk("ecgReviewed", "ECG Reviewed", { placeholder: "Reviewed" }), chk("chestXRayReviewed", "Chest X-Ray Reviewed", { placeholder: "Reviewed" }),
         chk("labsReviewed", "Laboratory Results Reviewed", { placeholder: "Reviewed" }), chk("bloodAvailabilityReviewed", "Blood Availability Reviewed", { placeholder: "Reviewed" }),
         chk("medicationReviewed", "Medicines Reviewed", { placeholder: "Reviewed" }), chk("allergyReviewed", "Allergies Reviewed", { placeholder: "Reviewed" }),
@@ -145,10 +155,10 @@ export const OT_FORMS: FormDef[] = [
         sel("room", "Operating Room", OT_ROOMS, { required: true }), sel("shift", "Shift", OT_SHIFTS),
         time("startTime", "Start Time", { required: true }), time("endTime", "End Time", { hint: "Enter the end time or the duration." }),
         num("duration", "Duration", { unit: "minutes", min: 1 }), num("sequenceNo", "Sequence In The List", { min: 1 }),
-        sel("status", "Status", ["Draft", "Scheduled", "Confirmed", "In progress", "Completed", "Postponed", "Cancelled"], { required: true, hint: "Draft, Scheduled, Confirmed, In Progress, Completed. A Draft, Scheduled or Confirmed slot can be postponed or cancelled with a reason." })),
+        sel("status", "Status", SCHEDULE_STATUSES, { required: true, hint: "Draft, Scheduled, Confirmed, In Progress, Completed. A Draft, Scheduled or Confirmed slot can be postponed or cancelled with a reason." })),
       ...section("Case", text("procedure", "Procedure", { required: true, hl7: "Planned Procedure Entry", hint: "Procedures are coded with ACHI." }),
         sel("fitnessStatus", "Fitness Status", ["Fit For Anesthesia", "Fit With High Risk"], { required: true, hint: "From the pre-anesthesia assessment. Other results cannot be scheduled." }),
-        sel("caseType", "Case Type", ["Elective", "Urgent", "Emergency"]), chk("highRisk", "High Risk", { placeholder: "High risk case" }),
+        sel("caseType", "Priority", SCHEDULE_PRIORITIES), chk("emergency", "Emergency Case", { placeholder: "Emergency" }), chk("highRisk", "High Risk", { placeholder: "High risk case" }),
         sel("anesthesiaType", "Anesthesia", ANESTHESIA),
         text("equipment", "Special Equipment"), chk("patientReady", "Patient Ready", { placeholder: "Consent signed, fasting confirmed" })),
       ...section("Team", text("surgeon", "Surgeon", { hint: "The team comes from the OT Roster. Change it here for this case only." }), text("assistantSurgeon", "Assistant Surgeon"),

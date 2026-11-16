@@ -80,7 +80,7 @@ export function ReceiptDialog({ open, onClose, view, patient }: { open: boolean;
       subtitle={`Invoice #${view.invoice.number}`}
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
           <Button variant="primary" onClick={() => window.print()}><Printer className="size-4" /> Print</Button>
         </>
       }

@@ -40,7 +40,7 @@ function DispositionDialog({ enc, onClose, onDone }: { enc: Encounter; onClose: 
   const dev = useDevMode();
   return (
     <Dialog open onClose={onClose} title="ED Disposition" subtitle={dev ? "Goes in ZPV1-20. Admit sends A06 and picks a bed. Every other choice sends A03." : "How does this emergency visit end?"}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onDone(d)}>{d === "Admitted" ? "Choose A Bed" : "Complete Visit"}</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onDone(d)}>{d === "Admitted" ? "Choose A Bed" : "Complete Visit"}</Button></>}>
       <div className="grid gap-2" role="radiogroup" aria-label="Disposition">
         {DISPOSITIONS.map((x) => (
           <button key={x} role="radio" aria-checked={d === x} onClick={() => setD(x)} className={cn("rounded-lg border px-3 py-2 text-left text-sm", d === x ? "border-admit bg-admit/10 font-medium" : "border-border hover:bg-muted")}>

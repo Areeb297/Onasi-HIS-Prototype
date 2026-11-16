@@ -170,7 +170,7 @@ export function AllergySection({ enc }: { enc: Encounter }) {
         open={!!removing}
         onClose={() => setRemoving(null)}
         title="Remove Allergy"
-        footer={<><Button onClick={() => setRemoving(null)}>Keep Allergy</Button><Button variant="danger" onClick={() => removing && remove(removing)}>Remove</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setRemoving(null)}>Keep Allergy</Button><Button variant="danger" onClick={() => removing && remove(removing)}>Remove</Button></>}
       >
         <p className="text-sm">
           Remove <strong>{removing ? get(removing)?.text : ""}</strong> from the chart? If the patient no longer has this allergy, set it to Inactive or change its clinical status instead, so the history is kept.
@@ -223,7 +223,7 @@ function AllergySheet({ initial, isNew, taken, onClose, onSave }: {
       dirty={JSON.stringify(a) !== JSON.stringify(initial)}
       title={isNew ? "Add Allergy" : "Edit Allergy"}
       subtitle="Fields marked * are required."
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{isNew ? "Save Allergy" : "Update Allergy"}</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{isNew ? "Save Allergy" : "Update Allergy"}</Button></>}
     >
       <div className="space-y-6">
         <ErrorSummary problems={v.summary.length > 1 ? v.summary : problems} />
@@ -259,7 +259,8 @@ function AllergySheet({ initial, isNew, taken, onClose, onSave }: {
             <FormField label="Category" required error={v.error("category")}>
               <Select value={a.category ?? ""} onBlur={v.blur("category")} onChange={(e) => set({ category: e.target.value as Allergy["category"] })}>
                 <option value="" disabled>Select Category</option>
-                {ALLERGY_CATEGORIES.map((o) => <option key={o}>{o}</option>)}
+                {ALLERGY_CATEGORIES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {a.category && !ALLERGY_CATEGORIES.some((o) => o.value === a.category) && <option value={a.category}>{a.category}</option>}
               </Select>
             </FormField>
             <FormField label="Type" required group>
@@ -275,12 +276,14 @@ function AllergySheet({ initial, isNew, taken, onClose, onSave }: {
               <Select value={a.verification ?? ""} onBlur={v.blur("verification")} onChange={(e) => set({ verification: e.target.value as Allergy["verification"] })}>
                 <option value="" disabled>Select Verification Status</option>
                 {ALLERGY_VERIFICATION.map((o) => <option key={o}>{o}</option>)}
+                {a.verification && !((ALLERGY_VERIFICATION as readonly string[]).includes(a.verification)) && <option>{a.verification}</option>}
               </Select>
             </FormField>
             <FormField label="Source" required error={v.error("source")} help="Who told you about it.">
               <Select value={a.source ?? ""} onBlur={v.blur("source")} onChange={(e) => set({ source: e.target.value })}>
                 <option value="" disabled>Select Source</option>
                 {ALLERGY_SOURCES.map((o) => <option key={o}>{o}</option>)}
+                {a.source && !((ALLERGY_SOURCES as readonly string[]).includes(a.source)) && <option>{a.source}</option>}
               </Select>
             </FormField>
           </FormGrid>
@@ -312,12 +315,14 @@ function AllergySheet({ initial, isNew, taken, onClose, onSave }: {
                   <Select value={r.route ?? ""} onChange={(e) => setReaction(i, { route: e.target.value || undefined })}>
                     <option value="">Not Recorded</option>
                     {EXPOSURE_ROUTES.map((s) => <option key={s}>{s}</option>)}
+                    {r.route && !((EXPOSURE_ROUTES as readonly string[]).includes(r.route)) && <option>{r.route}</option>}
                   </Select>
                 </FormField>
                 <FormField label="Outcome">
                   <Select value={r.outcome ?? ""} onChange={(e) => setReaction(i, { outcome: e.target.value || undefined })}>
                     <option value="">Not Recorded</option>
                     {REACTION_OUTCOMES.map((s) => <option key={s}>{s}</option>)}
+                    {r.outcome && !((REACTION_OUTCOMES as readonly string[]).includes(r.outcome)) && <option>{r.outcome}</option>}
                   </Select>
                 </FormField>
               </FormGrid>

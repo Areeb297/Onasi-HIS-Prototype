@@ -66,7 +66,7 @@ export function AdmissionRequestForm({ onClose, patientId, visit, onSaved }: { o
       subtitle="The request waits as Pending until the approving doctor approves it. Approval admits the patient."
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
+          <Button variant="ghost" onClick={onClose}>Go Back</Button>
           <Button variant="primary" onClick={save} disabled={tried && problems.length > 0}><Send className="size-4" />Submit Admission Request</Button>
         </>
       }

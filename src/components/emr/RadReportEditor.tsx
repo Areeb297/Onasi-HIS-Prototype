@@ -235,7 +235,7 @@ export function RadReportEditor({ order }: { order: RadOrder }) {
               <PenLine className="size-4" aria-hidden="true" />
               Confirm And Sign
             </Button>
-            <Button onClick={() => setSigning(false)}>Keep Editing</Button>
+            <Button variant="ghost" onClick={() => setSigning(false)}>Keep Editing</Button>
           </div>
         </div>
       )}

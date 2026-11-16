@@ -285,8 +285,9 @@ export function FormActions({
     >
       <div className="min-w-0 flex-1 basis-48 text-sm text-muted-foreground">{status}</div>
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* UI standard, left to right: Cancel (ghost), secondary (outline), Save As Draft (outline), the primary. */}
+        {onCancel && <Button variant="ghost" onClick={onCancel}>{cancelLabel}</Button>}
         {extra}
-        {onCancel && <Button onClick={onCancel}>{cancelLabel}</Button>}
         {onDraft && <Button onClick={onDraft}>{draftLabel}</Button>}
         {onSave && (
           <ReasonButton variant={saveVariant} onClick={onSave} reason={disabledReason}>

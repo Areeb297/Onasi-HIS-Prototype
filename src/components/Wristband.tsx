@@ -76,7 +76,7 @@ export function WristbandDialog({ patientId, onClose }: { patientId: string | nu
       title="Print Wristband"
       subtitle="Check the details with the patient before you put the band on."
       wide
-      footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={print}><Printer className="size-4" />Print</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button variant="primary" onClick={print}><Printer className="size-4" />Print</Button></>}
     >
       <div className="rounded-xl border-2 border-foreground/70 bg-card px-4 py-3" aria-label="Wristband preview">
         <div className="text-lg font-semibold leading-tight">{patientName(patient)}</div>

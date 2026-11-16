@@ -161,7 +161,7 @@ export function DiagnosisSection({ enc }: { enc: Encounter }) {
         open={removing !== null}
         onClose={() => setRemoving(null)}
         title="Remove Diagnosis"
-        footer={<><Button onClick={() => setRemoving(null)}>Keep Diagnosis</Button><Button variant="danger" onClick={() => removing !== null && remove(removing)}>Remove</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setRemoving(null)}>Keep Diagnosis</Button><Button variant="danger" onClick={() => removing !== null && remove(removing)}>Remove</Button></>}
       >
         <p className="text-sm">
           Remove <strong>{removing !== null ? `${active[removing]?.code} ${active[removing]?.text}` : ""}</strong> from this visit? Set it to Inactive instead if it was entered correctly but no longer applies.
@@ -196,7 +196,7 @@ function DxSheet({ editing, active, inpatient, onClose, onSave }: {
       dirty={dirty}
       title={isNew ? "Add Diagnosis" : "Edit Diagnosis"}
       subtitle="Search the ICD-10-AM list by name or code."
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{isNew ? "Save Diagnosis" : "Update Diagnosis"}</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{isNew ? "Save Diagnosis" : "Update Diagnosis"}</Button></>}
     >
       <div className="space-y-5">
         <ErrorSummary problems={error ? [error] : []} />

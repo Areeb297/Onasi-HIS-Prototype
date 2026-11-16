@@ -34,7 +34,7 @@ export function RefundDialog({ open, onClose, view }: { open: boolean; onClose: 
       subtitle="Give the overpayment back to the patient"
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={submit} disabled={!allowed} title={allowed ? undefined : "This needs the billing permission."}>Confirm Refund</Button>
         </>
       }

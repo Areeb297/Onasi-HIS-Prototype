@@ -261,7 +261,7 @@ export function LabSection({ enc, view: startView = "Results" }: { enc: Encounte
         subtitle={cancellingOrder ? `${cancellingOrder.id}: ${cancellingOrder.codes.map((c) => testByCode(c)?.short).join(", ")}` : undefined}
         footer={
           <>
-            <Button onClick={() => setCancelling(null)}>Keep Order</Button>
+            <Button variant="ghost" onClick={() => setCancelling(null)}>Keep Order</Button>
             <Button
               variant="danger"
               onClick={() => {

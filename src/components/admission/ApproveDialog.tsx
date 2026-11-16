@@ -62,7 +62,7 @@ export function ApproveDialog({ request: r, onClose }: { request: AdmissionReque
       subtitle={dev ? `Request ${r.id}. Sends ${event}. Only a free bed, or the bed held for this patient, can be picked.` : `Request ${r.id}. Check the details, choose a bed or Pre-Admit, then approve.`}
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
+          <Button variant="ghost" onClick={onClose}>Go Back</Button>
           <Button variant="primary" disabled={problems.length > 0} onClick={confirm}><CheckCircle2 className="size-4" />{button}</Button>
         </>
       }

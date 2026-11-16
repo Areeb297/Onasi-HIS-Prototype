@@ -393,7 +393,7 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
         subtitle="A new version is built from the current chart. It replaces the published one."
         footer={
           <>
-            <Button onClick={() => setAmending(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setAmending(null)}>Cancel</Button>
             <Button
               variant="primary"
               onClick={() => {
@@ -418,7 +418,7 @@ export function ClinicalDocsSection({ enc }: { enc: Encounter }) {
         title="Delete Draft Document"
         footer={
           <>
-            <Button onClick={() => setRemovingDraft(null)}>Keep The Draft</Button>
+            <Button variant="ghost" onClick={() => setRemovingDraft(null)}>Keep The Draft</Button>
             <Button variant="danger" onClick={() => { if (removingDraft) deleteDraft(removingDraft.id); setRemovingDraft(null); }}>Delete Draft</Button>
           </>
         }

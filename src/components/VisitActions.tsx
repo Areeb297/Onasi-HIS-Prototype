@@ -35,6 +35,7 @@ import {
   freeBedsByFloor, moveVisitProblem, type AdmissionExtras,
 } from "@/lib/visit-forms";
 import { confirmForVisit } from "@/lib/wrong-patient";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 type BedDlg = { kind: "bed"; event: "A01"; visit?: string; patientId?: string };
 type TransferDlg = { kind: "transfer"; visit: string };
@@ -403,7 +404,7 @@ function BedDialog({ dlg, onClose }: { dlg: BedDlg; onClose: () => void }) {
       subtitle={dev ? "Sends A01. Only a free bed, or the bed reserved for this patient, can be picked." : "Pick a bed, check the details, then confirm."}
       footer={
         <>
-          <Button onClick={close}>Go Back</Button>
+          <Button variant="ghost" onClick={close}>Go Back</Button>
           <ConfirmButton problems={blockers} onClick={confirm}>Admit Patient</ConfirmButton>
         </>
       }
@@ -468,7 +469,7 @@ export function TransferDialog({ visit, onClose }: { visit: string; onClose: () 
       subtitle={dev ? "Sends A02. PV1-3 is the new bed and PV1-10 the new department. The reason stays in the HIS and the audit log." : "Choose the new department and bed, say why, then confirm."}
       footer={
         <>
-          <Button onClick={close}>Go Back</Button>
+          <Button variant="ghost" onClick={close}>Go Back</Button>
           <ConfirmButton problems={problems} onClick={() => { onClose(); transferPatient(visit, { bedId, service, subDepartment: sub, reason, note }); }}>Transfer Patient</ConfirmButton>
         </>
       }
@@ -607,7 +608,7 @@ export function ConvertDialog({ visit, onClose }: { visit: string; onClose: () =
       subtitle={dev ? "Sends A06. PV1-2 becomes I, PV1-3 the bed, PV1-4 the admission type, PV1-10 the department. Condition, activity level and reason stay in the HIS." : "Change this visit to an inpatient stay. Fill in the admission, pick a bed, then confirm."}
       footer={
         <>
-          <Button onClick={close}>Go Back</Button>
+          <Button variant="ghost" onClick={close}>Go Back</Button>
           <ConfirmButton problems={problems} onClick={() => { onClose(); convertToInpatient(visit, input); }}>Admit Patient</ConfirmButton>
         </>
       }
@@ -715,7 +716,7 @@ export function OutpatientDialog({ visit, onClose }: { visit: string; onClose: (
       subtitle={dev ? "Sends A07. The follow-up request is HIS only: it goes to the appointments desk, no message is sent for it." : "The visit stays open as an outpatient visit. You can request the clinic follow-up at the same time."}
       footer={
         <>
-          <Button onClick={close}>Go Back</Button>
+          <Button variant="ghost" onClick={close}>Go Back</Button>
           <ConfirmButton problems={problems} onClick={confirm}>Change To Outpatient</ConfirmButton>
         </>
       }
@@ -808,7 +809,7 @@ function ReasonDialog({ dlg, onClose }: { dlg: ReasonDlg; onClose: () => void })
       subtitle={dev ? `Sends ${dlg.event}. The reason stays in the HIS and the audit log.` : undefined}
       footer={
         <>
-          <Button onClick={close}>Go Back</Button>
+          <Button variant="ghost" onClick={close}>Go Back</Button>
           <ConfirmButton variant="danger" problems={problems} onClick={() => { onClose(); sendWithReason(dlg.event, dlg.visit, reason, note); }}>
             {title}
           </ConfirmButton>
@@ -1129,7 +1130,7 @@ function ApprovalsFields({ value, onChange, defaultDoctor }: { value: DischargeA
           <div key={i} className="rounded-xl border border-border bg-card p-4" role="group" aria-label={`Approval ${i + 1}`}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-semibold">Approval {i + 1}</span>
-              <Button size="sm" variant="ghost" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove approval ${i + 1}`}><Trash2 className="size-4" />Remove</Button>
+              <ActionIcon kind="delete" label="Remove" name={`approval ${i + 1}`} onClick={() => onChange(value.filter((_, j) => j !== i))} />
             </div>
             <FormGrid cols={2}>
               <Field label="Approving Doctor" required>
@@ -1266,7 +1267,7 @@ export function DischargeDialog({ visit, onClose }: { visit: string; onClose: ()
       subtitle={dev ? "Sends A03. The outcome sets PV1-36 and the discharge time PV1-45. A03 needs at least one diagnosis (DG1). Everything else is kept in the HIS." : inpatient ? "Work through the four tabs, check what will happen, then confirm." : "Choose the outcome first, then check what will happen."}
       footer={
         <>
-          <Button onClick={close}>Go Back</Button>
+          <Button variant="ghost" onClick={close}>Go Back</Button>
           <ConfirmButton problems={problems} onClick={confirm}>Discharge Patient</ConfirmButton>
         </>
       }
@@ -1427,7 +1428,7 @@ function ClearancesDialog({ dlg, onClose }: { dlg: ClearanceDlg; onClose: () => 
       wide
       title="Discharge Clearances"
       subtitle="All four are needed before an inpatient can be discharged."
-      footer={<Button onClick={onClose}>Close</Button>}
+      footer={<Button variant="ghost" onClick={onClose}>Close</Button>}
     >
       <PatientStrip patient={patient} enc={enc} />
       <NowStrip enc={enc} />
@@ -1487,7 +1488,7 @@ function LeftWardDialog({ dlg, onClose }: { dlg: LeftDlg; onClose: () => void })
       subtitle="Record when the discharged patient left. The bed is held until then."
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
+          <Button variant="ghost" onClick={onClose}>Go Back</Button>
           <ConfirmButton problems={problem ? [problem] : []} onClick={() => { onClose(); recordLeftWard(dlg.visit, at); }}>
             Record Patient Left
           </ConfirmButton>
@@ -1528,7 +1529,7 @@ function BedServiceDialog({ dlg, onClose }: { dlg: BedServiceDlg; onClose: () =>
       subtitle="No patient is in this bed."
       footer={
         <>
-          <Button onClick={onClose}>Go Back</Button>
+          <Button variant="ghost" onClick={onClose}>Go Back</Button>
           <ConfirmButton variant="danger" problems={problem ? [problem] : []} onClick={() => { onClose(); setBedOutOfService(dlg.bedId, reason, note); }}>
             Take Out Of Service
           </ConfirmButton>
@@ -1700,7 +1701,7 @@ function RegisterDialog({ dlg, onClose, onNewPatient }: { dlg: RegisterDlg; onCl
       subtitle={dev ? subs[dlg.type] : undefined}
       footer={
         <>
-          <Button onClick={close}>Go Back</Button>
+          <Button variant="ghost" onClick={close}>Go Back</Button>
           <ConfirmButton problems={ready ? [] : stillNeeded.length ? stillNeeded : ["Check the details above."]} onClick={submit}>
             {titles[dlg.type]}
           </ConfirmButton>
@@ -1881,7 +1882,7 @@ export function MoveVisitDialog({ visit, onClose }: { visit: string; onClose: ()
           </>
         ) : (
           <>
-            <Button onClick={close}>Go Back</Button>
+            <Button variant="ghost" onClick={close}>Go Back</Button>
             <ConfirmButton problems={problems} onClick={() => setReview(true)}>Review Move</ConfirmButton>
           </>
         )

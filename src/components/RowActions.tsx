@@ -2,8 +2,8 @@ import * as React from "react";
 import {
   IconArrowBackUp, IconArrowsExchange, IconBed, IconCircleX, IconEdit, IconFolderOpen, IconLogout, IconUserShare, IconUserCheck, IconWalk,
 } from "@tabler/icons-react";
-import { ChevronDown } from "lucide-react";
 import { Badge, Button, cn } from "@/components/ui/primitives";
+import { ActionIcon } from "@/components/ui/action-icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useDevMode } from "@/lib/devmode";
 import { can, useSession } from "@/lib/session";
@@ -83,8 +83,8 @@ export function RowActions({ enc, onAct, inChart = false }: { enc: Encounter; on
   const code = (a: ActionDef) => (dev && a.key !== "CHART" && a.key !== "CHECKIN" ? ` (${a.key})` : "");
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {chart && <Button size="sm" onClick={() => onAct("CHART")}>Open Chart</Button>}
+    <div className="flex flex-wrap items-center gap-1.5">
+      {chart && <ActionIcon kind="chart" name={enc.visitNumber} onClick={() => onAct("CHART")} />}
       {next && (
         <Button size="sm" variant="primary" onClick={() => onAct(next.key)} title={`${next.label}${code(next)}`}>
           <span className="flex [&_svg]:!text-current">{next.icon}</span>
@@ -95,9 +95,7 @@ export function RowActions({ enc, onAct, inChart = false }: { enc: Encounter; on
       {more.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" aria-label={`More actions for ${enc.visitNumber}`}>
-              More <ChevronDown className="size-4" />
-            </Button>
+            <ActionIcon kind="more" name={enc.visitNumber} dot={more.some((a) => a.dot)} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
             {more.map((a, i) => (

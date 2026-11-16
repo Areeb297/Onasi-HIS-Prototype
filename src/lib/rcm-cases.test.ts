@@ -76,7 +76,7 @@ describe("rcm cases", () => {
     const corrected = rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === c.id)!;
     expect(corrected.status).toBe("Corrected");
     expect(corrected.errors[0].fixed).toMatch(/member number/);
-    expect(resubmitRejection(corrected, "Sent again").ok).toBe(true);
+    expect(resubmitRejection(corrected, "Sent again", TODAY).ok).toBe(true);
     expect(getRcm().claims.find((x) => x.claimNumber === "CLM-26-4341")!.state).toBe("Submitted");
     expect(rejectionCases(getRcm(), allClaims(), TODAY).find((x) => x.id === c.id)!.status).toBe("Resubmitted");
     // The payer rejects it again: the case reopens.
@@ -99,7 +99,7 @@ describe("rcm cases", () => {
   it("appeals denied lines as a linked claim and resolves the case on the payer's answer", () => {
     const d = denialCases(getRcm(), allClaims(), TODAY).find((x) => x.id === "DN-CLM-26-4231")!;
     expect(appealDenial(d, { seqs: [], reason: "short", attachments: [] }).ok).toBe(false);
-    const r = appealDenial(d, { seqs: [2], reason: "Authorization AUTH-2210 was approved before the scan.", attachments: ["Approval letter.pdf", " "] });
+    const r = appealDenial(d, { seqs: [2], reason: "Authorization AUTH-2210 was approved before the scan.", attachments: ["Approval letter.pdf", " "] }, TODAY);
     expect(r).toMatchObject({ ok: true, id: "CLM-26-4231-AP1" });
     const ap = getRcm().claims.find((x) => x.claimNumber === "CLM-26-4231-AP1")!;
     expect(ap).toMatchObject({ appealOf: "CLM-26-4231", state: "Submitted" });

@@ -7,6 +7,7 @@ import { navigate } from "@/lib/router";
 import { FIELD_KEYS, saveField, setFieldActive, useRules, type FieldMap } from "@/lib/rule-engine";
 import { can, useSession } from "@/lib/session";
 import { pushToast } from "@/lib/toast";
+import { ActionIcon } from "@/components/ui/action-icons";
 
 /** Claim Scrubbing Field Mapping: where each field a rule reads comes from. HIS rcm/field-mapping. */
 export function FieldMappingPage() {
@@ -81,7 +82,7 @@ export function FieldMappingPage() {
               <p className="mt-1.5 break-all font-mono text-xs">{f.nphiesPath}</p>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <Badge tone={f.scope === "line" ? "info" : "primary"}>{f.scope === "line" ? "Service Line" : "Claim"}</Badge>
-                <Button size="sm" variant="ghost" disabled={!allowed} onClick={() => setEditing({ field: f })}><Pencil className="size-4" /> Edit</Button>
+                <ActionIcon kind="edit" name={f.nphiesPath} disabled={!allowed} hint={!allowed ? "Your role cannot change field mappings." : undefined} onClick={() => setEditing({ field: f })} />
               </div>
             </li>
           ))}
@@ -107,7 +108,7 @@ function FieldDialog({ open, field, taken, onClose }: { open: boolean; field?: F
   };
   return (
     <Dialog open={open} onClose={onClose} title={field ? `Edit ${field.name}` : "Add Mapping"} subtitle="The claim value is what the rule engine reads; source and NPHIES path say where it comes from and where it goes."
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>{field ? "Save Mapping" : "Add Mapping"}</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>{field ? "Save Mapping" : "Add Mapping"}</Button></>}>
       <div className="flex flex-col gap-3">
         <Field label="Claim Value" required hint={meta ? `${meta.scope === "line" ? "Read once per service line" : "Read once per claim"}, ${meta.type === "number" ? "a number" : meta.type === "list" ? "one of a list" : "text"}.` : undefined}>
           <Select value={form.key} disabled={!!field} onChange={(e) => { const k = FIELD_KEYS.find((x) => x.key === e.target.value); setForm((f) => ({ ...f, key: e.target.value, name: f.name || k?.name || "" })); }}>

@@ -162,7 +162,7 @@ function StepFooter({ problem, onCancel, onSave, saveLabel }: { problem: string 
     <div className="flex w-full flex-wrap items-center justify-between gap-3">
       <p className={cn("min-w-0 flex-1 text-xs", problem ? "text-foreground" : "text-muted-foreground")} role="status">{problem ? `Cannot save yet: ${problem}` : "Your name and the time are recorded when you save."}</p>
       <span className="flex shrink-0 gap-2">
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
         <Button variant="primary" disabled={!!problem} onClick={onSave}>{saveLabel}</Button>
       </span>
     </div>
@@ -179,7 +179,7 @@ function DraftFooter({ problem, draftProblem, onCancel, onDraft, onComplete, com
         {draftProblem ? `Cannot save yet: ${draftProblem}` : problem ? `Save a draft at any time. To complete: ${problem}` : "Ready to complete. Your name and the time are recorded."}
       </p>
       <span className="flex shrink-0 flex-wrap gap-2">
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
         <Button disabled={!!draftProblem} onClick={onDraft}>{draftLabel}</Button>
         <Button variant="primary" disabled={!!problem || !!draftProblem} onClick={onComplete}>{completeLabel}</Button>
       </span>

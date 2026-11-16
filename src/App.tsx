@@ -64,7 +64,7 @@ import { TheatreListPage } from "@/pages/TheatreListPage";
 import { WorklistPage } from "@/pages/WorklistPage";
 
 import { canUseDevMode, isDevMode, setDevMode, useDevMode } from "@/lib/devmode";
-import { NAV, type NavGroup, type NavPage } from "@/lib/nav";
+import { NAV, isListPage, type NavGroup, type NavPage } from "@/lib/nav";
 import { navigate, useRoute } from "@/lib/router";
 import { routeAccess } from "@/lib/route-guard";
 import { can, ROLES, switchUser, USERS, lockScreen, useSession } from "@/lib/session";
@@ -99,6 +99,20 @@ function Brand() {
     </div>
   );
 }
+
+/**
+ * Module colour code for the rail icons, borrowed from the HIS (components/ct/module-hue.ts): one hue per module, all at
+ * the same lightness and chroma so none shouts on Dark Green. A module with no entry stays neutral.
+ */
+const HUES: Array<[RegExp, number]> = [
+  [/emergency|ambulance/i, 27], [/pharmac/i, 55], [/invoice|cashier|finance|billing/i, 75], [/rehab/i, 120],
+  [/^opd|outpatient|clinic/i, 140], [/rcm|nphies|claim|insurance/i, 165], [/patient/i, 190], [/laborator|^lab/i, 212],
+  [/appointment|schedul/i, 240], [/radiolog|x-?ray|imaging/i, 265], [/^ipd|inpatient|admission|ward|bed/i, 296], [/report/i, 350],
+];
+const moduleColor = (label: string) => {
+  const hue = HUES.find(([re]) => re.test(label))?.[1];
+  return hue === undefined ? "oklch(0.84 0.03 165)" : `oklch(0.84 0.11 ${hue})`;
+};
 
 /** Visible groups for the current user and view. */
 function useVisibleNav(): NavGroup[] {
@@ -168,7 +182,7 @@ function NavTree({ path }: { path: string }) {
       <SidebarSection>
         {filtered.map((g) => {
           const Icon = g.icon;
-          const icon = <Icon className={`size-[18px] ${g.color}`} stroke={1.75} />;
+          const icon = <span className="flex" style={{ color: moduleColor(g.label) }}><Icon className="size-[18px]" stroke={1.75} /></span>;
           if (g.pages.length === 1 && g.pages[0].label === g.label) {
             const p = g.pages[0];
             return (
@@ -393,6 +407,13 @@ function Shell() {
   const dev = useDevMode();
   const { role } = useSession();
   const [navOpen, setNavOpen] = React.useState(false);
+  // Listing pages open with the rail collapsed so the grid gets the width. Expanding it there holds across list pages
+  // until the user goes to another kind of page, which keeps its own last state. The phone drawer always opens full width.
+  const listPage = isListPage(route.path);
+  const [navCollapsed, setNavCollapsed] = React.useState(false);
+  const [listExpanded, setListExpanded] = React.useState(false);
+  React.useEffect(() => { if (!listPage) setListExpanded(false); }, [listPage]);
+  const collapsed = !navOpen && (listPage ? !listExpanded : navCollapsed);
   const mainRef = React.useRef<HTMLElement>(null);
   useAgentMonitor();
   useWorkspace();
@@ -403,7 +424,7 @@ function Shell() {
       {/* Below desktop width the menu is a drawer: it slides in over the page and closes when you pick a page. */}
       {navOpen && <button type="button" aria-label="Close the menu" className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setNavOpen(false)} />}
       <div style={RAIL} className={`fixed inset-y-0 left-0 z-50 h-full text-foreground shadow-xl transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 lg:shadow-none ${navOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <Sidebar variant="collapsible" width={270} aria-label="Main navigation" className="bg-[var(--sidebar,var(--background))]">
+        <Sidebar variant="collapsible" width={270} collapsed={collapsed} onCollapsedChange={(c) => (listPage ? setListExpanded(!c) : setNavCollapsed(c))} aria-label="Main navigation" className="bg-[var(--sidebar,var(--background))]">
           <SidebarHeader className="h-auto min-h-[60px] py-3">
             <Brand />
             <SidebarToggle className="ml-auto hidden lg:flex" />

@@ -335,7 +335,7 @@ function NoteCard({ n, detail, patient, dev, mayWrite, editing, onEdit }: { n: S
         open={removing}
         onClose={() => setRemoving(false)}
         title="Delete Draft Note"
-        footer={<><Button onClick={() => setRemoving(false)}>Keep The Draft</Button><Button variant="danger" onClick={() => { deleteSoap(n.id); deleteSoapDetail(n.id); setRemoving(false); pushToast({ tone: "warn", text: "Draft SOAP note deleted" }); }}>Delete Draft</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setRemoving(false)}>Keep The Draft</Button><Button variant="danger" onClick={() => { deleteSoap(n.id); deleteSoapDetail(n.id); setRemoving(false); pushToast({ tone: "warn", text: "Draft SOAP note deleted" }); }}>Delete Draft</Button></>}
       >
         <p className="text-sm">Delete the draft SOAP note of <strong>{stamp(n.at)}</strong>? It was not signed, so nothing of it stays in the chart.</p>
       </Dialog>

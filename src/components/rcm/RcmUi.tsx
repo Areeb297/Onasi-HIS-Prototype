@@ -313,7 +313,7 @@ export function NoteDialog({ open, onClose, onSave, kindLabel }: { open: boolean
   };
   return (
     <Dialog open={open} onClose={onClose} title="Claim Notes" subtitle={`${kindLabel} note. Contact details are optional; fill them in after a call or message with the payer.`}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={save}>Save Notes</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" className={BRAND} onClick={save}>Save Notes</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Contact Medium"><Select value={f.medium} onChange={(e) => setF({ ...f, medium: e.target.value })}><option value="">No Contact</option>{CONTACT_MEDIUMS.map((m) => <option key={m}>{m}</option>)}</Select></Field>
         <Field label="Contact Outcome" required={!!f.medium}><Select value={f.outcome} disabled={!f.medium} onChange={(e) => setF({ ...f, outcome: e.target.value })}><option value="">Choose</option>{CONTACT_OUTCOMES.map((m) => <option key={m}>{m}</option>)}</Select></Field>
@@ -341,7 +341,7 @@ export function ActionDialog({ open, onClose, title, subtitle, submit, onSubmit,
   React.useEffect(() => { if (open) setNote(""); }, [open]);
   return (
     <Dialog open={open} onClose={onClose} title={title} subtitle={subtitle}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant={danger ? "danger" : "primary"} className={danger ? undefined : BRAND} onClick={() => onSubmit(note) && onClose()}>{submit}</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant={danger ? "danger" : "primary"} className={danger ? undefined : BRAND} onClick={() => onSubmit(note) && onClose()}>{submit}</Button></>}>
       <div className="grid gap-3">
         {children}
         <Field label={noteLabel} required>
