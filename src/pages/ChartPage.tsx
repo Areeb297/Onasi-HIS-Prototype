@@ -1,7 +1,7 @@
 import { latestChartVitals } from "@/lib/chart-review";
 import * as React from "react";
 import { IconMessage2, IconShieldExclamation, IconShieldCheck } from "@tabler/icons-react";
-import { Activity, AlertTriangle, CheckCircle2, CircleAlert, Droplet, HeartPulse, Plus, Scale, Thermometer, Trash2, Wind } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, Droplet, HeartPulse, Plus, Scale, Thermometer, Trash2, Wind } from "lucide-react";
 import { KpiStrip, KpiTile } from "@/components/ui/glass";
 import { ClassBadge } from "@/components/badges";
 import { RowActions, type ActionKey } from "@/components/RowActions";
@@ -246,6 +246,9 @@ function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
   const sev = { SV: "severe", MO: "moderate", MI: "mild" } as const;
   useFinancial();
   const cover = coverageView(patient, new Date().toISOString().slice(0, 10), caseOf(enc.visitNumber).eligibility);
+  // The header is sticky, so a tall one hides the chart; the user can fold it to one line. Allergies always stay.
+  const [full, setFull] = React.useState(() => { try { return localStorage.getItem("chart.header.full") === "1"; } catch { return false; } });
+  const toggleFull = () => setFull((f) => { try { localStorage.setItem("chart.header.full", f ? "0" : "1"); } catch { /* private mode */ } return !f; });
   return (
     <>
       <div className="glass-card z-20 overflow-hidden rounded-2xl sm:sticky sm:top-[3.4rem]" role="region" aria-label="Patient header">
@@ -258,11 +261,18 @@ function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
               <div className="flex flex-wrap gap-x-1.5 text-[0.8125rem] text-muted-foreground">
                 <span>{age(patient.dob)} years · {patient.sex === "M" ? "Male" : "Female"}</span>
                 <span>· MRN <span className="font-mono text-foreground">{patient.mrn}</span></span>
-                <span>· Health ID <span className="font-mono">{patient.healthId}</span></span>
-                <span>· Blood Group <span className="font-medium text-foreground">{patient.extra?.bloodGroup || "Not recorded"}</span></span>
+                {full && <span>· Health ID <span className="font-mono">{patient.healthId}</span></span>}
+                {full && <span>· Blood Group <span className="font-medium text-foreground">{patient.extra?.bloodGroup || "Not recorded"}</span></span>}
               </div>
             </div>
           </div>
+          {!full ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+              <span className="flex items-center gap-1.5"><span className="font-mono font-medium">{enc.visitNumber}</span><ClassBadge cls={enc.cls} /><Badge tone={st.tone}>{st.label}</Badge></span>
+              <span className="whitespace-nowrap text-muted-foreground">{doctorName(enc.attending)}</span>
+              {cover.payer === "Cash" ? <span className="font-medium">Cash</span> : <span className="flex items-center gap-1.5 whitespace-nowrap font-medium">{cover.payer}<Badge tone={cover.eligible ? "ok" : "danger"}>{cover.eligible ? "Eligible" : "Not Eligible"}</Badge></span>}
+            </div>
+          ) : (
           <div className="grid w-full grid-cols-2 gap-x-4 gap-y-2 sm:flex sm:w-auto sm:flex-1 sm:flex-wrap sm:items-center sm:gap-x-6">
             <div>
               <div className="text-xs text-muted-foreground">Visit</div>
@@ -298,9 +308,13 @@ function ChartHeader({ enc, patient }: { enc: Encounter; patient: Patient }) {
               </div>
             </div>
           </div>
+          )}
           <button type="button" onClick={() => navigate("/nphies-clinical")} title="See what this hospital sends to NPHIES" aria-label="Open NPHIES Clinical" className="rounded-md transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-ring sm:ml-auto">
             <NphiesLogo height={18} />
           </button>
+          <Button size="sm" variant="ghost" onClick={toggleFull} aria-expanded={full} aria-label={full ? "Show less patient detail" : "Show more patient detail"} title={full ? "Show Less" : "Show More"}>
+            {full ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}<span className="hidden sm:inline">{full ? "Show Less" : "Show More"}</span>
+          </Button>
         </div>
         {enc.allergies.length ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-destructive/30 bg-destructive/10 px-4 py-2" role="alert">
