@@ -271,7 +271,7 @@ describe("coded fields follow the published value sets", () => {
     expect(dg1.map((d) => d[15])).toEqual(["1", "2"]);
     expect(dg1[1][5]).toBe(""); // no diagnosis time recorded, so none is made up
     const pr1 = line(plan.message, "PR1").map((l) => l.split("|"));
-    expect(pr1[0][3]).toBe("44970-00^Laparoscopic appendicectomy^2.16.840.1.113883.3.3731.50.2");
+    expect(pr1[0][3]).toBe("30572-00^Laparoscopic appendicectomy^2.16.840.1.113883.3.3731.50.2");
     expect(pr1[0][5]).toBe(ts(f.admitAt));
     expect(pr1[0][6]).toBe("P");
     expect(pr1[0][11]).toContain("D1002^Alzahrani^Noura");

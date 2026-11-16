@@ -1,3 +1,4 @@
+import { sbsForAchi } from "./achi-catalog";
 import { audit } from "./audit";
 import { dxKind } from "./chart-entries";
 import { createStore } from "./fhir/store-util";
@@ -36,8 +37,9 @@ export type { AnswerError, AnswerLine, PayerAnswer } from "./rcm-demo-claims";
  * Hospital choices to confirm before go-live (made here so the screens can work):
  *  - Claim type and sub-type by visit class: outpatient Professional / Outpatient, emergency Institutional / Emergency,
  *    inpatient Institutional / Inpatient. One claim per visit, medicines included (NPHIES expects a separate pharmacy claim).
- *  - Service codes are SBS sample codes (SBS-SAMPLE-nnnn), the same placeholders the masters use. The hospital SBS price
- *    list is the source of truth.
+ *  - Service codes: consultation, stay, the lab tests and imaging exams below and chart procedures carry real SBS codes,
+ *    checked against the CT-HIS code catalog (16 Nov 2026). Everything else keeps a placeholder (SBS-SAMPLE-nnnn) until the
+ *    hospital maps it; the claim review warns about placeholders. Medicines bill under SFDA codes, not SBS.
  *  - The AR-DRG box is an estimate from the principal diagnosis. The licensed AR-DRG grouper decides the final code.
  */
 
@@ -76,7 +78,49 @@ export const SUPPORT_CATEGORIES: { code: string; label: string }[] = [
 ];
 export const SUPPORT_LABEL: Record<string, string> = Object.fromEntries(SUPPORT_CATEGORIES.map((c) => [c.code, c.label]));
 
-export type CodeSystem = "SBS" | "ACHI";
+/**
+ * The code on a claim line. SBS (Saudi Billing System) for services, procedures, lab and imaging; SFDA for medicines
+ * (NPHIES medication-codes). ACHI is the clinical procedure code: it is shown only until it is turned into its SBS code.
+ */
+export type CodeSystem = "SBS" | "ACHI" | "SFDA";
+
+/**
+ * The NPHIES CodeSystem a line's code belongs to, by line kind, as the CT-HIS code catalog files them
+ * (dbo.CodeTypes.TypeUrl): consultation and imaging under services, lab under laboratory, procedures under procedures.
+ */
+export function nphiesSystemFor(kind: string, system: CodeSystem): string {
+  if (system === "SFDA") return "http://nphies.sa/terminology/CodeSystem/medication-codes";
+  if (kind === "lab") return "http://nphies.sa/terminology/CodeSystem/laboratory";
+  if (kind === "proc") return "http://nphies.sa/terminology/CodeSystem/procedures";
+  return "http://nphies.sa/terminology/CodeSystem/services";
+}
+
+/** SBS laboratory codes by LOINC test code, checked against the CT-HIS code catalog (CodeSystem/laboratory). */
+export const LAB_SBS: Readonly<Record<string, string>> = {
+  "58410-2": "73100-00-90", // CBC (Automated)
+  "24331-1": "73000-00-60", // Lipid profile
+  "24357-6": "73150-00-40", // Urinalysis; Automated
+  "5902-2": "73100-08-50", // Prothrombin time test
+  "2345-7": "73050-15-50", // Glucose; Quant.; Blood
+  "2160-0": "73050-09-80", // Creatinine; Blood
+  "4548-4": "73050-18-50", // Glycosylated Hgb
+  "3016-3": "73050-35-50", // TSH
+  "2276-4": "73050-13-10", // Serum Ferritin
+  "10839-9": "73050-36-70", // Troponin; Quant.
+  "2106-3": "73150-01-00", // Pregnancy test; Urine
+};
+
+/** SBS imaging codes by radiology procedure code, checked against the CT-HIS code catalog (Imaging services). */
+export const RAD_SBS: Readonly<Record<string, string>> = {
+  "XCHES-PA": "58500-00-10", // Radiography chest, 1 view
+  "X-LSJ": "58106-00-00", // Radiography of lumbosacral spine
+  XKNER: "57518-01-11", // Radiography knee 1 or 2 views, unilateral
+  CSKUH: "56001-00-00", // Computerised tomography of brain
+  CCHES: "56301-00-00", // Computerised tomography of chest
+  MSKUH: "90901-01-10", // MRI head without contrast medium
+  MLUSP: "90901-03-70", // MRI lumbar spine without contrast medium
+  XBDXW: "12306-00-00", // Bone densitometry using dual energy X-ray
+};
 
 /* ---------- saved claim edits ---------- */
 
@@ -243,17 +287,17 @@ function expand(inv: InvoiceLine, i: BuildInput): BaseLine[] {
   }
   if (inv.key === "lab") {
     out = i.labOrders.filter((o) => o.visitNumber === v && o.status !== "cancelled").flatMap((o) =>
-      o.codes.map((c): BaseLine => ({ key: `lab:${o.id}:${c}`, kind: "lab", text: testByCode(c)?.display ?? `Laboratory test ${c}`, code: `SBS-SAMPLE-3${digits(c, 3)}`, start: dateOnly(o.orderedAt), dxCode: o.diagnosis?.code })));
+      o.codes.map((c): BaseLine => ({ key: `lab:${o.id}:${c}`, kind: "lab", text: testByCode(c)?.display ?? `Laboratory test ${c}`, code: LAB_SBS[c] ?? `SBS-SAMPLE-3${digits(c, 3)}`, start: dateOnly(o.orderedAt), dxCode: o.diagnosis?.code })));
   } else if (inv.key === "rad") {
     out = i.radOrders.filter((o) => o.visitNumber === v && o.status !== "cancelled").map((o): BaseLine => ({
-      key: `rad:${o.id}`, kind: "rad", text: procByCode(o.procCode)?.display ?? `Radiology exam ${o.procCode}`, code: `SBS-SAMPLE-4${digits(o.procCode, 3)}`, start: dateOnly(o.orderedAt), dxCode: o.diagnosis?.code,
+      key: `rad:${o.id}`, kind: "rad", text: procByCode(o.procCode)?.display ?? `Radiology exam ${o.procCode}`, code: RAD_SBS[o.procCode] ?? `SBS-SAMPLE-4${digits(o.procCode, 3)}`, start: dateOnly(o.orderedAt), dxCode: o.diagnosis?.code,
     }));
   } else if (inv.key === "rx") {
     out = i.rx.prescriptions.filter((p) => p.visitNumber === v).flatMap((p) =>
       p.items.filter((it) => it.status !== "cancelled" && !it.patientProvided).map((it): BaseLine => {
         let name = it.drugId;
         try { const d = getDrug(it.drugId); name = `${d.generic} ${d.strengthValue} ${d.strengthUnit}`; } catch { /* unknown drug id */ }
-        return { key: `rx:${p.id}:${it.id}`, kind: "rx", text: name, code: `SBS-SAMPLE-5${digits(it.drugId, 3)}`, start: dateOnly(p.authoredAt), dxCode: it.reason?.code };
+        return { key: `rx:${p.id}:${it.id}`, kind: "rx", text: name, code: `SFDA-SAMPLE-5${digits(it.drugId, 3)}`, start: dateOnly(p.authoredAt), dxCode: it.reason?.code };
       }));
   }
   if (out.length === inv.units) return out;
@@ -306,7 +350,7 @@ export function buildClaim(i: BuildInput): ClaimModel {
       const careIds = (edit.careIds ?? firstCare).filter((c) => careSeq.has(c));
       const gross = round2(inv.unitCost);
       lines.push({
-        key: b.key, seq: 0, kind: b.kind, text: b.text, system: edit.system ?? "SBS", code: edit.code ?? b.code,
+        key: b.key, seq: 0, kind: b.kind, text: b.text, system: edit.system ?? (b.kind === "rx" ? "SFDA" : "SBS"), code: edit.code ?? b.code,
         start: edit.start ?? (b.start || today), end: edit.end ?? (b.kind === "visit" ? end : b.start || today),
         quantity: 1, unitCost: round2(inv.unitCost), gross, discount: perDiscount, net: round2(gross - perDiscount),
         dxCodes, dxSeqs: dxCodes.map((c) => dxSeq.get(c)!), careIds, careSeqs: careIds.map((c) => careSeq.get(c)!), extra: false,
@@ -377,7 +421,8 @@ export function estimateDrg(dx: Pick<ClaimDx, "code" | "type">[], admit: string,
 export type Severity = "warning" | "soft" | "hard";
 export const SEVERITY_LABEL: Record<Severity, string> = { warning: "Warning", soft: "Soft Stop", hard: "Hard Stop" };
 export type ClaimUse = "priorauth" | "claim";
-export type RuleId = "no-principal-dx" | "many-principal-dx" | "no-chief-complaint" | "no-vitals" | "vitals-missing" | "auth-not-approved" | "line-no-dx" | "line-zero-cost";
+export type RuleId = "no-principal-dx" | "many-principal-dx" | "no-chief-complaint" | "no-vitals" | "vitals-missing" | "auth-not-approved" | "line-no-dx" | "line-zero-cost"
+  | "symptom-principal" | "injury-no-external-cause";
 
 export interface Finding {
   /** Rule id, plus the line key for line rules. Soft stops are acknowledged by this id. */
@@ -424,6 +469,14 @@ export function reviewClaim(r: ReviewInput, use: ClaimUse, set: { rules: Rule[];
   const principal = r.dx.filter((d) => d.type === "principal").length;
   if (principal === 0) add("no-principal-dx", { text: "There is no principal diagnosis.", fix: "Set one diagnosis to Principal in the Diagnoses section, or add it in the chart." });
   if (principal > 1) add("many-principal-dx", { text: `${principal} diagnoses are marked Principal. Only one is allowed.`, fix: "Change the others to Secondary." });
+  const main = r.dx.find((d) => d.type === "principal");
+  const definite = r.dx.filter((d) => d !== main && /^[A-QS-Z]/.test(d.code));
+  if (main && /^R/.test(main.code) && definite.length) {
+    add("symptom-principal", { text: `${main.code} is a symptom code but is principal, while ${definite[0].code} is coded.`, fix: "Make the definite diagnosis principal and the symptom secondary, or remove the symptom." });
+  }
+  if (r.dx.some((d) => /^[ST]/.test(d.code)) && !r.dx.some((d) => /^[V-Y]/.test(d.code))) {
+    add("injury-no-external-cause", { text: "An injury is coded without an external cause code (V01-Y98).", fix: "Add the external cause: how and where the injury happened." });
+  }
   if (!r.chiefComplaint) add("no-chief-complaint", { text: "The chief complaint is missing.", fix: "Record the chief complaint in the chart." });
   if (r.vitalsTotal > 0 && r.vitalsMissing.length >= r.vitalsTotal) {
     add("no-vitals", { text: "No vital signs are recorded for this visit.", fix: "Record the vital signs in the chart, or an absence reason for each one." });
@@ -741,19 +794,24 @@ export function saveLine(visit: string, key: string, patch: LineEdit): ActionRes
   return { ok: true };
 }
 
-/** Adds a procedure from the chart as an ACHI line. It carries no price, so the review warns about it. */
+/**
+ * Adds a procedure from the chart. Claims bill SBS, so the ACHI code becomes its SBS code when the catalog has exactly one;
+ * otherwise the line keeps the ACHI code and the review asks the coder for the SBS extension. It carries no price, so the
+ * review warns about that too.
+ */
 export function addProcedureLine(visit: string, pr: Pick<Pr, "code" | "text" | "at" | "dxCode">): ActionResult {
   const no = editable(visit, `Claim service line, visit ${visit}`, "coding");
   if (no) return no;
   const s = store.get();
   store.set({ ...s, seq: s.seq + 1 });
   const key = `proc:${pr.code}:${s.seq + 1}`;
+  const sbs = sbsForAchi(pr.code);
   upsertDraft(visit, (d) => ({
     ...d,
-    extraLines: [...(d.extraLines ?? []), { key, system: "ACHI", code: pr.code, text: pr.text, start: dateOnly(pr.at) || todayIso(new Date()) }],
+    extraLines: [...(d.extraLines ?? []), { key, system: sbs ? "SBS" : "ACHI", code: sbs ?? pr.code, text: pr.text, start: dateOnly(pr.at) || todayIso(new Date()) }],
     lines: pr.dxCode ? { ...(d.lines ?? {}), [key]: { dxCodes: [pr.dxCode] } } : d.lines,
   }));
-  audit("update", `Claim service line, visit ${visit}`, { patient: nameFor(visit), detail: `ACHI ${pr.code} added` });
+  audit("update", `Claim service line, visit ${visit}`, { patient: nameFor(visit), detail: sbs ? `ACHI ${pr.code} added as SBS ${sbs}` : `ACHI ${pr.code} added` });
   return { ok: true };
 }
 

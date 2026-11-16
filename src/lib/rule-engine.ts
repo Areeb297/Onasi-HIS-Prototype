@@ -21,11 +21,13 @@ export type RuleSource = "generic" | "nphies";
 export type ClaimTypeKey = "institutional" | "professional" | "pharmacy" | "oral" | "vision";
 
 /** The checks the claim review always had. Each is a seeded rule. */
-export type BuiltInCheck = "no-principal-dx" | "many-principal-dx" | "no-chief-complaint" | "no-vitals" | "vitals-missing" | "auth-not-approved" | "line-no-dx" | "line-zero-cost";
+export type BuiltInCheck = "no-principal-dx" | "many-principal-dx" | "no-chief-complaint" | "no-vitals" | "vitals-missing" | "auth-not-approved" | "line-no-dx" | "line-zero-cost"
+  | "symptom-principal" | "injury-no-external-cause";
 export const BUILT_IN_LABEL: Record<BuiltInCheck, string> = {
   "no-principal-dx": "A principal diagnosis is set", "many-principal-dx": "Only one diagnosis is principal", "no-chief-complaint": "The chief complaint is recorded",
   "no-vitals": "Vital signs are recorded", "vitals-missing": "All eight vital signs have a value or an absence reason", "auth-not-approved": "Prior authorization is approved when needed",
   "line-no-dx": "Each service line is linked to a diagnosis", "line-zero-cost": "Each service line has a price",
+  "symptom-principal": "A symptom code is not principal when a definite diagnosis is coded", "injury-no-external-cause": "An injury has an external cause code",
 };
 
 export type Operator = "empty" | "not-empty" | "equals" | "not-equals" | "greater" | "less" | "contains" | "not-contains";
@@ -143,11 +145,26 @@ export const SEED_RULES: Rule[] = [
   built("GR-005", "vitals-missing", "soft", "both", "Supporting Information", "BV-00763", "Some vital signs are missing.", "Record each one in the chart, or an absence reason. The payer may reject the claim without them."),
   built("GR-006", "auth-not-approved", "hard", "claim", "Prior Authorization", "BV-00045", "The visit needs prior authorization and it is not approved.", "Send Prior Authorization and wait for the approval before sending the claim."),
   built("GR-007", "line-no-dx", "soft", "both", "Service Lines", "BV-00230", "A service line is not linked to a diagnosis.", "Tick the diagnosis this service was for."),
+  // ICD-10-AM with the Australian Coding Standards (the edition CHI mandates): a symptom (R00-R99) is not the principal
+  // diagnosis once a definite one is coded, and an injury (S00-T98) carries an external cause (V01-Y98).
+  built("CS-003", "symptom-principal", "soft", "both", "Diagnosis", undefined, "A symptom code is principal although a definite diagnosis is coded.", "Make the definite diagnosis principal and the symptom secondary, or remove the symptom."),
+  built("CS-004", "injury-no-external-cause", "soft", "both", "Diagnosis", undefined, "An injury is coded without an external cause code.", "Add the external cause (V01-Y98): how and where the injury happened."),
   built("GR-008", "line-zero-cost", "warning", "both", "Service Lines", undefined, "A service line has no cost.", "The invoice has no price for it, so the payer pays nothing. Bill it on the invoice or remove the line."),
   {
     id: "GR-009", source: "generic", name: "High Value Claim", description: "Claims above 5,000 SAR are checked by a senior biller before they go out.", category: "Amounts", severity: "warning", trigger: "claim",
     claimTypes: [], active: true, conditions: [{ field: "claim.net", op: "greater", value: "5000" }], message: "The claim is above 5,000 SAR.", fix: "Ask a senior biller to check the claim before sending it.",
     updatedAt: SEED_AT, updatedBy: SEED_BY,
+  },
+  // Claims bill SBS codes (CHI); ACHI is the clinical code and becomes SBS by adding its two-digit extension.
+  {
+    id: "CS-001", source: "generic", name: "ACHI Code On A Claim Line", description: "Claims bill procedures with their SBS code, not the ACHI code from the chart.", category: "Service Lines", severity: "soft", trigger: "both",
+    claimTypes: [], active: true, conditions: [{ field: "line.system", op: "equals", value: "ACHI" }],
+    message: "A service line carries an ACHI code.", fix: "Replace it with the SBS code: the ACHI code plus its two-digit extension (for example 30571-00-00).", updatedAt: SEED_AT, updatedBy: SEED_BY,
+  },
+  {
+    id: "CS-002", source: "generic", name: "Placeholder Service Code", description: "A sample code that the hospital has not mapped to its SBS or SFDA code yet.", category: "Service Lines", severity: "warning", trigger: "both",
+    claimTypes: [], active: true, conditions: [{ field: "line.code", op: "contains", value: "SAMPLE" }],
+    message: "A service line still has a sample code.", fix: "Map the service to its SBS code (medicines: the SFDA code) in the price list before sending.", updatedAt: SEED_AT, updatedBy: SEED_BY,
   },
   {
     id: "GR-010", source: "generic", name: "Long Inpatient Stay", description: "Stays longer than 10 days usually need a length of stay extension from the payer.", category: "Prior Authorization", severity: "soft", trigger: "both",
@@ -156,7 +173,7 @@ export const SEED_RULES: Rule[] = [
   },
   ...([
     ["BV-00112", "Coverage", "Claim.insurance.coverage", "The member must be covered on the service date.", "hard", [{ field: "eligibility.status", op: "equals", value: "Not Eligible" }], "The payer said the member was not covered.", "Check eligibility again, or bill the visit as cash."],
-    ["BV-00318", "Item", "Claim.item.productOrService", "Every service line needs a service code.", "hard", [{ field: "line.code", op: "empty", value: "" }], "A service line has no service code.", "Enter the SBS or ACHI code on the line."],
+    ["BV-00318", "Item", "Claim.item.productOrService", "Every service line needs a service code.", "hard", [{ field: "line.code", op: "empty", value: "" }], "A service line has no service code.", "Enter the SBS code on the line (medicines: the SFDA code)."],
     ["BV-00341", "Encounter", "Encounter.extension-triageCategory", "An emergency claim carries the triage category.", "soft", [{ field: "encounter.class", op: "equals", value: "E" }, { field: "encounter.triage", op: "empty", value: "" }], "The emergency visit has no triage category.", "Ask the triage nurse to record the CTAS level in the chart."],
     ["BV-00610", "Claim", "Claim.billablePeriod.end", "An inpatient claim needs the service end date.", "hard", [{ field: "encounter.class", op: "equals", value: "I" }, { field: "claim.end", op: "empty", value: "" }], "The inpatient claim has no service end date.", "Set the Service End date in Claim Details."],
     ["BV-00920", "Item", "Claim.item.quantity", "The quantity of a service line must be at least 1.", "hard", [{ field: "line.quantity", op: "less", value: "1" }], "A service line has a quantity below 1.", "Correct the quantity on the invoice."],

@@ -4,6 +4,8 @@
  * Every code here is in the national "KSA Imaging Procedure" value set (CS-Rad-Procedure v2.0, Confluence page id 23168870,
  * the NICIP list with the Saudi extension). The code, name, modality and report title of each row were copied from that
  * workbook. A real hospital maps its own catalogue to the same list.
+ * Checked on 16 Nov 2026 against the CT-HIS "NPHIES Imaging services" code list (dbo.Codes, TypeId 32): every code is
+ * there. Where the two names differed, the display now follows the HIS list, because that is what the HIS sends.
  *
  * Modalities come from the "Modalities" value set (page id 39780455, DICOM codes).
  * Body regions come from the "KSA Body Regions" value set (page id 39846061, 11 SNOMED CT codes).
@@ -62,15 +64,15 @@ export const RAD_CATALOG: RadProcedure[] = [
   { code: "X-LSJ", display: "XR Lumbosacral junction", short: "Lumbosacral X-Ray", modality: "DX", region: "spine", reportTitle: "X-Ray Report", technique: "AP and lateral views of the lumbosacral junction." },
   { code: "XKNER", display: "XR Knee Rt", short: "Right Knee X-Ray", modality: "DX", region: "lower", reportTitle: "X-Ray Report", technique: "AP and lateral views of the right knee." },
   { code: "CSKUH", display: "CT Head", short: "CT Head", modality: "CT", region: "head", reportTitle: "CT Report", technique: "Axial CT of the head without contrast." },
-  { code: "CCHES", display: "CT Chest", short: "CT Chest", modality: "CT", region: "chest", reportTitle: "CT Report", technique: "Axial CT of the chest." },
+  { code: "CCHES", display: "CT Thorax", short: "CT Chest", modality: "CT", region: "chest", reportTitle: "CT Report", technique: "Axial CT of the chest." },
   // The workbook files this code under "Multi Area", which is not one of the 11 body regions. Abdomen is sent. See the open questions.
-  { code: "CABPEC", display: "CT Abdomen and pelvis w/C", short: "CT Abdomen And Pelvis", modality: "CT", region: "abdomen", reportTitle: "CT Report", contrast: true, technique: "Axial CT of the abdomen and pelvis after intravenous contrast." },
+  { code: "CABPEC", display: "CT Abdomen and pelvis with contrast", short: "CT Abdomen And Pelvis", modality: "CT", region: "abdomen", reportTitle: "CT Report", contrast: true, technique: "Axial CT of the abdomen and pelvis after intravenous contrast." },
   { code: "MSKUH", display: "MRI Head", short: "MRI Brain", modality: "MR", region: "head", reportTitle: "MR Report", technique: "Multiplanar MRI of the brain." },
   { code: "MLUSP", display: "MRI Spine lumbar", short: "MRI Lumbar Spine", modality: "MR", region: "spine", reportTitle: "MR Report", technique: "Sagittal and axial MRI of the lumbar spine." },
   { code: "UABDO", display: "US Abdomen", short: "Abdomen Ultrasound", modality: "US", region: "abdomen", reportTitle: "Ultrasound Report", technique: "Real-time ultrasound of the abdomen." },
   { code: "UPELV", display: "US Pelvis", short: "Pelvis Ultrasound", modality: "US", region: "pelvis", reportTitle: "Ultrasound Report", technique: "Transabdominal ultrasound of the pelvis." },
-  { code: "XMAMB", display: "Mammogram Both", short: "Mammogram", modality: "MG", region: "breast", reportTitle: "Mammography Diagnostic Report", technique: "Bilateral two-view mammography." },
-  { code: "XBDXW", display: "DEXA Whole body", short: "Bone Density", modality: "BMD", region: "whole", reportTitle: "Bone Density Report", technique: "Dual-energy X-ray absorptiometry of the whole body." },
+  { code: "XMAMB", display: "XR Mammogram Both", short: "Mammogram", modality: "MG", region: "breast", reportTitle: "Mammography Diagnostic Report", technique: "Bilateral two-view mammography." },
+  { code: "XBDXW", display: "DXA Whole body", short: "Bone Density", modality: "BMD", region: "whole", reportTitle: "Bone Density Report", technique: "Dual-energy X-ray absorptiometry of the whole body." },
 ];
 
 const BY_CODE = new Map(RAD_CATALOG.map((p) => [p.code, p]));

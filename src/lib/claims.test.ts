@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addProcedureLine, batchCheck, billingRows, claimFor, claimStatusOf, confirmSoftStops, EMPTY_WORKLIST_FILTER, estimateDrg, filterRows, insuredVisits, itemCounts, ITEM_CHIPS,
   pollRequest, pollTargets, resetClaims, reviewClaim, reviewModel, saveClaim, saveDx, saveHeader, saveLine, sendFromClaim, sendOptions, sortRows, submitBatch,
-  unconfirmedSoftStops, type ReviewInput,
+  unconfirmedSoftStops, LAB_SBS, RAD_SBS, nphiesSystemFor, type ReviewInput,
 } from "./claims";
+import { sbsForAchi } from "./achi-catalog";
 import { resetInvoices } from "./invoice";
 import { caseOf, estimateCharge, resetFinancial, runFinancial } from "./nphies-financial";
 import { switchUser } from "./session";
@@ -99,6 +100,29 @@ describe("claim review rules", () => {
   });
 });
 
+describe("coding checks (ICD-10-AM, SBS)", () => {
+  it("asks for the definite diagnosis to be principal instead of a symptom", () => {
+    expect(rules({ ...clean(), dx: [{ code: "R05", type: "principal" }, { code: "J18.9", type: "secondary" }] })).toContain("symptom-principal:soft");
+    expect(rules({ ...clean(), dx: [{ code: "R05", type: "principal" }] })).not.toContain("symptom-principal:soft");
+  });
+
+  it("asks for an external cause with an injury", () => {
+    expect(rules({ ...clean(), dx: [{ code: "S72.00", type: "principal" }] })).toContain("injury-no-external-cause:soft");
+    expect(rules({ ...clean(), dx: [{ code: "S72.00", type: "principal" }, { code: "W19", type: "secondary" }] })).not.toContain("injury-no-external-cause:soft");
+  });
+
+  it("bills lab, imaging and procedures with verified SBS codes, medicines under SFDA, each in its NPHIES code system", () => {
+    expect(LAB_SBS["58410-2"]).toBe("73100-00-90");
+    expect(RAD_SBS.CSKUH).toBe("56001-00-00");
+    expect(sbsForAchi("30571-00")).toBe("30571-00-00");
+    expect(Object.values({ ...LAB_SBS, ...RAD_SBS }).every((c) => /^\d{5}-\d{2}-\d{2}$/.test(c))).toBe(true);
+    expect(nphiesSystemFor("lab", "SBS")).toMatch(/CodeSystem\/laboratory$/);
+    expect(nphiesSystemFor("proc", "SBS")).toMatch(/CodeSystem\/procedures$/);
+    expect(nphiesSystemFor("rx", "SFDA")).toMatch(/CodeSystem\/medication-codes$/);
+    expect(nphiesSystemFor("visit", "SBS")).toMatch(/CodeSystem\/services$/);
+  });
+});
+
 describe("AR-DRG estimate", () => {
   it("groups from the principal diagnosis and splits on secondary diagnoses", () => {
     expect(estimateDrg([{ code: "J18.9", type: "principal" }], "2026-11-01", "2026-11-04")).toMatchObject({ code: "E62B", losDays: 3 });
@@ -149,7 +173,7 @@ describe("claim from the visit", () => {
     expect(addProcedureLine(enc.visitNumber, { code: "30571-00", text: "Appendicectomy", at: "2026-11-10T09:00" }).ok).toBe(true);
     const m = claimFor(enc.visitNumber)!;
     const proc = m.lines.find((l) => l.kind === "proc")!;
-    expect(proc).toMatchObject({ system: "ACHI", code: "30571-00", unitCost: 0 });
+    expect(proc).toMatchObject({ system: "SBS", code: "30571-00-00", unitCost: 0 }); // ACHI 30571-00 billed as its SBS code
     expect(reviewModel(m, "claim").some((f) => f.id === `line-zero-cost:${proc.key}`)).toBe(true);
     // Amounts stay those of the invoice.
     expect(m.net).toBe(estimateCharge(enc).total);

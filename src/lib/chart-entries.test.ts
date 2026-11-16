@@ -80,7 +80,7 @@ describe("older saved diagnoses (Admitting, Working, Final)", () => {
     { code: "J18.9", text: "Pneumonia, unspecified organism", type: "A" },
     { code: "I10", text: "Essential (primary) hypertension", type: "A" },
     { code: "E11.9", text: "Type 2 diabetes mellitus without complications", type: "W" },
-    { code: "K35.80", text: "Acute appendicitis, unspecified", type: "F" },
+    { code: "K35.8", text: "Acute appendicitis, other and unspecified", type: "F" },
   ];
   it("reads the first as Principal, an Admitting one as Admitting and the rest as Secondary", () => {
     expect(old.map((d, i) => dxKind(d, i))).toEqual(["P", "AD", "S", "S"]);

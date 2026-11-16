@@ -2,7 +2,7 @@ import { IconAlertTriangle, IconClock, IconFileText, IconScan } from "@tabler/ic
 import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import type { RadOrder } from "@/lib/fhir/types";
-import { isRadSigned, procByCode, releaseRadReport } from "@/lib/radiology";
+import { isRadSigned, procByCode, radApproval, releaseRadReport } from "@/lib/radiology";
 import { personFromDoctor } from "@/lib/fhir/people";
 import { can } from "@/lib/session";
 import { patientName, useHis } from "@/lib/store";
@@ -41,6 +41,8 @@ function RadCard({ order, ctx, onOpen, mayPerform, mayReport }: { order: RadOrde
   const next = NEXT_ACTION[stage];
   const modality = proc?.modality ?? "DX";
   const t = TONE[ctx.lane.tone];
+  // CHI: CT, MRI, nuclear and PET for an insured patient wait for the payer's approval before the exam.
+  const gate = order.status === "received" ? radApproval(order) : { blocked: false, label: "", reason: "" };
   const prio = order.priority === "stat" ? { tone: "cancel" as const, label: "STAT" } : order.priority === "routine" ? { tone: "muted" as const, label: "Routine" } : { tone: "merge" as const, label: "Urgent" };
   return (
     <div>
@@ -50,6 +52,7 @@ function RadCard({ order, ctx, onOpen, mayPerform, mayReport }: { order: RadOrde
           <Tag tone={ctx.lane.tone}>{MODALITY_SHORT[modality] ?? modality}</Tag>
           {proc?.contrast && <Tag tone="merge">Contrast</Tag>}
           {order.coverage && <Tag tone={order.coverage === "plan" ? "ok" : "muted"}>{order.coverage === "plan" ? "Insured" : "Self-Pay"}</Tag>}
+          {gate.label && <Tag tone={gate.label === "Approval Denied" ? "cancel" : gate.blocked ? "merge" : "update"} title={gate.reason}>{gate.label}</Tag>}
           {order.report?.critical && <CriticalPulse />}
         </div>
         <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${t.soft} ${t.text}`} title={`${MODALITY_SHORT[modality] ?? modality}`}>

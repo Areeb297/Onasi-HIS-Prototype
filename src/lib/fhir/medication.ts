@@ -1,5 +1,5 @@
 import { OID, ORG_OID } from "../reference-data";
-import { FREQ_BY_ID, OVERRIDE_LABEL, ROUTE_BY_CODE, ROUTE_LABEL } from "../rx-catalogue";
+import { FREQ_BY_ID, OVERRIDE_LABEL, ROUTE_BY_CODE, ROUTE_LABEL, doseFormName, packageForm } from "../rx-catalogue";
 import { addDays, regimenOf, stepDates, stepsOf, unitCount } from "../rx-logic";
 import type { ControlClass, DoseStep, DoseTime, Drug, DispenseLine, Frequency, ItemStatus, RxItem, UsageSetting } from "../rx-types";
 
@@ -105,8 +105,8 @@ export const ASSUMPTIONS: string[] = [
   "Codes that start with DEMO- are stand-ins. The real values are in the IS0200 data dictionary, which was not available. The validator warns about each one.",
   "Prescription type (page 118128831, KSA Medication Prescription Type): U and C are the real codes from the official samples. Narcotic and restricted use DEMO-NARCOTIC and DEMO-RESTRICTED.",
   "Drug codes (pages 118063634 and 118161914): the real codes are NHIC registry ids (MRID), generic for prescribing and brand for dispensing. The demo catalogue sends DEMO-DRG codes.",
-  "Dose form (page 118063634, KSA Medication Pharmaceutical Dose Form): 6401 tablet is real. Other forms use DEMO-FORM codes. Package form (page 118129076) uses DEMO-PACK codes.",
-  "Route (page 117965427, KSA Medication Route of Administration): 26643006 oral route is real. Other routes use DEMO-ROUTE codes.",
+  "Dose form (page 118063634, KSA Medication Pharmaceutical Dose Form): codes and names from the HIS lookup of the same name. Package form (page 118129076): box, bottle and inhaler from the HIS lookup Package Form; a pen is not in it and uses DEMO-PACK-PEN.",
+  "Route (page 117965427, KSA Medication Route of Administration): SNOMED CT codes from the HIS lookup Drug Route; 26643006 oral route is also in the official sample. Not settled: the app sends the system as http://snomed.info/sct, the HIS mapper as the bare OID 2.16.840.1.113883.6.96; the guide snapshot does not say which form NPHIES wants.",
   "Frequency code for Raqeeb items (page 118129183, Frequency Code value set): DEMO-FREQ codes are sent in timing.code.",
   "Specialty (page 118063485, Healthcare Specialty Identifier): Pharmacy is the real code from the samples. Doctor specialties use DEMO-SPEC codes.",
   "Override reason (page 117965118, Override-SecureCode-Justification): code 3 is real. The other reasons use DEMO-OVR codes.",
@@ -407,7 +407,7 @@ export function buildMedicationPrescribed(drug: Drug): Json {
     id: "medicationprescribed",
     meta: meta(PROFILE.medicationPrescribed),
     code: { coding: [coding(SYS.drug, drug.code, drug.generic)], text: drug.generic },
-    form: cc(SYS.form, drug.formCode, drug.form),
+    form: cc(SYS.form, drug.formCode, doseFormName(drug.form)),
     ingredient: [ingredient(SYS.drug, drug.code, drug.generic, drug)],
   };
 }
@@ -417,7 +417,7 @@ export function buildMedicationKnowledge(drug: Drug): Json {
     resourceType: "MedicationKnowledge",
     id: "medicationknowledge",
     meta: meta(PROFILE.medicationKnowledge),
-    packaging: { type: cc(SYS.packForm, `${DEMO_PREFIX}PACK-${drug.pack.type.toUpperCase()}`, drug.pack.type), quantity: { value: drug.pack.size, unit: drug.unit } },
+    packaging: { type: cc(SYS.packForm, packageForm(drug.pack.type).code, packageForm(drug.pack.type).display), quantity: { value: drug.pack.size, unit: drug.unit } },
   };
 }
 
@@ -429,7 +429,7 @@ export function buildMedicationDispensed(drug: Drug, line: DispenseLine): Json {
     meta: meta(PROFILE.medicationDispensed),
     extension: [{ url: `${EXT}medicationdefinition`, valueReference: { reference: "#medicationknowledge" } }],
     code: { coding: [coding(SYS.product, productCode, drug.brand)], text: drug.brand },
-    form: cc(SYS.form, drug.formCode, drug.form),
+    form: cc(SYS.form, drug.formCode, doseFormName(drug.form)),
     ingredient: [ingredient(SYS.product, productCode, drug.brand, drug)],
     ...(line.lot || line.expiry ? { batch: { ...(line.lot ? { lotNumber: line.lot } : {}), ...(line.expiry ? { expirationDate: line.expiry } : {}) } } : {}),
   };

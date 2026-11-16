@@ -30,7 +30,7 @@ describe("rule engine", () => {
 
   it("seeds the review's built-in checks as rules, and the review keeps its behaviour", () => {
     const checks = SEED_RULES.filter((r) => r.check).map((r) => r.check);
-    expect(checks).toEqual(["no-principal-dx", "many-principal-dx", "no-chief-complaint", "no-vitals", "vitals-missing", "auth-not-approved", "line-no-dx", "line-zero-cost"]);
+    expect(checks).toEqual(["no-principal-dx", "many-principal-dx", "no-chief-complaint", "no-vitals", "vitals-missing", "auth-not-approved", "line-no-dx", "symptom-principal", "injury-no-external-cause", "line-zero-cost"]);
     expect(reviewClaim(clean(), "claim").map((f) => `${f.rule}:${f.severity}`)).toEqual(["vitals-missing:soft"]);
     expect(reviewClaim(clean(), "claim")[0].ruleId).toBe("GR-005");
   });

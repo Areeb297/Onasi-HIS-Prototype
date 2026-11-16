@@ -110,7 +110,7 @@ describe("approval", () => {
     expect(getState().encounters).toHaveLength(visits);
     const enc = getState().encounters.find((e) => e.visitNumber === r.fromVisit)!;
     expect(enc).toMatchObject({ cls: "I", status: "active", bedId: "401-A", service: "SUR", admissionMethod: "02" });
-    expect(enc.dx.map((d) => d.code)).toContain("K35.80");
+    expect(enc.dx.map((d) => d.code)).toContain("K35.8");
     expect(bedInfo(getState(), "401-A")!.state).toBe("occupied");
   });
 

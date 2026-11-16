@@ -79,6 +79,7 @@ export function ServiceLinesCard({ m, findings, readOnly }: { m: ClaimModel; fin
     <div className="flex gap-1">
       <Select aria-label={`Code system, line ${l.seq}`} className="w-[5.5rem] shrink-0" value={l.system} disabled={readOnly} onChange={(e) => save(l.key, { system: e.target.value as CodeSystem })}>
         <option value="SBS">SBS</option>
+        <option value="SFDA">SFDA</option>
         <option value="ACHI">ACHI</option>
       </Select>
       <CommitInput label={`Service code, line ${l.seq}`} className="font-mono text-xs" value={l.code} disabled={readOnly} onCommit={(v) => save(l.key, { code: v.trim() })} />

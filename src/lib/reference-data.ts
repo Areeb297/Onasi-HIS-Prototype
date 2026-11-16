@@ -200,14 +200,14 @@ export const BED_BY_ID: Record<string, Bed> = Object.fromEntries(BEDS.map((b) =>
 export const DX_SAMPLES: Dx[] = [
   { code: "J18.9", text: "Pneumonia, unspecified organism", type: "A" },
   { code: "I21.9", text: "Acute myocardial infarction, unspecified", type: "A" },
-  { code: "K35.80", text: "Acute appendicitis, unspecified", type: "A" },
-  { code: "S72.001", text: "Fracture of neck of femur", type: "A" },
+  { code: "K35.8", text: "Acute appendicitis, other and unspecified", type: "A" },
+  { code: "S72.00", text: "Fracture of neck of femur, part unspecified", type: "A" },
   { code: "E11.9", text: "Type 2 diabetes mellitus without complications", type: "W" },
 ];
 
 /** Sample procedures. The codes are examples: check them against CS-Clinical-Procedure and CS-Rad-Procedure. */
 export const PR_SAMPLES: Pr[] = [
-  { code: "44970-00", text: "Laparoscopic appendicectomy", system: "ACHI", type: "P" },
+  { code: "30572-00", text: "Laparoscopic appendicectomy", system: "ACHI", type: "P" },
   { code: "90661-00", text: "Chest X-ray", system: "IMG", type: "D" },
   { code: "38497-00", text: "Coronary angiography", system: "ACHI", type: "D" },
   { code: "47519-00", text: "Hip arthroplasty", system: "ACHI", type: "P" },
@@ -361,7 +361,7 @@ export const ICD10AM_DIAGNOSES: CodedTerm[] = [
   { code: "K25.9", text: "Gastric ulcer, unspecified as acute or chronic, without haemorrhage or perforation" },
   { code: "K29.7", text: "Gastritis, unspecified" },
   { code: "K30", text: "Functional dyspepsia" },
-  { code: "K35.80", text: "Acute appendicitis, unspecified" },
+  { code: "K35.8", text: "Acute appendicitis, other and unspecified" },
   { code: "K40.9", text: "Unilateral or unspecified inguinal hernia, without obstruction or gangrene" },
   { code: "K42.9", text: "Umbilical hernia without obstruction or gangrene" },
   { code: "K52.9", text: "Noninfective gastroenteritis and colitis, unspecified" },

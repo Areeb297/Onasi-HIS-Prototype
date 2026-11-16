@@ -2,7 +2,7 @@ import { IconAlertTriangle, IconClock, IconFlask, IconHourglass } from "@tabler/
 import * as React from "react";
 import { useDevMode } from "@/lib/devmode";
 import type { LabOrder } from "@/lib/fhir/types";
-import { awaitingVerification, hasCritical, startProcessing } from "@/lib/lab";
+import { awaitingVerification, hasCritical, labApproval, startProcessing } from "@/lib/lab";
 import { receiveSample } from "@/lib/lab-extras";
 import { personFromDoctor } from "@/lib/fhir/people";
 import { coverageLabel } from "@/lib/order-fields";
@@ -48,6 +48,8 @@ function LabCard({ order, ctx, onOpen, onLabels, allowed }: { order: LabOrder; c
   const insured = order.coverage === "plan" ? "Insured" : order.coverage === "self-pay" ? "Self-Pay" : "";
   const critical = hasCritical(order);
   const filled = stage !== "ordered";
+  // CHI: a lab order that needs the payer's approval waits for it before the sample is collected.
+  const gate = order.status === "received" ? labApproval(order) : { blocked: false, label: "", reason: "" };
   return (
     <div>
       <div className="flex items-start justify-between gap-2">
@@ -55,6 +57,7 @@ function LabCard({ order, ctx, onOpen, onLabels, allowed }: { order: LabOrder; c
           <PriorityTag tone={ctx.lane.tone} label={PRIORITY_WORD[ctx.lane.id] ?? ctx.lane.label} />
           {order.fasting === true && <Tag tone="merge">Fasting</Tag>}
           {insured && <Tag tone={order.coverage === "plan" ? "ok" : "muted"} title={coverageLabel(order.coverage)}>{insured}</Tag>}
+          {gate.label && <Tag tone={gate.label === "Approval Denied" ? "cancel" : gate.blocked ? "merge" : "update"} title={gate.reason}>{gate.label}</Tag>}
           {critical && <CriticalPulse />}
           {waiting && <Tag tone="update">Awaiting Verification</Tag>}
           {!waiting && order.sentBack && order.status === "in-progress" && <Tag tone="merge">Sent Back</Tag>}

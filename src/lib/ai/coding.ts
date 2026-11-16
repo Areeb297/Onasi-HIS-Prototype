@@ -40,7 +40,7 @@ export const CODE_DICTIONARY: CodeEntry[] = [
   { keys: ["myocardial infarction", "heart attack"], text: "Acute myocardial infarction, unspecified", icd: "I21.9", snomed: "22298006" },
   { keys: ["heart failure"], text: "Heart failure, unspecified", icd: "I50.9", snomed: "84114007" },
   { keys: ["stroke"], text: "Stroke, not specified as haemorrhage or infarction", icd: "I64", snomed: "230690007" },
-  { keys: ["appendicitis"], text: "Acute appendicitis, unspecified", icd: "K35.80", snomed: "74400008" },
+  { keys: ["appendicitis"], text: "Acute appendicitis, unspecified", icd: "K35.8", snomed: "74400008" },
   { keys: ["gastroenteritis"], text: "Gastroenteritis and colitis of unspecified origin", icd: "A09", snomed: "25374005" },
   { keys: ["dehydration"], text: "Dehydration", icd: "E86", snomed: "34095006" },
   { keys: ["anemia", "anaemia"], text: "Anaemia, unspecified", icd: "D64.9", snomed: "271737000" },

@@ -38,10 +38,31 @@ export const OVERRIDE_REASONS: { code: string; label: string }[] = [
 ];
 export const OVERRIDE_LABEL: Record<string, string> = Object.fromEntries(OVERRIDE_REASONS.map((r) => [r.code, r.label]));
 
-/** Dose form code. 6401 (tablet) is in the official sample and the Mapping Guide. Other forms get a demo code. */
+/**
+ * Dose forms: code and name from the HIS lookup "KSA Medication Pharmaceutical Dose Form" (the NPHIES value set, code
+ * system 2.16.840.1.113883.3.3731.1.205.8). 6401 tablet is also in the official sample. A suspension is dispensed as
+ * powder for oral suspension, the only oral suspension form in the list.
+ */
+export const DOSE_FORMS: Record<string, { code: string; display: string }> = {
+  Tablet: { code: "6401", display: "tablet" },
+  Capsule: { code: "385049006", display: "capsule" },
+  Suspension: { code: "385027000", display: "powder for oral suspension" },
+  Injection: { code: "6405", display: "Injection" },
+  Inhaler: { code: "420317006", display: "inhaler" },
+  Patch: { code: "385114002", display: "transdermal patch" },
+};
+
+/** Dose form code from the HIS lookup. A form missing from it gets a DEMO- code, which the validator flags. */
 export function doseFormCode(form: string): string {
-  return form === "Tablet" ? "6401" : `DEMO-FORM-${form.toUpperCase().replace(/[^A-Z]/g, "")}`;
+  return DOSE_FORMS[form]?.code ?? `DEMO-FORM-${form.toUpperCase().replace(/[^A-Z]/g, "")}`;
 }
+export const doseFormName = (form: string): string => DOSE_FORMS[form]?.display ?? form;
+
+/** Package forms: the HIS lookup "Package Form" (code system 2.16.840.1.113883.3.3731.1.205.9). A pen is not in it. */
+const PACKAGE_FORMS: Record<string, { code: string; display: string }> = {
+  box: { code: "box", display: "box" }, bottle: { code: "bottle", display: "bottle" }, inhaler: { code: "inhaler", display: "inhaler" },
+};
+export const packageForm = (type: string): { code: string; display: string } => PACKAGE_FORMS[type] ?? { code: `DEMO-PACK-${type.toUpperCase()}`, display: type };
 
 /** Routes that need an injection or infusion. A tablet or capsule can never use them. */
 export const PARENTERAL = ["IV", "IM", "SC"];

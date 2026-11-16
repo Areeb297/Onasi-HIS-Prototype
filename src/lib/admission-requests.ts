@@ -513,7 +513,7 @@ function seed(): State {
   // From the emergency department: abdominal pain with fever, likely appendicitis.
   add("P012", 25, {
     admittingDoctor: "D1002", approvingDoctor: "D1002", admitAt: at(20), department: "SUR", subDepartment: "General Surgery",
-    condition: "Serious", activityLevel: "Bed Rest", expectedStayDays: 3, specialty: "General Surgery", dx: dxOf("K35.80"),
+    condition: "Seriously Ill", activityLevel: "Bed Ridden", expectedStayDays: 3, specialty: "General Surgery", dx: dxOf("K35.8"),
     reason: "Right lower abdominal pain with fever. Ultrasound suggests acute appendicitis. Admit for surgery.", requestedBy: "Dr. Noura Alzahrani",
   });
   // From the medicine clinic: an older man with fever, likely pneumonia.

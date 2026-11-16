@@ -45,7 +45,8 @@ describe("catalogue", () => {
   it("has about 30 drugs with demo codes and all four classes", () => {
     expect(DRUGS.length).toBeGreaterThanOrEqual(30);
     expect(DRUGS.every((d) => d.code.startsWith("DEMO-"))).toBe(true);
-    expect(DRUGS.every((d) => d.formCode === "6401" || d.formCode.startsWith("DEMO-"))).toBe(true);
+    // Every dose form comes from the HIS lookup "KSA Medication Pharmaceutical Dose Form"; none is a demo code.
+    expect(DRUGS.filter((d) => d.formCode.startsWith("DEMO-")).map((d) => d.form)).toEqual([]);
     expect(new Set(DRUGS.map((d) => d.controlClass))).toEqual(new Set(["U", "N", "C", "R"]));
     expect(searchDrugs("tramad")[0].generic).toBe("Tramadol");
   });

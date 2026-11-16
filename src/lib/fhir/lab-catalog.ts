@@ -1,7 +1,9 @@
 /**
  * Laboratory test catalogue (LOINC) with reference ranges, plus helpers to turn a typed value into an interpretation.
  *
- * Codes and names were checked against the LOINC table (NLM Clinical Tables look-up, November 2026). A code that is
+ * Codes and names were checked against the LOINC table (NLM Clinical Tables look-up, November 2026) and again against
+ * the CT-HIS LoincCodeRegistration table (LOINC 2.67) on 16 Nov 2026: every code exists and is ACTIVE except 94500-6,
+ * which is newer than LOINC 2.67 and could not be checked there. Displays are the LOINC long common names. A code that is
  * not confirmed carries `madeUp: true` (shown as "(test code)" in the UI); none is left at present.
  * Reference ranges are generic adult demo values, not clinical guidance.
  * Real mapping of a hospital catalogue must use the NHIC "Laboratory Orders and Results" value set.
@@ -74,7 +76,7 @@ const T = (t: LabTest): LabTest => t;
 
 export const LAB_CATALOG: LabTest[] = [
   // ---- panels
-  T({ code: "58410-2", display: "CBC panel - Blood by Automated count", short: "CBC", dept: "HM", specimen: "BLD", kind: "quantity", common: true, panel: ["718-7", "6690-2", "777-3", "789-8", "4544-3", "787-2"] }),
+  T({ code: "58410-2", display: "Complete blood count (hemogram) panel - Blood by Automated count", short: "CBC", dept: "HM", specimen: "BLD", kind: "quantity", common: true, panel: ["718-7", "6690-2", "777-3", "789-8", "4544-3", "787-2"] }),
   T({ code: "24323-8", display: "Comprehensive metabolic 2000 panel - Serum or Plasma", short: "CMP", dept: "CH", specimen: "SER", kind: "quantity", common: true, panel: ["2345-7", "3094-0", "2160-0", "2951-2", "2823-3", "2075-0", "17861-6", "1751-7", "1742-6", "1920-8", "6768-6", "1975-2"] }),
   T({ code: "24331-1", display: "Lipid 1996 panel - Serum or Plasma", short: "Lipid Panel", dept: "CH", specimen: "SER", kind: "quantity", common: true, panel: ["2093-3", "2571-8", "2085-9", "13457-7"] }),
   T({ code: "24357-6", display: "Urinalysis macro (dipstick) panel - Urine", short: "Urinalysis", dept: "UA", specimen: "URN", kind: "string", common: true, panel: ["5811-5", "5803-2", "25428-4", "20454-5"] }),
@@ -87,7 +89,7 @@ export const LAB_CATALOG: LabTest[] = [
   T({ code: "777-3", display: "Platelets [#/volume] in Blood by Automated count", short: "Platelets", dept: "HM", specimen: "BLD", kind: "quantity", unit: "10*3/uL", unitLabel: "x10^3/uL", low: 150, high: 400, critLow: 20, critHigh: 1000 }),
   T({ code: "789-8", display: "Erythrocytes [#/volume] in Blood by Automated count", short: "RBC", dept: "HM", specimen: "BLD", kind: "quantity", unit: "10*6/uL", unitLabel: "x10^6/uL", low: 4.5, high: 5.9, lowF: 4.1, highF: 5.1 }),
   T({ code: "4544-3", display: "Hematocrit [Volume Fraction] of Blood by Automated count", short: "Hematocrit", dept: "HM", specimen: "BLD", kind: "quantity", unit: "%", low: 40, high: 52, lowF: 36, highF: 46, critLow: 20, critHigh: 60 }),
-  T({ code: "787-2", display: "MCV [Entitic mean volume] in Red Blood Cells by Automated count", short: "MCV", dept: "HM", specimen: "BLD", kind: "quantity", unit: "fL", low: 80, high: 100 }),
+  T({ code: "787-2", display: "MCV [Entitic volume] by Automated count", short: "MCV", dept: "HM", specimen: "BLD", kind: "quantity", unit: "fL", low: 80, high: 100 }),
   T({ code: "6301-6", display: "INR in Platelet poor plasma by Coagulation assay", short: "INR", dept: "CO", specimen: "PLS", kind: "quantity", unit: "{INR}", unitLabel: "", low: 0.8, high: 1.2, critHigh: 5.0, common: true }),
   T({ code: "5902-2", display: "Prothrombin time (PT)", short: "PT", dept: "CO", specimen: "PLS", kind: "quantity", unit: "s", low: 11, high: 13.5 }),
   T({ code: "883-9", display: "ABO group [Type] in Blood", short: "ABO Group", dept: "BB", specimen: "BLD", kind: "string", choices: ["A", "B", "AB", "O"], normal: ["A", "B", "AB", "O"], refText: "No reference range. Report the ABO group." }),
@@ -124,7 +126,7 @@ export const LAB_CATALOG: LabTest[] = [
 
   // ---- serology and molecular
   T({ code: "94500-6", display: "SARS-CoV-2 (COVID-19) RNA [Presence] in Respiratory system specimen by NAA with probe detection", short: "COVID-19 PCR", dept: "MO", specimen: "NPS", kind: "string", choices: ["Not Detected", "Detected"], normal: ["Not Detected"], refText: "Not Detected", common: true }),
-  T({ code: "2106-3", display: "Choriogonadotropin [Presence] in Urine", short: "Pregnancy Test (Urine)", dept: "SR", specimen: "URN", kind: "string", choices: ["Negative", "Positive"], normal: ["Negative"], refText: "Negative" }),
+  T({ code: "2106-3", display: "Choriogonadotropin (pregnancy test) [Presence] in Urine", short: "Pregnancy Test (Urine)", dept: "SR", specimen: "URN", kind: "string", choices: ["Negative", "Positive"], normal: ["Negative"], refText: "Negative" }),
 
   // ---- microbiology
   T({ code: "630-4", display: "Bacteria identified in Urine by Culture", short: "Urine Culture", dept: "MB", specimen: "URN", kind: "organism", refText: "No growth", common: true }),

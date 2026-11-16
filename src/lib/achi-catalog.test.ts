@@ -38,7 +38,7 @@ describe("ACHI catalogue", () => {
   });
 
   it("reads an old procedure row saved before the new fields existed", () => {
-    const old: Pr = { code: "44970-00", text: "Laparoscopic appendicectomy", system: "ACHI", type: "P", at: "2026-01-01T10:00" };
+    const old: Pr = { code: "30572-00", text: "Laparoscopic appendicectomy", system: "ACHI", type: "P", at: "2026-01-01T10:00" };
     const r = readPr(old, "Insurance");
     expect(r.status).toBe("Completed");
     expect(r.coverage).toBe("Insured");

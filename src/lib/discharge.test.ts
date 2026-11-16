@@ -460,17 +460,17 @@ describe("visit dialogs on the store", () => {
   });
 
   it("admits and pre-admits with the admitting diagnosis in the message and the details saved", () => {
-    const appendix = { code: "K35.80", text: "Acute appendicitis, unspecified", type: "A" as const };
+    const appendix = { code: "K35.8", text: "Acute appendicitis, other and unspecified", type: "A" as const };
     const pre = quickCreate("A05", {
       patientId: "P010", attending: "D1002", service: "SUR", reason: "Planned appendectomy", expectedAdmitAt: nowLocal(600), consulting: "D1001", dx: [appendix],
       admission: { patientCondition: "Stable", expectedStayDays: 2, attendantName: "Sara Alkhaldi", attendantPhone: "0559876543", attendantRelation: "Wife", notes: " " },
     });
     expect(pre.ok).toBe(true);
     expect(pre.entry?.segments).toContain("DG1");
-    expect(pre.entry?.message).toContain("K35.80");
+    expect(pre.entry?.message).toContain("K35.8");
     const p = visit("P010");
     expect(p.dx).toHaveLength(1);
-    expect(p.dx[0]).toMatchObject({ code: "K35.80", type: "A" });
+    expect(p.dx[0]).toMatchObject({ code: "K35.8", type: "A" });
     expect(p.consulting).toBe("D1001");
     expect(p.admission).toEqual({ patientCondition: "Stable", expectedStayDays: 2, attendantName: "Sara Alkhaldi", attendantPhone: "0559876543", attendantRelation: "Wife" });
 
@@ -482,7 +482,7 @@ describe("visit dialogs on the store", () => {
     expect(adm.entry?.message).toContain("E11.9");
     const a = visit("P010");
     expect(a.status).toBe("active");
-    expect(a.dx.map((d) => d.code)).toEqual(["K35.80", "E11.9"]);
+    expect(a.dx.map((d) => d.code)).toEqual(["K35.8", "E11.9"]);
     expect(a.admission).toMatchObject({ patientCondition: "Stable", activityLevel: "Bed Rest" });
     // Without a diagnosis nothing changes: no DG1.
     const plain = quickCreate("A04", { patientId: "P006", attending: "D1001", service: "OPD", reason: "Review" });

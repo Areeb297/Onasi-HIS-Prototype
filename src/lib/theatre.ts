@@ -72,7 +72,7 @@ export const RECOVERY_DESTINATIONS = ["Ward", "Intensive Care Unit", "Day Surger
 export const POSTOP_DIAGNOSES: CodedDx[] = [
   { code: "K80.20", text: "Calculus of gallbladder without cholecystitis, without obstruction" },
   { code: "K80.10", text: "Calculus of gallbladder with other cholecystitis, without obstruction" },
-  { code: "K35.80", text: "Acute appendicitis, unspecified" },
+  { code: "K35.8", text: "Acute appendicitis, unspecified" },
   { code: "K40.90", text: "Unilateral or unspecified inguinal hernia, without obstruction or gangrene" },
   { code: "S72.00", text: "Fracture of neck of femur, part unspecified" },
   { code: "N20.0", text: "Calculus of kidney" },
