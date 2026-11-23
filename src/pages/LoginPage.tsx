@@ -1,9 +1,9 @@
 import * as React from "react";
+import { ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
-import { ContactSection } from "@/components/login/ContactSection";
 import { ForgotPasswordForm } from "@/components/login/ForgotPasswordForm";
 import { SignInForm } from "@/components/login/SignInForm";
-import { LOGIN_TEXT, type Lang } from "@/components/login/text";
+import { LINKS, LOGIN_TEXT, type Lang, type LoginText } from "@/components/login/text";
 import { navigate, useRoute } from "@/lib/router";
 
 // The 3D scene loads only here, so three.js stays out of the main app bundle.
@@ -21,10 +21,31 @@ function useClock() {
   return now;
 }
 
+const external =
+  "inline-flex min-h-10 items-center gap-1 rounded-md px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
+
+/** onasi.care and the portfolio: in the header on a tablet or desktop, under the form on a phone. */
+function SiteLinks({ t }: { t: LoginText }) {
+  return (
+    <>
+      <a href={LINKS.site} target="_blank" rel="noreferrer" className={external}>
+        <bdi>{t.site}</bdi>
+        <ArrowUpRight className="size-3.5 rtl:-scale-x-100" aria-hidden="true" />
+        <span className="sr-only">({t.newTab})</span>
+      </a>
+      <a href={LINKS.portfolio} target="_blank" rel="noreferrer" className={external}>
+        {t.portfolio}
+        <ArrowUpRight className="size-3.5 rtl:-scale-x-100" aria-hidden="true" />
+        <span className="sr-only">({t.newTab})</span>
+      </a>
+    </>
+  );
+}
+
 /**
- * The public site before sign-in: Home (the hospital scene and staff sign-in) and Contact, on one page.
- * The HIS routes are kept: #/login is Home, #/contact scrolls to Contact, #/forgot-password swaps the form.
- * Patient self sign-up is left out on purpose: this is the staff entry point.
+ * Staff sign-in: one screen with no page scroll from laptop width up. Contact and company information live on
+ * onasi.care and portfolio.onasi.care. #/forgot-password swaps the form. On a phone the page scrolls, because the
+ * scene and the form do not fit one small screen; fields use 16px text there so iOS does not zoom on focus.
  */
 export function LoginPage() {
   const [lang, setLang] = React.useState<Lang>(() => {
@@ -34,10 +55,7 @@ export function LoginPage() {
   const rtl = lang === "ar";
   const now = useClock();
   const route = useRoute();
-  const scroller = React.useRef<HTMLDivElement>(null);
-  const contact = React.useRef<HTMLElement>(null);
   const forgot = route.path === "/forgot-password";
-  const onContact = route.path === "/contact";
 
   const switchLang = () => {
     const next: Lang = rtl ? "en" : "ar";
@@ -45,47 +63,31 @@ export function LoginPage() {
     try { localStorage.setItem("login.lang", next); } catch { /* private mode */ }
   };
 
-  const smooth = (): ScrollBehavior => (window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
-  // Scroll only this page's own box: scrollIntoView would also shift the locked window and hide the header.
-  const showContact = () => {
-    const box = scroller.current;
-    const el = contact.current;
-    if (box && el) box.scrollTo({ top: el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 64, behavior: smooth() });
-  };
-  const goContact = () => { navigate("/contact"); showContact(); };
-  const goHome = () => { navigate("/login"); scroller.current?.scrollTo({ top: 0, behavior: smooth() }); };
-  React.useEffect(() => { if (onContact) showContact(); }, [onContact]);
-
-  const navItem = (active: boolean) =>
-    `rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`;
-
   return (
-    <div ref={scroller} dir={rtl ? "rtl" : "ltr"} lang={lang} className="h-full overflow-y-auto bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-2 px-4 sm:px-6">
-          <button type="button" onClick={goHome} aria-label="Onasi HIS" className="me-auto rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-            <img src="/brand/onasi-wordmark.png" alt="" className="h-7 w-auto dark:hidden" />
-            <img src="/brand/onasi-wordmark-mint.png" alt="" className="hidden h-7 w-auto dark:block" />
-          </button>
-          <nav aria-label={t.nav} className="flex items-center">
-            <button type="button" onClick={goHome} aria-current={!onContact ? "page" : undefined} className={navItem(!onContact)}>{t.home}</button>
-            <button type="button" onClick={goContact} aria-current={onContact ? "page" : undefined} className={navItem(onContact)}>{t.contact}</button>
+    <div dir={rtl ? "rtl" : "ltr"} lang={lang} className="flex h-full flex-col overflow-y-auto bg-background text-foreground lg:overflow-hidden">
+      <header className="shrink-0 border-b border-border">
+        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-1 px-4 sm:px-6">
+          <span className="me-auto">
+            <img src="/brand/onasi-wordmark.png" alt="Onasi" className="h-7 w-auto dark:hidden" />
+            <img src="/brand/onasi-wordmark-mint.png" alt="Onasi" className="hidden h-7 w-auto dark:block" />
+          </span>
+          <nav className="hidden items-center sm:flex" aria-label="Onasi">
+            <SiteLinks t={t} />
           </nav>
           <Button onClick={switchLang} className="ms-1 h-10 px-4" lang={rtl ? "en" : "ar"} aria-label={t.otherLabel}>{t.other}</Button>
         </div>
       </header>
 
-      {/* Home: the hospital scene and sign-in, one screen tall on a desktop */}
-      <section aria-label={t.home} className="mx-auto flex max-w-[1600px] flex-col lg:h-[calc(100dvh-4rem)] lg:min-h-[640px] lg:flex-row">
-        <div className="relative shrink-0 p-3 sm:h-[380px] lg:h-full lg:w-[56%] lg:p-4">
+      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col lg:min-h-0 lg:flex-row">
+        <div className="relative shrink-0 p-3 sm:h-[300px] lg:h-full lg:w-[56%] lg:p-4">
           {/* On a phone the scene is its own strip under the text; from tablet width it fills the panel behind the text. */}
           <div className="relative flex h-full flex-col overflow-hidden rounded-[20px] bg-[#032c26]">
-            <React.Suspense fallback={<div className="h-[168px] sm:hidden" />}>
-              <HospitalScene rtl={rtl} label={t.sceneLabel} className="relative order-last h-[168px] outline-none focus-visible:ring-2 focus-visible:ring-[#39edd5] focus-visible:ring-inset sm:absolute sm:inset-0 sm:h-auto" />
+            <React.Suspense fallback={<div className="h-[120px] sm:hidden" />}>
+              <HospitalScene rtl={rtl} label={t.sceneLabel} className="relative order-last h-[120px] outline-none focus-visible:ring-2 focus-visible:ring-[#39edd5] focus-visible:ring-inset sm:absolute sm:inset-0 sm:h-auto" />
             </React.Suspense>
-            <div className="pointer-events-none relative flex flex-col p-6 pb-0 sm:h-full sm:p-10">
-              <p className="max-w-[14ch] text-[32px] leading-[1.1] font-medium tracking-[-0.01em] text-[#f4fbf7] sm:text-[48px] lg:text-[56px]">{t.headline}</p>
-              <p className="mt-3 max-w-[36ch] text-[15px] leading-6 text-[#daf0e4]/75 sm:text-[17px]">{t.sub}</p>
+            <div className="pointer-events-none relative flex flex-col p-5 pb-0 sm:h-full sm:p-8 lg:p-10">
+              <p className="max-w-[14ch] text-[28px] leading-[1.1] font-medium tracking-[-0.01em] text-[#f4fbf7] sm:text-[40px] lg:text-[56px]">{t.headline}</p>
+              <p className="mt-2 max-w-[36ch] text-sm leading-6 text-[#daf0e4]/75 sm:mt-3 sm:text-[17px]">{t.sub}</p>
               <p className="mt-auto hidden items-center gap-2 font-mono text-xs text-[#daf0e4]/70 tabular-nums sm:flex">
                 <span className="size-2 rounded-[2px] bg-[#e4f7ec]" aria-hidden="true" />
                 <span>{t.shifts[shiftOf(now.getHours())]}</span>
@@ -97,27 +99,23 @@ export function LoginPage() {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 sm:px-10 lg:min-h-0 lg:overflow-y-auto">
-          <div className="w-full max-w-[400px]">
+        <div className="flex flex-1 flex-col px-6 pt-6 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-10 lg:min-h-0 lg:overflow-y-auto lg:pt-4 [&_input]:text-base sm:[&_input]:text-sm">
+          <div className="mx-auto flex w-full max-w-[400px] flex-1 flex-col justify-center">
             {forgot
-              ? <ForgotPasswordForm t={t} onBack={goHome} onContact={goContact} />
-              : <SignInForm t={t} onForgot={() => navigate("/forgot-password")} onContact={goContact} beforeSignIn={() => navigate("/patients")} />}
+              ? <ForgotPasswordForm t={t} onBack={() => navigate("/login")} />
+              : <SignInForm t={t} onForgot={() => navigate("/forgot-password")} beforeSignIn={() => navigate("/patients")} />}
             {/* Ebttikar logo: full colour on the light form side, original proportions, clear space (brand guidelines 05, 08, 10) */}
-            <div className="mt-10 flex items-center justify-center gap-4 py-2">
+            <div className="mt-8 flex items-center justify-center gap-4">
               <span className="text-xs text-muted-foreground">{t.powered}</span>
-              <img src="/brand/ebttikar-logo-primary.png" alt="Ebttikar" width={61} height={72} className="h-[72px] w-auto dark:rounded-md dark:bg-white dark:p-1.5" />
+              <img src="/brand/ebttikar-logo-primary.png" alt="Ebttikar" width={54} height={64} className="h-16 w-auto dark:rounded-md dark:bg-white dark:p-1.5" />
             </div>
           </div>
+          <nav className="mt-6 flex justify-center gap-2 sm:hidden" aria-label="Onasi">
+            <SiteLinks t={t} />
+          </nav>
+          <p className="pt-3 text-center text-xs text-muted-foreground">{t.rights(now.getFullYear())}</p>
         </div>
-      </section>
-
-      <ContactSection ref={contact} t={t} />
-
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-[1600px] justify-center px-6 py-6 text-center text-xs text-muted-foreground sm:px-10">
-          <span>{t.rights(now.getFullYear())}</span>
-        </div>
-      </footer>
+      </main>
     </div>
   );
 }

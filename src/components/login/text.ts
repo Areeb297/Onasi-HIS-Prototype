@@ -1,16 +1,16 @@
 /**
- * Every string on the public pages (Home with sign-in, Forgot Password, Contact), in English and Arabic.
+ * Every string on the sign-in page (sign-in and Forgot Password), in English and Arabic.
  * Wording follows CT-HIS (CT-CoreApp dev.2.0, public/i18n/en.json and ar.json) where the HIS has the string.
  */
 export type Lang = "en" | "ar";
 
 const en = {
   // header
-  home: "Home",
-  contact: "Contact",
+  site: "onasi.care",
+  portfolio: "Portfolio",
+  newTab: "opens in a new tab",
   other: "العربية",
   otherLabel: "التبديل إلى العربية",
-  nav: "Main",
   // brand panel
   headline: "Your hospital workspace",
   sub: "Appointments, patient records and care workflows",
@@ -43,36 +43,17 @@ const en = {
   checkHint: "Didn't receive the email? Check your spam folder or try again.",
   needHelp: "Need help?",
   contactUs: "Contact Us",
-  // contact (/contact)
-  supportTitle: "Support",
-  contactTitle: "Contact Us",
-  contactLead: "Reach out to our team for any questions or support you may need.",
-  hours: "Support Hours",
-  hoursValue: "Sunday to Thursday, 8 am to 8 pm",
-  visit: "Visit Us",
-  address: "8132 Prince Musaad Bin Abdulaziz St., As Sulimaniyah, Riyadh 12232",
-  website: "Website",
-  formTitle: "Send a Message",
-  formLead: "Fill out the form below and we'll respond as soon as possible.",
-  firstName: "First Name",
-  lastName: "Last Name",
-  phone: "Phone Number",
-  message: "Your Message",
-  messagePlaceholder: "How can we assist you today?",
-  required: "Required",
-  send: "Send Message",
   sending: "Sending...",
-  sent: (e: string) => `Thank you. Our support team will reply to ${e}.`,
   // footer
   rights: (y: number) => `© ${y} Ebttikar. All rights reserved.`,
 };
 
 const ar: typeof en = {
-  home: "الرئيسية",
-  contact: "اتصل بنا",
+  site: "onasi.care",
+  portfolio: "معرض الأعمال",
+  newTab: "يفتح في علامة تبويب جديدة",
   other: "English",
   otherLabel: "Switch to English",
-  nav: "الرئيسية",
   headline: "مساحة عمل مستشفاك",
   sub: "المواعيد والسجلات الطبية وإجراءات الرعاية",
   shifts: ["المناوبة الصباحية", "المناوبة المسائية", "المناوبة الليلية"],
@@ -102,30 +83,19 @@ const ar: typeof en = {
   checkHint: "لم يصلك البريد؟ تحقق من مجلد الرسائل غير المرغوب فيها أو حاول مرة أخرى.",
   needHelp: "تحتاج مساعدة؟",
   contactUs: "اتصل بنا",
-  supportTitle: "الدعم",
-  contactTitle: "اتصل بنا",
-  contactLead: "تواصل مع فريقنا لأي أسئلة أو دعم قد تحتاجه.",
-  hours: "ساعات الدعم",
-  hoursValue: "من الأحد إلى الخميس، 8 صباحًا إلى 8 مساءً",
-  visit: "زرنا",
-  address: "8132 شارع الأمير مساعد بن عبدالعزيز، السليمانية، الرياض 12232",
-  website: "الموقع الإلكتروني",
-  formTitle: "أرسل رسالة",
-  formLead: "املأ النموذج أدناه وسنرد عليك في أقرب وقت ممكن.",
-  firstName: "الاسم الأول",
-  lastName: "اسم العائلة",
-  phone: "رقم الهاتف",
-  message: "رسالتك",
-  messagePlaceholder: "كيف يمكننا مساعدتك اليوم؟",
-  required: "مطلوب",
-  send: "إرسال الرسالة",
   sending: "جاري الإرسال...",
-  sent: (e: string) => `شكرًا لك. سيرد فريق الدعم على ${e}.`,
   rights: (y: number) => `© ${y} ابتكار. جميع الحقوق محفوظة.`,
 };
 
 export const LOGIN_TEXT = { en, ar };
 export type LoginText = typeof en;
+
+/** Contact and the company sites live on onasi.care; the HIS sign-in page only links to them. */
+export const LINKS = {
+  site: "https://onasi.care/",
+  portfolio: "https://portfolio.onasi.care/",
+  contact: "https://onasi.care/contact.php",
+};
 
 export const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
