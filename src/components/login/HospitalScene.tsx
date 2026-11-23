@@ -10,7 +10,7 @@ export function litShare(hour: number): number {
 
 const C = {
   ground: "#06352e",
-  wall: "#0e5045",
+  wall: "#14604f",
   windowOff: "#0b3d35",
   windowOn: "#e4f7ec",
   edge: "#39edd5",
@@ -49,7 +49,7 @@ export default function HospitalScene({ className, rtl = false, label }: { class
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#032c26");
-    scene.fog = new THREE.Fog("#032c26", 55, 105);
+    scene.fog = new THREE.Fog("#032c26", 60, 130);
 
     scene.add(new THREE.HemisphereLight("#daf0e4", "#032c26", 0.9));
     const sun = new THREE.DirectionalLight("#ffffff", 1.6);
@@ -66,7 +66,7 @@ export default function HospitalScene({ className, rtl = false, label }: { class
     scene.add(ground);
 
     const wallMat = new THREE.MeshStandardMaterial({ color: C.wall, roughness: 0.85 });
-    const edgeMat = new THREE.LineBasicMaterial({ color: C.edge, transparent: true, opacity: 0.22 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: C.edge, transparent: true, opacity: 0.36 });
     const block = (w: number, h: number, d: number, x: number, y: number, z: number) => {
       const geo = new THREE.BoxGeometry(w, h, d);
       const mesh = new THREE.Mesh(geo, wallMat);
@@ -82,6 +82,22 @@ export default function HospitalScene({ className, rtl = false, label }: { class
     const tower = block(7.5, 12.1, 6, -3.5, 3, -1);
     const wing = block(5.5, 6.6, 6.5, 5.5, 3, 0.5);
     block(5, 0.25, 2, -1, 1.8, 6); // entrance canopy
+
+    // Najdi parapets: the row of small triangles along Riyadh rooflines, on the podium and the wing.
+    const tri = new THREE.Shape([new THREE.Vector2(-0.3, 0), new THREE.Vector2(0.3, 0), new THREE.Vector2(0, 0.5)]);
+    const triGeo = new THREE.ExtrudeGeometry(tri, { depth: 0.14, bevelEnabled: false });
+    const parapet = (b: typeof podium) => {
+      const at: { x: number; z: number; rot: number }[] = [];
+      for (let u = -b.w / 2 + 0.5; u <= b.w / 2 - 0.4; u += 0.9) at.push({ x: b.x + u, z: b.z + b.d / 2 - 0.07, rot: 0 }, { x: b.x + u, z: b.z - b.d / 2 - 0.07, rot: 0 });
+      for (let u = -b.d / 2 + 0.5; u <= b.d / 2 - 0.4; u += 0.9) at.push({ x: b.x + b.w / 2 - 0.07, z: b.z + u, rot: Math.PI / 2 }, { x: b.x - b.w / 2 - 0.07, z: b.z + u, rot: Math.PI / 2 });
+      const inst = new THREE.InstancedMesh(triGeo, wallMat, at.length);
+      at.forEach((a, i) => inst.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(a.x, b.y + b.h, a.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a.rot), new THREE.Vector3(1, 1, 1))));
+      inst.castShadow = true;
+      scene.add(inst);
+    };
+    parapet(podium);
+    parapet(wing);
+
 
     // Windows on all four sides, so the building reads from any angle once it is turned. One floor of one face is one ward.
     const wins: Win[] = [];
