@@ -23,9 +23,10 @@ interface Win { level: number; target: number; key: string }
 
 /**
  * A hospital at the current shift: wards light and dim as staff work, the camera follows the pointer a little,
- * and hovering a floor lights that ward. Built once with plain three.js; nothing loops on a reduced-motion screen.
+ * hovering a floor lights that ward, and dragging (or the arrow keys) turns it a full 360 degrees.
+ * Built once with plain three.js; nothing loops on a reduced-motion screen.
  */
-export default function HospitalScene({ className, rtl = false }: { className?: string; rtl?: boolean }) {
+export default function HospitalScene({ className, rtl = false, label }: { className?: string; rtl?: boolean; label: string }) {
   const host = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -82,29 +83,35 @@ export default function HospitalScene({ className, rtl = false }: { className?: 
     const wing = block(5.5, 6.6, 6.5, 5.5, 3, 0.5);
     block(5, 0.25, 2, -1, 1.8, 6); // entrance canopy
 
-    // Windows on the faces the camera sees: the front (+z) and the right side (+x). One floor of one face is one ward.
+    // Windows on all four sides, so the building reads from any angle once it is turned. One floor of one face is one ward.
     const wins: Win[] = [];
     const spots: { pos: THREE.Vector3; rotY: number }[] = [];
-    const face = (b: typeof tower, side: "front" | "right", fromY: number, floorH: number, name: string) => {
-      const span = side === "front" ? b.w : b.d;
+    type Side = "front" | "right" | "back" | "left";
+    const ROT: Record<Side, number> = { front: 0, right: Math.PI / 2, back: Math.PI, left: -Math.PI / 2 };
+    const face = (b: typeof tower, side: Side, fromY: number, floorH: number, name: string) => {
+      const span = side === "front" || side === "back" ? b.w : b.d;
       const cols = Math.floor((span - 0.8) / 1.05);
       const floors = Math.floor((b.h - (fromY - b.y) - 0.4) / floorH);
       for (let f = 0; f < floors; f++) {
         for (let c = 0; c < cols; c++) {
           const u = -((cols - 1) * 1.05) / 2 + c * 1.05;
           const y = fromY + f * floorH + floorH / 2;
-          const pos = side === "front" ? new THREE.Vector3(b.x + u, y, b.z + b.d / 2 + 0.02) : new THREE.Vector3(b.x + b.w / 2 + 0.02, y, b.z - u);
-          spots.push({ pos, rotY: side === "front" ? 0 : Math.PI / 2 });
+          const pos = {
+            front: new THREE.Vector3(b.x + u, y, b.z + b.d / 2 + 0.02),
+            right: new THREE.Vector3(b.x + b.w / 2 + 0.02, y, b.z - u),
+            back: new THREE.Vector3(b.x - u, y, b.z - b.d / 2 - 0.02),
+            left: new THREE.Vector3(b.x - b.w / 2 - 0.02, y, b.z + u),
+          }[side];
+          spots.push({ pos, rotY: ROT[side] });
           wins.push({ level: 0, target: 0, key: `${name}-${side}-${f}` });
         }
       }
     };
-    face(tower, "front", tower.y + 0.4, 1.1, "tower");
-    face(tower, "right", tower.y + 0.4, 1.1, "tower");
-    face(wing, "front", wing.y + 0.4, 1.1, "wing");
-    face(wing, "right", wing.y + 0.4, 1.1, "wing");
-    face(podium, "front", 0.5, 1.15, "podium");
-    face(podium, "right", 0.5, 1.15, "podium");
+    for (const side of ["front", "right", "back", "left"] as const) {
+      face(tower, side, tower.y + 0.4, 1.1, "tower");
+      face(wing, side, wing.y + 0.4, 1.1, "wing");
+      face(podium, side, 0.5, 1.15, "podium");
+    }
 
     const winMat = new THREE.MeshBasicMaterial({ color: "#ffffff" });
     const windows = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.55, 0.62), winMat, spots.length);
@@ -128,10 +135,12 @@ export default function HospitalScene({ className, rtl = false }: { className?: 
     // The hospital sign: a solid mint cross on a panel standing on the tower roof.
     const panel = block(2.4, 2.4, 0.3, tower.x + tower.w / 2 - 1.6, tower.y + tower.h, tower.z + tower.d / 2 - 0.4);
     const signMat = new THREE.MeshBasicMaterial({ color: C.mint });
-    for (const [w, h] of [[1.7, 0.5], [0.5, 1.7]] as const) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), signMat);
-      bar.position.set(panel.x, panel.y + panel.h / 2, panel.z + panel.d / 2 + 0.04);
-      scene.add(bar);
+    for (const z of [panel.z + panel.d / 2 + 0.04, panel.z - panel.d / 2 - 0.04]) {
+      for (const [w, h] of [[1.7, 0.5], [0.5, 1.7]] as const) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), signMat);
+        bar.position.set(panel.x, panel.y + panel.h / 2, z);
+        scene.add(bar);
+      }
     }
 
     // Date palms along the drive.
@@ -187,6 +196,42 @@ export default function HospitalScene({ className, rtl = false }: { className?: 
     };
     const draw = () => { place(); renderer.render(scene, camera); };
 
+    // Drag (or the arrow keys) turns the hospital a full 360 degrees and tilts it a little.
+    const EL_MIN = THREE.MathUtils.degToRad(6);
+    const EL_MAX = THREE.MathUtils.degToRad(48);
+    let drag: { x: number; y: number } | null = null;
+    const turn = (dAz: number, dEl: number) => {
+      base.az += dAz;
+      base.el = THREE.MathUtils.clamp(base.el + dEl, EL_MIN, EL_MAX);
+      look.toAz = base.az;
+      look.toEl = base.el;
+      if (still) { look.az = base.az; look.el = base.el; draw(); }
+    };
+    const onDown = (e: PointerEvent) => {
+      drag = { x: e.clientX, y: e.clientY };
+      el.setPointerCapture(e.pointerId);
+      el.style.cursor = "grabbing";
+    };
+    const onUp = (e: PointerEvent) => {
+      drag = null;
+      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      el.style.cursor = "grab";
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const step = THREE.MathUtils.degToRad(15);
+      const map: Record<string, [number, number]> = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step / 3], ArrowDown: [0, -step / 3] };
+      const m = map[e.key];
+      if (!m) return;
+      e.preventDefault();
+      turn(rtl && m[0] ? -m[0] : m[0], m[1]);
+    };
+    el.style.cursor = "grab";
+    el.style.touchAction = "pan-y";
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+    el.addEventListener("keydown", onKey);
+
     // Pointer: a small turn of the camera, and the hovered ward lights up.
     const ray = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
@@ -195,6 +240,11 @@ export default function HospitalScene({ className, rtl = false }: { className?: 
       const r = el.getBoundingClientRect();
       const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
       const ny = ((e.clientY - r.top) / r.height) * 2 - 1;
+      if (drag) {
+        turn(-(e.clientX - drag.x) * 0.009, (e.clientY - drag.y) * 0.004);
+        drag = { x: e.clientX, y: e.clientY };
+        return;
+      }
       if (!still) {
         look.toAz = base.az + nx * THREE.MathUtils.degToRad(7);
         look.toEl = base.el - ny * THREE.MathUtils.degToRad(3);
@@ -250,6 +300,10 @@ export default function HospitalScene({ className, rtl = false }: { className?: 
       cancelAnimationFrame(raf);
       ro.disconnect();
       el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      el.removeEventListener("keydown", onKey);
       scene.traverse((o) => {
         const mesh = o as THREE.Mesh;
         mesh.geometry?.dispose();
@@ -261,5 +315,5 @@ export default function HospitalScene({ className, rtl = false }: { className?: 
     };
   }, [rtl]);
 
-  return <div ref={host} className={className} />;
+  return <div ref={host} className={className} tabIndex={0} role="img" aria-label={label} />;
 }
