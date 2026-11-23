@@ -480,8 +480,13 @@ function Shell() {
           <PatientBand />
           <TabPanels scroller={mainRef} render={() => <Page />} />
           <div className="h-10 shrink-0" aria-hidden="true" />
-          <footer className="mt-auto border-t border-border pt-4 text-xs text-muted-foreground sm:pe-40">
-            &copy; {new Date().getFullYear()} Ebttikar. All rights reserved. <span className="ms-1">Demo data only. Do not enter real patient information.</span>
+          <footer className="mt-auto flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-4 text-xs text-muted-foreground sm:pe-40">
+            <p className="min-w-0 flex-1">&copy; {new Date().getFullYear()} Ebttikar. All rights reserved. <span className="ms-1">Demo data only. Do not enter real patient information.</span></p>
+            {/* Ebttikar brand guidelines: full-colour logo on a light surface (a white plate in dark mode), original proportions, clear space. */}
+            <span className="flex items-center gap-3">
+              <span>Powered by</span>
+              <img src="/brand/ebttikar-logo-primary.png" alt="Ebttikar" width={41} height={48} className="h-12 w-auto dark:rounded-md dark:bg-white dark:p-1" />
+            </span>
           </footer>
         </div>
       </main>
