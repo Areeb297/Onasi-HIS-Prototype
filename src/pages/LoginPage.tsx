@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui/primitives";
-import { signIn, userForEmail } from "@/lib/session";
+import { currentUser, signIn, userForEmail } from "@/lib/session";
 
 // The 3D scene loads only here, so three.js stays out of the main app bundle.
 const HospitalScene = React.lazy(() => import("@/components/login/HospitalScene"));
@@ -21,14 +21,10 @@ const TEXT = {
     forgot: "Forgot Password?",
     reset: "Ask your system administrator to reset your password.",
     submit: "Sign In",
-    needEmail: "Enter your email",
-    needPassword: "Enter your password",
-    wrong: "Incorrect email or password",
-    locked: "Too many attempts. Try again in 1 minute, or ask your system administrator.",
     caps: "Caps Lock is on",
     signingIn: "Signing In",
     restricted: "For authorized hospital staff only. Sign-ins and record access are logged.",
-    demo: "Demo accounts use a staff name, for example khalid@onasi.care, with any password.",
+    demo: "Demo: any email and password sign in. A staff name, for example khalid@onasi.care, opens that person's account.",
     powered: "Powered by",
   },
   ar: {
@@ -45,14 +41,10 @@ const TEXT = {
     forgot: "نسيت كلمة المرور؟",
     reset: "تواصل مع مسؤول النظام لإعادة تعيين كلمة المرور.",
     submit: "تسجيل الدخول",
-    needEmail: "أدخل البريد الإلكتروني",
-    needPassword: "أدخل كلمة المرور",
-    wrong: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
-    locked: "محاولات كثيرة. حاول مرة أخرى بعد دقيقة، أو تواصل مع مسؤول النظام.",
     caps: "مفتاح الأحرف الكبيرة مفعّل",
     signingIn: "جارٍ تسجيل الدخول",
     restricted: "للموظفين المصرّح لهم فقط. يُسجَّل الدخول والاطلاع على السجلات.",
-    demo: "حسابات العرض تستخدم اسم الموظف، مثل khalid@onasi.care، مع أي كلمة مرور.",
+    demo: "للعرض: أي بريد إلكتروني وكلمة مرور يسجّلان الدخول. اسم الموظف، مثل khalid@onasi.care، يفتح حسابه.",
     powered: "بدعم من",
   },
 } as const;
@@ -82,46 +74,22 @@ export function LoginPage() {
   const [password, setPassword] = React.useState("");
   const [reveal, setReveal] = React.useState(false);
   const [forgot, setForgot] = React.useState(false);
-  const [errors, setErrors] = React.useState<{ email?: string; password?: string }>({});
-  const [failed, setFailed] = React.useState(false);
   const [caps, setCaps] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  // Account lockout after repeated failures (NCA ECC, OWASP ASVS). shortcut: kept in this page only; the real HIS locks on the server.
-  const tries = React.useRef(0);
-  const [lockedUntil, setLockedUntil] = React.useState(0);
-  const locked = lockedUntil > now.getTime();
-  React.useEffect(() => {
-    if (!lockedUntil) return;
-    const id = window.setTimeout(() => { setLockedUntil(0); tries.current = 0; }, Math.max(0, lockedUntil - Date.now()));
-    return () => window.clearTimeout(id);
-  }, [lockedUntil]);
 
   const switchLang = () => {
     const next: Lang = rtl ? "en" : "ar";
     setLang(next);
-    setErrors({});
-    setFailed(false);
     try { localStorage.setItem("login.lang", next); } catch { /* private mode */ }
   };
 
+  // Demo: Sign In always works. A staff name in the email opens that account; anything else keeps the last account used.
+  // shortcut: no credential check at all; the real HIS checks the password and locks the account on the server.
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy || lockedUntil > Date.now()) return;
-    const next = { email: !email.trim() ? t.needEmail : undefined, password: !password ? t.needPassword : undefined };
-    setErrors(next);
-    setFailed(false);
-    if (next.email || next.password) return;
+    if (busy) return;
     setBusy(true);
-    window.setTimeout(() => {
-      setBusy(false);
-      const user = userForEmail(email.trim());
-      if (user) return signIn(user.id);
-      // One message for a wrong email or a wrong password, so the page never tells anyone which accounts exist.
-      setFailed(true);
-      setPassword("");
-      tries.current += 1;
-      if (tries.current >= 5) setLockedUntil(Date.now() + 60_000);
-    }, 450);
+    window.setTimeout(() => signIn((userForEmail(email.trim()) ?? currentUser()).id), 300);
   };
   const capsCheck = (e: React.KeyboardEvent) => setCaps(e.getModifierState?.("CapsLock") ?? false);
 
@@ -160,7 +128,7 @@ export function LoginPage() {
             <p className="mt-2 text-[15px] text-muted-foreground">{t.lead}</p>
 
             <div className="mt-8 flex flex-col gap-5 [--field-h:2.75rem]">
-              <Field label={t.email} error={errors.email} name="email">
+              <Field label={t.email} name="email">
                 <Input
                   id="email"
                   type="email"
@@ -172,7 +140,7 @@ export function LoginPage() {
                   autoFocus
                 />
               </Field>
-              <Field label={t.password} error={errors.password} name="password">
+              <Field label={t.password} name="password">
                 <Input
                   id="password"
                   type={reveal ? "text" : "password"}
@@ -205,12 +173,7 @@ export function LoginPage() {
             </div>
             {forgot && <p role="status" className="mt-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">{t.reset}</p>}
 
-            {(failed || locked) && (
-              <p role="alert" className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {locked ? t.locked : t.wrong}
-              </p>
-            )}
-            <Button type="submit" variant="primary" disabled={busy || locked} aria-busy={busy} className="mt-6 h-11 w-full text-[15px]">
+            <Button type="submit" variant="primary" disabled={busy} aria-busy={busy} className="mt-6 h-11 w-full text-[15px]">
               {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
               {busy ? t.signingIn : t.submit}
             </Button>
