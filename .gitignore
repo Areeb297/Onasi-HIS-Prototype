@@ -13,3 +13,6 @@ onasi-journeys.html
 *.docx
 docs/ct-his-db/
 .playwright-mcp/
+
+# Brand source files (guidelines PDF, original logos), not for the public repo
+Ebttikar Brand Guidelines/

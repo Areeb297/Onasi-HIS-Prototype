@@ -83,6 +83,8 @@ interface State {
   locked: boolean;
   /** Idle minutes before the screen locks. 0 turns it off. */
   idleMinutes: number;
+  /** False shows the sign-in page. A browser that never signed in starts signed out. */
+  signedIn: boolean;
 }
 
 /** Idle lock range in minutes. It cannot be switched off: an unattended screen must lock. */
@@ -90,7 +92,7 @@ export const IDLE_MIN = 1;
 export const IDLE_MAX = 30;
 export const clampIdle = (m: number) => (Number.isFinite(Number(m)) ? Math.min(IDLE_MAX, Math.max(IDLE_MIN, Math.round(Number(m)))) : 10);
 
-let state: State = { userId: "U1", glass: {}, locked: false, idleMinutes: 10 };
+let state: State = { userId: "U1", glass: {}, locked: false, idleMinutes: 10, signedIn: false };
 try {
   const raw = localStorage.getItem(KEY);
   // A locked screen stays locked after a reload, so reloading the page is not a way past the lock.
@@ -135,6 +137,26 @@ export function signInFromLock(id: string) {
   audit("logout", "Session", { detail: `${currentUser().name} signed out at the lock screen` });
   set({ userId: id, glass: {}, locked: false });
   audit("login", "Session", { detail: `${currentUser().name} signed in at the lock screen` });
+}
+
+/**
+ * The demo account for a sign-in email: a staff first or last name before the @ (khalid@, noura.alzahrani@, admin@).
+ * shortcut: no password check, any password signs in; the real HIS checks the password on the server.
+ */
+export function userForEmail(email: string): DemoUser | undefined {
+  const words = email.toLowerCase().split("@")[0].split(/[._-]+/).filter(Boolean);
+  if (words.includes("admin")) return USERS.find((u) => u.role === "admin");
+  return USERS.find((u) => u.name.toLowerCase().replace(/^dr\. /, "").split(/[ ,]+/).some((n) => words.includes(n)));
+}
+
+export function signIn(id: string) {
+  set({ userId: id, glass: {}, locked: false, signedIn: true });
+  audit("login", "Session", { detail: `${currentUser().name} signed in` });
+}
+
+export function signOut() {
+  audit("logout", "Session", { detail: `${currentUser().name} signed out` });
+  set({ glass: {}, locked: false, signedIn: false });
 }
 
 export function lockScreen() {

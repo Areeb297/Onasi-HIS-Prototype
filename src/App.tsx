@@ -1,6 +1,6 @@
 import { useAgentMonitor } from "@/lib/ai/use-agent-monitor";
 import * as React from "react";
-import { ChevronsUpDown, Lock, Menu, Minus, Plus, Search, ShieldOff } from "lucide-react";
+import { ChevronsUpDown, Lock, LogOut, Menu, Minus, Plus, Search, ShieldOff } from "lucide-react";
 import { EventBadge } from "@/components/badges";
 import { IdleLock } from "@/components/IdleLock";
 import { DisplayMenu } from "@/components/DisplayMenu";
@@ -21,6 +21,7 @@ import { EmergencyBoard } from "@/pages/EmergencyBoard";
 import { EncountersPage } from "@/pages/EncountersPage";
 import { AccessPage, AuditPage, ConfidentialPage, RegistrationPage } from "@/pages/GovernancePages";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
+import { LoginPage } from "@/pages/LoginPage";
 import { InvoicePage } from "@/pages/InvoicePage";
 import { InvoiceWorklistPage } from "@/pages/InvoiceWorklistPage";
 import { LabWorklistPage } from "@/pages/LabWorklistPage";
@@ -67,7 +68,7 @@ import { canUseDevMode, isDevMode, setDevMode, useDevMode } from "@/lib/devmode"
 import { NAV, isListPage, type NavGroup, type NavPage } from "@/lib/nav";
 import { navigate, useRoute } from "@/lib/router";
 import { routeAccess } from "@/lib/route-guard";
-import { can, ROLES, switchUser, USERS, lockScreen, useSession } from "@/lib/session";
+import { can, ROLES, switchUser, USERS, lockScreen, signOut, useSession } from "@/lib/session";
 import { EVENTS, EVENT_BY_ID, type EventId } from "@/lib/spec";
 import { useHis } from "@/lib/store";
 
@@ -247,6 +248,11 @@ function UserFooter() {
               </span>
             </DropdownMenuItem>
           ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={signOut}>
+            <LogOut className="size-4" />
+            <span className="text-sm">Sign Out</span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -399,7 +405,12 @@ export default function App() {
   const session = useSingleSession();
   if (session.status === "checking") return null;
   if (session.status === "blocked") return <SessionNotice reason={session.reason} />;
-  return <Shell />;
+  return <SignedIn />;
+}
+
+function SignedIn() {
+  const { signedIn } = useSession();
+  return signedIn ? <Shell /> : <LoginPage />;
 }
 
 function Shell() {
