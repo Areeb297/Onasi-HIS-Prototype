@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
+import { ContactSheet } from "@/components/login/ContactForm";
 import { ForgotPasswordForm } from "@/components/login/ForgotPasswordForm";
 import { SignInForm } from "@/components/login/SignInForm";
 import { LINKS, LOGIN_TEXT, type Lang, type LoginText } from "@/components/login/text";
@@ -43,8 +44,8 @@ function SiteLinks({ t }: { t: LoginText }) {
 }
 
 /**
- * Staff sign-in: one screen with no page scroll from laptop width up. Contact and company information live on
- * onasi.care and portfolio.onasi.care. #/forgot-password swaps the form. On a phone the page scrolls, because the
+ * Staff sign-in: one screen with no page scroll from tablet width up. #/forgot-password swaps the form; #/contact opens
+ * Contact Us in a sheet over the sign-in screen. The header links to onasi.care and portfolio.onasi.care. On a phone the page scrolls, because the
  * scene and the form do not fit one small screen; fields use 16px text there so iOS does not zoom on focus.
  */
 export function LoginPage() {
@@ -55,7 +56,9 @@ export function LoginPage() {
   const rtl = lang === "ar";
   const now = useClock();
   const route = useRoute();
-  const forgot = route.path === "/forgot-password";
+  const view = route.path === "/forgot-password" ? "forgot" : route.path === "/contact" ? "contact" : "signin";
+  const toSignIn = () => navigate("/login");
+  const toContact = () => navigate("/contact");
 
   const switchLang = () => {
     const next: Lang = rtl ? "en" : "ar";
@@ -101,9 +104,8 @@ export function LoginPage() {
 
         <div className="flex flex-1 flex-col px-6 pt-6 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-10 lg:min-h-0 lg:overflow-y-auto lg:pt-4 [&_input]:text-base sm:[&_input]:text-sm">
           <div className="mx-auto flex w-full max-w-[400px] flex-1 flex-col justify-center">
-            {forgot
-              ? <ForgotPasswordForm t={t} onBack={() => navigate("/login")} />
-              : <SignInForm t={t} onForgot={() => navigate("/forgot-password")} beforeSignIn={() => navigate("/patients")} />}
+            {view === "forgot" && <ForgotPasswordForm t={t} onBack={toSignIn} onContact={toContact} />}
+            {view !== "forgot" && <SignInForm t={t} onForgot={() => navigate("/forgot-password")} onContact={toContact} beforeSignIn={() => navigate("/patients")} />}
             {/* Ebttikar logo: full colour on the light form side, original proportions, clear space (brand guidelines 05, 08, 10) */}
             <div className="mt-8 flex items-center justify-center gap-4">
               <span className="text-xs text-muted-foreground">{t.powered}</span>
@@ -116,6 +118,7 @@ export function LoginPage() {
           <p className="pt-3 text-center text-xs text-muted-foreground">{t.rights(now.getFullYear())}</p>
         </div>
       </main>
+      <ContactSheet t={t} rtl={rtl} open={view === "contact"} onClose={toSignIn} />
     </div>
   );
 }

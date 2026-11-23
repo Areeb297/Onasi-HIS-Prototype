@@ -1,10 +1,10 @@
 import * as React from "react";
 import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui/primitives";
-import { isEmail, LINKS, linkClass, mintButton, type LoginText } from "./text";
+import { isEmail, linkClass, mintButton, type LoginText } from "./text";
 
 /** CT-HIS /forgot-password: an email, then "Check Your Email". Nothing is sent in the demo. */
-export function ForgotPasswordForm({ t, onBack }: { t: LoginText; onBack: () => void }) {
+export function ForgotPasswordForm({ t, onBack, onContact }: { t: LoginText; onBack: () => void; onContact: () => void }) {
   const [email, setEmail] = React.useState("");
   const [error, setError] = React.useState("");
   const [status, setStatus] = React.useState<"idle" | "pending" | "sent">("idle");
@@ -47,7 +47,7 @@ export function ForgotPasswordForm({ t, onBack }: { t: LoginText; onBack: () => 
         {status === "pending" ? t.sending : t.sendLink}
       </Button>
       <p className="mt-6 text-sm text-muted-foreground">
-        {t.needHelp} <a href={LINKS.contact} target="_blank" rel="noreferrer" className={linkClass}>{t.contactUs}<span className="sr-only"> ({t.newTab})</span></a>
+        {t.needHelp} <button type="button" onClick={onContact} className={linkClass}>{t.contactUs}</button>
       </p>
     </form>
   );

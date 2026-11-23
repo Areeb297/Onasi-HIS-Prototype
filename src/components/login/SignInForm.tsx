@@ -2,14 +2,14 @@ import * as React from "react";
 import { Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui/primitives";
 import { currentUser, signIn, userForEmail } from "@/lib/session";
-import { LINKS, linkClass, mintButton, type LoginText } from "./text";
+import { linkClass, mintButton, type LoginText } from "./text";
 
 /**
  * Staff sign-in, as CT-HIS /login: email, password with show and hide, Forgot Password, the restricted notice.
  * Sign In always works in the demo. A staff name before the @ opens that account; anything else keeps the last account used.
  * shortcut: no credential check at all; the real HIS checks the password and locks the account on the server.
  */
-export function SignInForm({ t, onForgot, beforeSignIn }: { t: LoginText; onForgot: () => void; beforeSignIn: () => void }) {
+export function SignInForm({ t, onForgot, onContact, beforeSignIn }: { t: LoginText; onForgot: () => void; onContact: () => void; beforeSignIn: () => void }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [reveal, setReveal] = React.useState(false);
@@ -77,7 +77,7 @@ export function SignInForm({ t, onForgot, beforeSignIn }: { t: LoginText; onForg
       </p>
 
       <p className="mt-6 border-t border-border pt-5 text-sm text-muted-foreground">
-        {t.needHelp} <a href={LINKS.contact} target="_blank" rel="noreferrer" className={linkClass}>{t.contactUs}<span className="sr-only"> ({t.newTab})</span></a>
+        {t.needHelp} <button type="button" onClick={onContact} className={linkClass}>{t.contactUs}</button>
       </p>
     </form>
   );

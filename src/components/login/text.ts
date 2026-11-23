@@ -1,5 +1,5 @@
 /**
- * Every string on the sign-in page (sign-in and Forgot Password), in English and Arabic.
+ * Every string on the sign-in page (sign-in, Forgot Password and Contact Us), in English and Arabic.
  * Wording follows CT-HIS (CT-CoreApp dev.2.0, public/i18n/en.json and ar.json) where the HIS has the string.
  */
 export type Lang = "en" | "ar";
@@ -44,6 +44,31 @@ const en = {
   needHelp: "Need help?",
   contactUs: "Contact Us",
   sending: "Sending...",
+  // contact (#/contact), replaces the form on the same screen
+  contactTitle: "Contact Us",
+  contactLead: "Questions, support or a demo request. Our team will get back to you.",
+  fullName: "Full Name",
+  organization: "Hospital or Organization",
+  phone: "Phone Number",
+  products: "Interested In",
+  productList: [
+    ["HIS", "Hospital Information System"],
+    ["DHIS", "Dental HIS"],
+    ["HHIS", "Hajj Health System"],
+    ["RCM", "Revenue Cycle"],
+    ["Telemedicine", "Telemedicine"],
+    ["Portal", "Patient Portal"],
+    ["EMS", "Emergency Medical System"],
+    ["Dashboard", "Dashboards"],
+  ],
+  message: "Message",
+  messagePlaceholder: "How can we help?",
+  required: "Required",
+  optional: "Optional",
+  send: "Send Message",
+  cancel: "Cancel",
+  sentTitle: "Message Sent",
+  sentLead: (e: string) => `Thank you. Our team will reply to ${e}.`,
   // footer
   rights: (y: number) => `© ${y} Ebttikar. All rights reserved.`,
 };
@@ -84,17 +109,40 @@ const ar: typeof en = {
   needHelp: "تحتاج مساعدة؟",
   contactUs: "اتصل بنا",
   sending: "جاري الإرسال...",
+  contactTitle: "اتصل بنا",
+  contactLead: "للاستفسارات أو الدعم أو طلب عرض توضيحي، سيتواصل معك فريقنا.",
+  fullName: "الاسم الكامل",
+  organization: "المستشفى أو الجهة",
+  phone: "رقم الهاتف",
+  products: "مهتم بـ",
+  productList: [
+    ["HIS", "نظام معلومات المستشفى"],
+    ["DHIS", "نظام طب الأسنان"],
+    ["HHIS", "نظام صحة الحج"],
+    ["RCM", "دورة الإيرادات"],
+    ["Telemedicine", "الطب الاتصالي"],
+    ["Portal", "بوابة المريض"],
+    ["EMS", "نظام الطوارئ الطبية"],
+    ["Dashboard", "لوحات المعلومات"],
+  ],
+  message: "الرسالة",
+  messagePlaceholder: "كيف يمكننا مساعدتك؟",
+  required: "مطلوب",
+  optional: "اختياري",
+  send: "إرسال الرسالة",
+  cancel: "إلغاء",
+  sentTitle: "تم إرسال الرسالة",
+  sentLead: (e: string) => `شكرًا لك. سيرد فريقنا على ${e}.`,
   rights: (y: number) => `© ${y} ابتكار. جميع الحقوق محفوظة.`,
 };
 
 export const LOGIN_TEXT = { en, ar };
 export type LoginText = typeof en;
 
-/** Contact and the company sites live on onasi.care; the HIS sign-in page only links to them. */
+/** The company sites, linked from the sign-in header. */
 export const LINKS = {
   site: "https://onasi.care/",
   portfolio: "https://portfolio.onasi.care/",
-  contact: "https://onasi.care/contact.php",
 };
 
 export const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
